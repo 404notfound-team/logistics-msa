@@ -45,5 +45,10 @@ type은 `feat`, `fix`, `refactor`, `docs`, `test`, `style`, `build`, `ci`, `chor
 - 도메인 로직과 엔티티는 담당 서비스가 소유합니다. 서비스 간 계약 변경은 호출자와 함께 검토합니다.
 - `.env`, 비밀번호, JWT 키, Webhook URL은 커밋하지 않습니다. 변수 이름만 `.env.example`에 공유합니다.
 - 새 API·테이블은 SA/API 명세와 함께 갱신하고 해당 동작을 검증하는 테스트를 추가합니다.
+- 공개 API는 서비스의 `springdoc.paths-to-match`와 Gateway의 업무 라우트에 맞는 경로를 사용합니다.
+  컨트롤러에는 `@Tag`·`@Operation`, DTO에는 필요한 `@Schema` 설명을 추가하고 Swagger에서 확인합니다.
+  새 경로 접두사를 도입하면 라우트·문서 필터·`scripts/smoke.py`를 함께 갱신합니다.
+  `/internal/**`를 Swagger에 노출하거나 문서의 서버 주소를 개별 서비스 주소로 바꾸지 않습니다.
+  JWT 구현 시에는 실제 인증 방식에 맞는 OpenAPI 보안 정의와 인증 테스트도 함께 추가합니다.
 - 인프라 변경은 `docker compose` 시작과 `scripts/smoke.py`까지 확인합니다.
 - 인증 기능을 구현하기 전에는 이 구성을 외부에 배포하지 않습니다.

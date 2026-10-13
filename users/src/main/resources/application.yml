@@ -1,5 +1,10 @@
 server:
   port: 8080
+springdoc:
+  api-docs:
+    enabled: false
+  paths-to-match:
+    - /api/users/**
 spring:
   application:
     name: users

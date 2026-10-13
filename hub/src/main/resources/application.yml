@@ -1,5 +1,12 @@
 server:
   port: 8080
+springdoc:
+  api-docs:
+    enabled: false
+  paths-to-match:
+    - /api/hubs/**
+    - /api/hub-routes/**
+    - /api/stocks/**
 spring:
   application:
     name: hub

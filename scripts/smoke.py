@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""실행 중인 로컬 Compose의 등록·라우팅·DB 격리·분산 추적을 확인한다."""
+"""실행 중인 로컬 Compose의 등록·라우팅·OpenAPI·DB 격리·분산 추적을 확인한다."""
 import argparse
 import json
 import secrets
@@ -10,6 +10,13 @@ import urllib.request
 from pathlib import Path
 
 SERVICES = {"users", "company", "hub", "orders", "delivery"}
+API_DOCS = {
+    "users": ("사용자 API", ["/api/users"]),
+    "company": ("업체·상품 API", ["/api/companies", "/api/products"]),
+    "hub": ("허브·재고 API", ["/api/hubs", "/api/hub-routes", "/api/stocks"]),
+    "orders": ("주문 API", ["/api/orders"]),
+    "delivery": ("배송 API", ["/api/deliveries"]),
+}
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -94,6 +101,29 @@ done
     print("PASS DB 5개 접속·20개 교차 접속 거부·관리 DB 거부·스키마 권한", flush=True)
 
 
+def check_openapi(url):
+    with urllib.request.urlopen(f"{url}/swagger-ui.html", timeout=8) as response:
+        assert response.status == 200
+        assert "Swagger UI" in response.read().decode("utf-8")
+    config = get(f"{url}/v3/api-docs/swagger-config")
+    urls = {entry["name"]: entry["url"] for entry in config["urls"]}
+    assert urls == {service: f"/v3/api-docs/{service}" for service in SERVICES}, urls
+    for service, (title, prefixes) in API_DOCS.items():
+        document = get(f"{url}{urls[service]}")
+        assert document["openapi"].startswith("3."), document
+        assert document["info"]["title"] == title, document["info"]
+        assert [server["url"] for server in document["servers"]] == ["/"], document["servers"]
+        for path in document.get("paths", {}):
+            assert any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes), (service, path)
+    for path in ["/v3/api-docs/eureka", "/v3/api-docs/users/internal/infra/ping"]:
+        try:
+            get(f"{url}{path}")
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, (path, error.code)
+        else:
+            raise AssertionError(f"문서 라우트가 허용하지 않은 경로를 노출합니다: {path}")
+
+
 def check_trace(url, trace_id):
     trace = get(f"{url}/api/v2/trace/{trace_id}")
     services = {span.get("localEndpoint", {}).get("serviceName") for span in trace}
@@ -110,6 +140,7 @@ def main():
     trace_id = secrets.token_hex(16)
     eventually(lambda: check_registry(args.eureka_url), "Eureka 앱 6개 UP 등록")
     eventually(lambda: check_routes(args.gateway_url, trace_id), "Gateway 라우팅·Feign 호출·내부 경로 차단")
+    eventually(lambda: check_openapi(args.gateway_url), "Swagger UI·서비스별 OpenAPI·공개 경로 필터·Gateway 기준 주소")
     check_database()
     eventually(lambda: check_trace(args.zipkin_url, trace_id), "Zipkin 동일 trace의 Gateway → orders → hub", timeout=60)
 
