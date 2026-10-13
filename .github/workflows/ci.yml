@@ -14,26 +14,43 @@ concurrency:
 
 jobs:
   build-and-smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Build
-        run: ./gradlew --no-daemon clean build
+      - uses: gradle/actions/setup-gradle@v6.4.0
+        with:
+          cache-provider: basic
+      - name: Check formatting, lint, compile and test
+        run: ./gradlew --no-daemon --continue clean build
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: verification-reports
+          path: |
+            */build/reports/checkstyle/
+            */build/reports/tests/
+            */build/test-results/test/*.xml
+            build/reports/problems/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Configure local environment
+        id: configure-env
         run: bash scripts/init-env.sh
       - name: Start infrastructure
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Verify service boundaries and tracing
         run: python3 scripts/smoke.py
       - name: Show service status on failure
-        if: failure()
+        if: failure() && steps.configure-env.outcome == 'success'
         run: docker compose ps -a
       - name: Clean up CI resources
-        if: always()
+        if: always() && steps.configure-env.outcome == 'success'
         run: docker compose down -v --remove-orphans

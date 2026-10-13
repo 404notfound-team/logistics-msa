@@ -57,11 +57,16 @@ Zipkin에서 서비스 `orders`로 검색하면 세 앱의 span을 확인할 수
 
 ## 개발과 종료
 
-로컬 JDK 21을 설치하면 다음처럼 빌드합니다. 처음에는 업무 단위 테스트가 없으며,
-실제 연동 검증은 `scripts/smoke.py`가 수행합니다.
+로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
+Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
+`build`는 Spotless 포맷 검사, Checkstyle, Java 컴파일, JUnit 테스트와 패키징을 수행합니다.
+처음에는 업무 단위 테스트가 없어 `test`가 `NO-SOURCE`로 표시되며,
+실제 연동 검증은 `scripts/smoke.py`가 수행합니다. 테스트는 각 모듈의 `src/test/java`에 추가합니다.
 
 ```bash
-./gradlew clean build
+./gradlew spotlessApply            # Java 포맷 자동 수정
+./gradlew --continue clean build   # CI와 같은 코드 검사·테스트·패키징
+./gradlew :orders:test             # 특정 서비스 테스트
 docker compose logs -f orders
 docker compose up -d --build orders
 docker compose down
@@ -71,6 +76,9 @@ docker compose down
 `docker compose down -v`를 실행하세요. DB 초기화 스크립트는 빈 볼륨에서 한 번만 실행됩니다.
 기존 볼륨의 비밀번호는 `.env` 수정만으로 바뀌지 않습니다.
 Zipkin은 메모리 저장 방식이라 컨테이너 재시작 시 trace가 사라집니다.
+
+PR과 `main` 변경 시 CI가 위 전체 빌드와 Compose 연동 검사를 실행합니다.
+포맷·코딩 규칙은 [협업 규칙](CONTRIBUTING.md#코드와-설정)을 따릅니다.
 
 ## 경계
 

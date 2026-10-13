@@ -8,6 +8,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 @Profile("local")
 @FeignClient(name = "hub", contextId = "infraHubProbe")
 interface HubProbeClient {
-    @GetMapping("/internal/infra/ping")
-    Map<String, String> ping();
+  @GetMapping("/internal/infra/ping")
+  Map<String, String> ping();
 }
