@@ -1,8 +1,16 @@
 server:
   port: 8080
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 spring:
   application:
     name: gateway
+  web:
+    resources:
+      add-mappings: false
   cloud:
     gateway:
       server:

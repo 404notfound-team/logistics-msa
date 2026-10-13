@@ -1,0 +1,21 @@
+springdoc:
+  api-docs:
+    enabled: true
+  paths-to-exclude: /**
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+    validator-url: ""
+    urls-primary-name: users
+    urls:
+      - name: users
+        url: /v3/api-docs/users
+      - name: company
+        url: /v3/api-docs/company
+      - name: hub
+        url: /v3/api-docs/hub
+      - name: orders
+        url: /v3/api-docs/orders
+      - name: delivery
+        url: /v3/api-docs/delivery

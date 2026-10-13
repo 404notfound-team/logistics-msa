@@ -1,5 +1,11 @@
 server:
   port: 8080
+springdoc:
+  api-docs:
+    enabled: false
+  paths-to-match:
+    - /api/companies/**
+    - /api/products/**
 spring:
   application:
     name: company
