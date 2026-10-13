@@ -1,0 +1,156 @@
+name: logistics-msa
+
+x-app: &app
+  restart: unless-stopped
+  environment: &app-env
+    SPRING_PROFILES_ACTIVE: local
+    EUREKA_URL: http://eureka:8080/eureka/
+    ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    TZ: Asia/Seoul
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "--silent", "http://localhost:8080/actuator/health"]
+    interval: 10s
+    timeout: 5s
+    retries: 30
+    start_period: 60s
+  networks: [backend]
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      USERS_DB_PASSWORD: ${USERS_DB_PASSWORD:?Set USERS_DB_PASSWORD in .env}
+      COMPANY_DB_PASSWORD: ${COMPANY_DB_PASSWORD:?Set COMPANY_DB_PASSWORD in .env}
+      HUB_DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+      ORDERS_DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
+      DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./infra/postgres/01-init.sh:/docker-entrypoint-initdb.d/01-init.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres -h 127.0.0.1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+    networks: [backend]
+
+  zipkin:
+    image: openzipkin/zipkin:3.6.1
+    environment:
+      STORAGE_TYPE: mem
+    ports:
+      - "127.0.0.1:${ZIPKIN_PORT:-9411}:9411"
+    networks: [backend]
+
+  eureka:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: eureka
+    ports:
+      - "127.0.0.1:${EUREKA_PORT:-8761}:8080"
+
+  gateway:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: gateway
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    depends_on:
+      eureka:
+        condition: service_healthy
+
+  users:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: users
+    environment:
+      <<: *app-env
+      DB_URL: jdbc:postgresql://postgres:5432/users_db?currentSchema=users
+      DB_PASSWORD: ${USERS_DB_PASSWORD:?Set USERS_DB_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+  company:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: company
+    environment:
+      <<: *app-env
+      DB_URL: jdbc:postgresql://postgres:5432/company_db?currentSchema=company
+      DB_PASSWORD: ${COMPANY_DB_PASSWORD:?Set COMPANY_DB_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+  hub:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: hub
+    environment:
+      <<: *app-env
+      DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
+      DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+  orders:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: orders
+    environment:
+      <<: *app-env
+      DB_URL: jdbc:postgresql://postgres:5432/orders_db?currentSchema=orders
+      DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+  delivery:
+    <<: *app
+    build:
+      context: .
+      args:
+        MODULE: delivery
+    environment:
+      <<: *app-env
+      DB_URL: jdbc:postgresql://postgres:5432/delivery_db?currentSchema=delivery
+      DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      eureka:
+        condition: service_healthy
+
+networks:
+  backend:
+
+volumes:
+  postgres-data:
