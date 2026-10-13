@@ -8,14 +8,14 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("local")
 @RestController
 class InfraTraceController {
-    private final HubProbeClient hub;
+  private final HubProbeClient hub;
 
-    InfraTraceController(HubProbeClient hub) {
-        this.hub = hub;
-    }
+  InfraTraceController(HubProbeClient hub) {
+    this.hub = hub;
+  }
 
-    @GetMapping("/internal/infra/trace")
-    Map<String, Object> trace() {
-        return Map.of("service", "orders", "downstream", hub.ping());
-    }
+  @GetMapping("/internal/infra/trace")
+  Map<String, Object> trace() {
+    return Map.of("service", "orders", "downstream", hub.ping());
+  }
 }

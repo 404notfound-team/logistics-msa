@@ -36,6 +36,12 @@ type은 `feat`, `fix`, `refactor`, `docs`, `test`, `style`, `build`, `ci`, `chor
 
 ## 코드와 설정
 
+- Java 포맷은 Spotless의 Google Java Format(기본 2칸 들여쓰기)을 사용합니다.
+  자동 정렬은 `./gradlew spotlessApply`, 전체 검사는 `./gradlew --continue clean build`로 실행합니다.
+- Checkstyle은 이름 규칙, 와일드카드 import, 빈 문장, equals/hashCode 쌍과 JDK 내부 API import를 검사합니다.
+  세부 규칙은 `config/checkstyle/checkstyle.xml`을 따릅니다. 포맷과 검사 도구 버전은 루트 `build.gradle`에서 관리합니다.
+- CI의 `build-and-smoke`는 포맷·Checkstyle·Java 컴파일·JUnit 테스트·패키징·서비스 연동 검사를 모두 통과해야 성공합니다.
+  CI가 코드를 자동 수정하지는 않습니다. 검사 보고서는 실행 화면의 `verification-reports`에서 7일간 내려받을 수 있습니다.
 - 도메인 로직과 엔티티는 담당 서비스가 소유합니다. 서비스 간 계약 변경은 호출자와 함께 검토합니다.
 - `.env`, 비밀번호, JWT 키, Webhook URL은 커밋하지 않습니다. 변수 이름만 `.env.example`에 공유합니다.
 - 새 API·테이블은 SA/API 명세와 함께 갱신하고 해당 동작을 검증하는 테스트를 추가합니다.

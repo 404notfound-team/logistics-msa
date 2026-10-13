@@ -8,8 +8,8 @@ import org.springframework.web.bind.annotation.RestController;
 @Profile("local")
 @RestController
 class InfraProbeController {
-    @GetMapping("/internal/infra/ping")
-    Map<String, String> ping() {
-        return Map.of("service", "users", "status", "UP");
-    }
+  @GetMapping("/internal/infra/ping")
+  Map<String, String> ping() {
+    return Map.of("service", "users", "status", "UP");
+  }
 }
