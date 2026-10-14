@@ -39,6 +39,8 @@ services:
       retries: 30
       start_period: 30s
     networks: [backend]
+    ports:
+      - "127.0.0.1:5432:5432"
 
   zipkin:
     image: openzipkin/zipkin:3.6.1
