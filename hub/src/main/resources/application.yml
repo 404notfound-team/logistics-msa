@@ -35,6 +35,8 @@ spring:
             read-timeout: 5000
       micrometer:
         enabled: true
+
+
 eureka:
   client:
     service-url:
