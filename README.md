@@ -94,7 +94,7 @@ Gateway·사용자 모듈의 OpenAPI/응답 계약 테스트와 공통 API·감�
 
 ```bash
 ./gradlew spotlessApply            # Java 포맷 자동 수정
-./gradlew --continue clean build   # CI와 같은 코드 검사·테스트·패키징
+./gradlew --parallel --build-cache --continue build  # 코드 검사·테스트·패키징
 ./gradlew :orders:test             # 특정 서비스 테스트
 docker compose logs -f orders
 docker compose up -d --build orders
@@ -107,7 +107,13 @@ docker compose down
 Zipkin은 메모리 저장 방식이라 컨테이너 재시작 시 trace가 사라집니다.
 
 기본 브랜치인 `develop`에서 개발 변경을 통합하고 `main`에서 릴리스를 관리합니다.
-PR과 `develop`·`main` 변경 시 CI가 위 전체 빌드와 Compose 연동 검사를 실행합니다.
+PR과 `develop`·`main` 변경 시 CI는 코드 검사·테스트(`quality`)와 앱 패키징·Compose 연동 검사(`smoke`)를
+동시에 실행합니다. 두 작업이 모두 성공해야 필수 검사 `build-and-smoke`가 통과합니다.
+Gradle은 모듈을 병렬로 처리하고 빌드 캐시를 사용합니다. 연동 검사는 미리 패키징한 JAR를
+`compose.ci.yml`의 Docker 빌드 대상으로 사용하므로 컨테이너 안에서 Gradle을 다시 실행하지 않습니다.
+앱 패키징 동안 PostgreSQL·Zipkin을 기동하고 공통 실행 이미지를 준비합니다.
+CI에서는 Eureka 서버 응답 캐시와 클라이언트 목록을 5초마다 갱신해 서비스 탐색 대기를 줄입니다.
+로컬의 기본 Compose 실행은 기존처럼 소스에서 앱을 빌드합니다.
 포맷·코딩 규칙은 [협업 규칙](CONTRIBUTING.md#코드와-설정)을 따릅니다.
 
 ## 경계
