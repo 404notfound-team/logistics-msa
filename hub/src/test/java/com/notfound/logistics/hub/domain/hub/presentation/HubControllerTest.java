@@ -81,7 +81,12 @@ class HubControllerTest {
 
   @Test
   void getHubsNegativePage() throws Exception {
-    mockMvc.perform(get("/api/hubs").param("page", "-1")).andExpect(status().isBadRequest());
+    mockMvc
+        .perform(get("/api/hubs").param("page", "-1"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("page"))
+        .andExpect(jsonPath("$.field_errors[0].message").exists());
   }
 
   @Test
