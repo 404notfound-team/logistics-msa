@@ -103,7 +103,8 @@ docker compose down
 기존 볼륨의 비밀번호는 `.env` 수정만으로 바뀌지 않습니다.
 Zipkin은 메모리 저장 방식이라 컨테이너 재시작 시 trace가 사라집니다.
 
-PR과 `main` 변경 시 CI가 위 전체 빌드와 Compose 연동 검사를 실행합니다.
+기본 브랜치인 `develop`에서 개발 변경을 통합하고 `main`에서 릴리스를 관리합니다.
+PR과 `develop`·`main` 변경 시 CI가 위 전체 빌드와 Compose 연동 검사를 실행합니다.
 포맷·코딩 규칙은 [협업 규칙](CONTRIBUTING.md#코드와-설정)을 따릅니다.
 
 ## 경계

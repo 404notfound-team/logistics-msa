@@ -2,12 +2,16 @@
 
 ## 브랜치
 
-- `main`: 빌드와 연동 점검을 통과한 통합 브랜치. 초기 저장소 등록 이후 직접 push·force push 금지.
+- `develop`: 기본 브랜치이자 개발 통합 브랜치. 일반 작업 브랜치는 최신 `develop`에서 만들고 PR도 `develop`으로 보냅니다.
+- `main`: 릴리스 기준 브랜치. 검증된 `develop`의 변경을 PR로 반영합니다.
+- `develop`과 `main`에는 직접 push·force push하지 않습니다.
 - 작업 브랜치: `<type>/<scope>/<issue-number>-<short-description>`.
   예: `feat/orders/12-create-order`, `fix/hub/23-stock-lock`.
 - 저장소를 처음 만드는 작업만 `chore/infra/bootstrap`을 사용하고 첫 커밋 후 `main`으로 이름을 바꿉니다.
 - scope: `users`, `company`, `hub`, `orders`, `delivery`, `gateway`, `eureka`, `common`, `infra`, `project`.
 - 한 브랜치와 PR에는 한 가지 목적을 담습니다. 머지 후 작업 브랜치를 삭제합니다.
+- 선행 PR에 의존하는 작업만 해당 작업 브랜치를 임시 base로 사용할 수 있습니다.
+  선행 PR 병합 후 최신 `develop` 위로 rebase하고 PR의 base도 `develop`으로 바꾼 뒤 diff·CI·승인을 다시 확인합니다.
 
 ## 커밋과 PR 제목
 
@@ -22,17 +26,21 @@ chore(infra): 로컬 실행 환경 초기화
 type은 `feat`, `fix`, `refactor`, `docs`, `test`, `style`, `build`, `ci`, `chore`를 사용합니다.
 설명은 한국어로 간결하게 작성합니다. 본문이 필요하면 변경 방식·이유·검증을 적습니다.
 관계없는 포맷 수정이나 생성물을 함께 커밋하지 않습니다.
+커밋은 의미 있는 변경 단위로 남기고 임시 커밋은 리뷰 요청 전에 `amend` 또는 interactive rebase로 정리합니다.
+Rebase and merge로 각 커밋이 보존되므로 커밋 목록과 메시지도 검토합니다.
+리뷰 후 커밋이 바뀌면 최종 커밋 기준으로 CI와 승인을 다시 받습니다.
+공유한 작업 브랜치의 이력을 다시 써야 한다면 공동 작업자와 먼저 맞추고 `--force-with-lease`를 사용합니다.
 
 ## PR과 리뷰
 
 1. 이슈에 범위와 완료 조건을 적고 작업 브랜치를 만듭니다.
 2. PR에 변경 이유, 주요 변경, 검증 결과, 연결 이슈를 적습니다.
 3. 작성자 이외 팀원 1명 이상의 승인을 받습니다. API·DB·공통 모듈 변경은 영향을 받는 담당자에게 리뷰를 요청합니다.
-4. `build-and-smoke` 검사 통과와 대화 해결을 확인하고 Squash merge합니다.
-   Squash 커밋 제목도 위 커밋 형식을 따릅니다.
+4. 최신 base와 최종 커밋의 `build-and-smoke` 검사 통과, 승인과 대화 해결을 확인하고 **Rebase and merge**합니다.
+   작업 브랜치의 base 동기화도 rebase합니다.
 
-실제 GitHub 보호 규칙은 저장소 관리자가 `main`에 설정합니다.
-초기화 후에는 PR 승인 1개, 최신 변경 검토, CI 통과, 대화 해결을 요구하고 강제 push·브랜치 삭제를 막습니다.
+`develop`과 `main`은 관리자에게도 PR 승인 1개, 마지막 push 이후 작성자 외 승인,
+최신 base 기준 CI 통과, 대화 해결과 선형 이력을 요구하며 강제 push·브랜치 삭제를 막습니다.
 
 ## 코드와 설정
 
