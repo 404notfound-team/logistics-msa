@@ -33,3 +33,9 @@ SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDAT
 SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I', :'service', :'role') \gexec
 SQL
 done
+
+psql -v ON_ERROR_STOP=1 \
+    --username "$POSTGRES_USER" \
+    --dbname "hub_db" <<'SQL'
+GRANT CREATE ON SCHEMA hub TO hub_app;
+SQL
