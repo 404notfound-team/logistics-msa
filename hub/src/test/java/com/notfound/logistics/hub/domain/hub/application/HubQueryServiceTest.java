@@ -36,7 +36,7 @@ class HubQueryServiceTest {
   }
 
   @Test
-  void 허브_목록_페이징_조회() {
+  void getHubsWithPagination() {
     Page<Hub> hubPage =
       new PageImpl<>(List.of(), PageRequest.of(0, 10), 17);
 
@@ -55,7 +55,7 @@ class HubQueryServiceTest {
   }
 
   @Test
-  void 허브_목록_정렬_조건_확인() {
+  void getHubsWithSorting() {
     when(hubRepository.findAll(any(Pageable.class)))
       .thenReturn(Page.empty());
 
@@ -79,7 +79,7 @@ class HubQueryServiceTest {
   }
 
   @Test
-  void 허브_상세_조회_성공() {
+  void getHubSuccess() {
     UUID hubId = UUID.randomUUID();
     Hub hub = mock(Hub.class);
 
@@ -99,7 +99,7 @@ class HubQueryServiceTest {
   }
 
   @Test
-  void 존재하지_않는_허브_조회() {
+  void getHubNotFound() {
     UUID hubId = UUID.randomUUID();
 
     when(hubRepository.findById(hubId))

@@ -30,7 +30,7 @@ class InternalHubControllerTest {
   private HubQueryService hubQueryService;
 
   @Test
-  void 내부_허브_조회_성공() throws Exception {
+  void getInternalHubSuccess() throws Exception {
     UUID hubId = UUID.randomUUID();
 
     when(hubQueryService.getHub(hubId))
@@ -47,7 +47,7 @@ class InternalHubControllerTest {
   }
 
   @Test
-  void 내부_허브_미존재는_404() throws Exception {
+  void getInternalHubNotFound() throws Exception {
     UUID hubId = UUID.randomUUID();
 
     when(hubQueryService.getHub(hubId))
