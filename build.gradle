@@ -7,7 +7,7 @@ plugins {
 ext.springdocVersion = '2.8.17'
 
 def applicationProjects = ['eureka', 'gateway', 'users', 'company', 'hub', 'orders', 'delivery'].collect { project(":${it}") }
-def libraryProjects = [project(':common:api')]
+def libraryProjects = [project(':common:api'), project(':common:audit')]
 
 configure(applicationProjects + libraryProjects) {
     apply plugin: 'java'
