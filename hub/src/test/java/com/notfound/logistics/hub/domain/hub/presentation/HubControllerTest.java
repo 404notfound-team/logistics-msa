@@ -35,7 +35,7 @@ class HubControllerTest {
   private HubQueryService hubQueryService;
 
   @Test
-  void 허브_목록_조회_성공() throws Exception {
+  void getHubsSuccess() throws Exception {
     UUID id = UUID.randomUUID();
 
     HubResult hub =
@@ -55,7 +55,7 @@ class HubControllerTest {
   }
 
   @Test
-  void 허브_상세_조회_성공() throws Exception {
+  void getHubSuccess() throws Exception {
     UUID id = UUID.randomUUID();
 
     when(hubQueryService.getHub(id))
@@ -69,7 +69,7 @@ class HubControllerTest {
   }
 
   @Test
-  void 존재하지_않는_허브는_404() throws Exception {
+  void getHubNotFound() throws Exception {
     UUID id = UUID.randomUUID();
 
     when(hubQueryService.getHub(id))
@@ -82,37 +82,37 @@ class HubControllerTest {
   }
 
   @Test
-  void 잘못된_UUID는_400() throws Exception {
+  void getHubInvalidUuid() throws Exception {
     mockMvc.perform(get("/api/hubs/not-a-uuid"))
       .andExpect(status().isBadRequest());
   }
 
   @Test
-  void 음수_페이지는_400() throws Exception {
+  void getHubsNegativePage() throws Exception {
     mockMvc.perform(get("/api/hubs").param("page", "-1"))
       .andExpect(status().isBadRequest());
   }
 
   @Test
-  void 페이지_크기_0은_400() throws Exception {
+  void getHubsZeroSize() throws Exception {
     mockMvc.perform(get("/api/hubs").param("size", "0"))
       .andExpect(status().isBadRequest());
   }
 
   @Test
-  void 페이지_크기_101은_400() throws Exception {
+  void getHubsSizeExceeded() throws Exception {
     mockMvc.perform(get("/api/hubs").param("size", "101"))
       .andExpect(status().isBadRequest());
   }
 
   @Test
-  void 잘못된_정렬_방향은_400() throws Exception {
+  void getHubsInvalidDirection() throws Exception {
     mockMvc.perform(get("/api/hubs").param("direction", "abc"))
       .andExpect(status().isBadRequest());
   }
 
   @Test
-  void 범위_밖_페이지는_빈_목록() throws Exception {
+  void getHubsOutOfRangePage() throws Exception {
     when(hubQueryService.getHubs(5, 10, "desc"))
       .thenReturn(
         new PageImpl<>(List.of(), PageRequest.of(5, 10), 17));
