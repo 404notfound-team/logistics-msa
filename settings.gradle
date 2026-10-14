@@ -1,4 +1,4 @@
 rootProject.name = 'logistics-msa'
 
 include 'eureka', 'gateway', 'users', 'company', 'hub', 'orders', 'delivery'
-include 'common:api'
+include 'common:api', 'common:audit'

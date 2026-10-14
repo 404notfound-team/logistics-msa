@@ -1,10 +1,11 @@
-# 공통 API 규칙
+# 공통 API·감사 규칙
 
 ## 모듈
 
 | 라이브러리 | 용도 | 사용 앱 |
 | --- | --- | --- |
 | `common:api` | 응답·오류 규약 | 업무 서비스 5개, Gateway |
+| `common:audit` | JPA 감사 엔티티 | 업무 서비스 5개 |
 
 업무별 Request/Response DTO·업무 오류·PK·인증은 각 서비스가 소유합니다. Eureka는 공통 모듈을 사용하지 않습니다.
 
@@ -26,3 +27,18 @@
 - 정렬: 기본 `created_at,desc`에 PK 정렬을 추가합니다. 허용한 정렬 필드만 엔티티 속성으로 변환합니다.
 - 응답: `ApiResponse<PageResponse<T>>` — `content`, `page`, `size`, `total_elements`, `total_pages`. 결과가 없거나 마지막 페이지를 넘기면 200과 빈 `content`를 반환합니다.
 - 목록과 전체 개수는 같은 검색·삭제 제외 조건을 적용합니다.
+
+## 감사·삭제
+
+업무 엔티티는 PK 없는 `AuditEntity`를 상속합니다. 업무 PK는 UUID를 기본으로 하되 사용자 PK는 사용자 명세를 따릅니다. 테이블은 `p_` 접두사와 서비스별 마이그레이션을 사용합니다.
+
+| 필드 | 규칙 |
+| --- | --- |
+| `created_at`, `created_by` | 최초 생성 기록, 변경 불가 |
+| `updated_at`, `updated_by` | 마지막 수정 기록, 생성 시에도 기록 |
+| `deleted_at`, `deleted_by` | 최초 삭제 기록, 삭제 전에는 null |
+
+- 시각은 UTC `Instant`/`timestamptz`, 작업자는 username `String`/`varchar(100)`입니다. 외부 시각은 ISO 8601 UTC로 표현합니다.
+- 업무 서비스에 `@EnableJpaAuditing`·`AuditorAware<String>`을 등록합니다. 인증된 사용자 또는 정해진 시스템 작업자를 사용하고, 주체가 없으면 예외를 발생시킵니다. 임의 `system` 대체나 `Optional.empty()` 반환은 금지합니다.
+- 인증·소유권 확인 후 트랜잭션 안에서 `markDeleted(username, 삭제시각)`를 호출합니다. 감사 주체·권한은 요청값을 신뢰하지 않으며 `repository.delete*`로 물리 삭제하지 않습니다.
+- **각 구체 엔티티에** `@SQLRestriction("deleted_at IS NULL")`를 선언합니다. `AuditEntity` 상속만으로 삭제 데이터가 조회에서 제외되지는 않습니다.

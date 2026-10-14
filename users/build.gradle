@@ -1,5 +1,6 @@
 dependencies {
     implementation project(":common:api")
+    implementation project(":common:audit")
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-api:${rootProject.springdocVersion}"
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
