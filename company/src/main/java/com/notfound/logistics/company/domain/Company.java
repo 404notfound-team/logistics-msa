@@ -34,4 +34,35 @@ public class Company extends AuditEntity {
   // Owned by the users service; only the identifier is stored here.
   @Column(name = "manager_user_id", nullable = false)
   private Long managerUserId;
+
+  private Company(String name, UUID hubId, String address, Long managerUserId) {
+    this.name = name;
+    this.hubId = hubId;
+    this.address = address;
+    this.managerUserId = managerUserId;
+  }
+
+  public static Company of(String name, UUID hubId, String address, Long managerUserId) {
+    return new Company(name, hubId, address, managerUserId);
+  }
+
+  public UUID getId() {
+    return id;
+  }
+
+  public String getName() {
+    return name;
+  }
+
+  public UUID getHubId() {
+    return hubId;
+  }
+
+  public String getAddress() {
+    return address;
+  }
+
+  public Long getManagerUserId() {
+    return managerUserId;
+  }
 }
