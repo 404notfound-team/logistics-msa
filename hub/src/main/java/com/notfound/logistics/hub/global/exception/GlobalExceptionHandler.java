@@ -18,6 +18,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
@@ -89,6 +90,14 @@ public class GlobalExceptionHandler {
   public ResponseEntity<ApiErrorResponse> unexpected(Exception exception) {
     LOG.error("Unhandled hub request failure", exception);
     return error(CommonErrorCode.INTERNAL_ERROR);
+  }
+
+  @ExceptionHandler(HandlerMethodValidationException.class)
+  public ResponseEntity<ApiErrorResponse> handleMethodValidation(
+      HandlerMethodValidationException ex) {
+
+    return ResponseEntity.badRequest()
+        .body(ApiErrorResponse.of(CommonErrorCode.INVALID_REQUEST, MDC.get("traceId")));
   }
 
   private static ResponseEntity<ApiErrorResponse> error(ApiErrorCode code) {
