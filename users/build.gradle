@@ -12,4 +12,13 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
     runtimeOnly 'org.postgresql:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+tasks.named('test') {
+    inputs.file(rootProject.file('infra/postgres/01-init.sh'))
+        .withPropertyName('postgresInitializationScript')
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
 }

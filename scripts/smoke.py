@@ -79,6 +79,14 @@ for service in users company hub orders delivery; do
         delivery) export PGPASSWORD="$DELIVERY_DB_PASSWORD" ;;
     esac
     psql -h 127.0.0.1 -U "${service}_app" -d "${service}_db" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null
+    psql -h 127.0.0.1 -U "${service}_app" -d "${service}_db" -v ON_ERROR_STOP=1 \
+        --set=service="$service" <<'SQL' >/dev/null
+BEGIN;
+SELECT format('CREATE TABLE %I.__infra_ddl_probe (id integer)', :'service') \gexec
+SELECT format('ALTER TABLE %I.__infra_ddl_probe ADD COLUMN payload text', :'service') \gexec
+SELECT format('DROP TABLE %I.__infra_ddl_probe', :'service') \gexec
+ROLLBACK;
+SQL
     for target in users company hub orders delivery; do
         if [ "$service" != "$target" ] && psql -h 127.0.0.1 -U "${service}_app" -d "${target}_db" -c 'SELECT 1' >/dev/null 2>&1; then
             echo "FAIL cross-database access: $service -> $target" >&2
@@ -92,13 +100,13 @@ for service in users company hub orders delivery; do
 done
 export PGPASSWORD="$POSTGRES_PASSWORD"
 for service in users company hub orders delivery; do
-    result=$(psql -h 127.0.0.1 -U postgres -d "${service}_db" -Atc "SELECT has_schema_privilege('${service}_app', '$service', 'USAGE') AND NOT has_schema_privilege('${service}_app', '$service', 'CREATE') AND NOT has_schema_privilege('${service}_app', 'public', 'CREATE') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole FROM pg_roles WHERE rolname = '${service}_app'")
+    result=$(psql -h 127.0.0.1 -U postgres -d "${service}_db" -Atc "SELECT has_schema_privilege('${service}_app', '$service', 'USAGE') AND has_schema_privilege('${service}_app', '$service', 'CREATE') AND NOT has_schema_privilege('${service}_app', 'public', 'CREATE') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole FROM pg_roles WHERE rolname = '${service}_app'")
     test "$result" = t
 done
 '''
     subprocess.run(["docker", "compose", "exec", "-T", "postgres", "bash", "-eu", "-c", script],
                    cwd=ROOT, check=True)
-    print("PASS DB 5개 접속·20개 교차 접속 거부·관리 DB 거부·스키마 권한", flush=True)
+    print("PASS DB 5개 접속·자기 스키마 DDL·20개 교차 접속 거부·관리 DB 거부·스키마 권한", flush=True)
 
 
 def check_openapi(url):
