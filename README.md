@@ -19,8 +19,9 @@ PostgreSQL, Zipkin을 Docker Compose로 함께 실행합니다.
 | `gateway` | 외부 API 진입점·서비스 라우팅 | 없음 |
 | `eureka` | 서비스 등록·탐색 | 없음 |
 
-각 앱은 독립적으로 실행되는 Gradle 하위 프로젝트입니다. 공통 DTO·감사 코드가 생기면
-의존성에 맞춰 라이브러리 모듈을 추가합니다. 별도 공통 마이크로서비스는 만들지 않습니다.
+각 앱은 독립적으로 실행되는 Gradle 하위 프로젝트입니다. `common:api`는 공통 응답·오류 계약을
+제공하는 일반 Java 라이브러리입니다. 업무 앱과 Gateway가 사용하며 별도 공통 서버는 실행하지 않습니다.
+사용 범위와 JSON 규칙은 [공통 API 규칙](docs/common-contracts.md)을 따릅니다.
 
 Java 21 · Spring Boot 3.5.16 · Spring Cloud 2025.0.3 · Gradle 8.14.6 · PostgreSQL 18 · Zipkin 3.6.1.
 Boot 3.5에는 [Spring Cloud 2025.0 계열](https://spring.io/projects/spring-cloud/)을 사용합니다.
@@ -85,8 +86,8 @@ Spring Boot 3.5와 호환되는 [springdoc 2.8 계열](https://springdoc.org/v2/
 로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
 Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
 `build`는 Spotless 포맷 검사, Checkstyle, Java 컴파일, JUnit 테스트와 패키징을 수행합니다.
-현재 Gateway·사용자 모듈에는 OpenAPI 회귀 테스트가 있고, 나머지 모듈은 테스트가 없어
-`test`가 `NO-SOURCE`로 표시됩니다. 업무 테스트는 각 모듈의 `src/test/java`에 추가합니다.
+Gateway·사용자 모듈의 OpenAPI/응답 계약 테스트와 공통 API 테스트를 실행합니다.
+업무 테스트는 각 모듈의 `src/test/java`에 추가합니다.
 실제 서비스 연동 검증은 `scripts/smoke.py`가 수행합니다.
 
 ```bash

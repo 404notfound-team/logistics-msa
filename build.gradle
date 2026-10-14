@@ -6,9 +6,11 @@ plugins {
 
 ext.springdocVersion = '2.8.17'
 
-subprojects {
+def applicationProjects = ['eureka', 'gateway', 'users', 'company', 'hub', 'orders', 'delivery'].collect { project(":${it}") }
+def libraryProjects = [project(':common:api')]
+
+configure(applicationProjects + libraryProjects) {
     apply plugin: 'java'
-    apply plugin: 'org.springframework.boot'
     apply plugin: 'io.spring.dependency-management'
     apply plugin: 'com.diffplug.spotless'
     apply plugin: 'checkstyle'
@@ -24,12 +26,11 @@ subprojects {
 
     dependencyManagement {
         imports {
-            mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.0.3'
+            mavenBom org.springframework.boot.gradle.plugin.SpringBootPlugin.BOM_COORDINATES
         }
     }
 
     dependencies {
-        implementation 'org.springframework.boot:spring-boot-starter-actuator'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
     }
@@ -67,6 +68,19 @@ subprojects {
             exceptionFormat = 'full'
         }
     }
+}
+
+configure(applicationProjects) {
+    apply plugin: 'org.springframework.boot'
+    dependencyManagement {
+        imports { mavenBom 'org.springframework.cloud:spring-cloud-dependencies:2025.0.3' }
+    }
+    dependencies { implementation 'org.springframework.boot:spring-boot-starter-actuator' }
     tasks.named('bootJar') { archiveFileName = 'app.jar' }
     tasks.named('jar') { enabled = false }
+}
+
+configure(libraryProjects) {
+    apply plugin: 'java-library'
+    base { archivesName = "common-${project.name}" }
 }

@@ -35,9 +35,9 @@ jobs:
         with:
           name: verification-reports
           path: |
-            */build/reports/checkstyle/
-            */build/reports/tests/
-            */build/test-results/test/*.xml
+            **/build/reports/checkstyle/
+            **/build/reports/tests/
+            **/build/test-results/test/*.xml
             build/reports/problems/
           if-no-files-found: ignore
           retention-days: 7
