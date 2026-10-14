@@ -1,4 +1,3 @@
-
 package com.notfound.logistics.hub.domain.hub.application;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -37,14 +36,11 @@ class HubQueryServiceTest {
 
   @Test
   void getHubsWithPagination() {
-    Page<Hub> hubPage =
-      new PageImpl<>(List.of(), PageRequest.of(0, 10), 17);
+    Page<Hub> hubPage = new PageImpl<>(List.of(), PageRequest.of(0, 10), 17);
 
-    when(hubRepository.findAll(any(Pageable.class)))
-      .thenReturn(hubPage);
+    when(hubRepository.findAll(any(Pageable.class))).thenReturn(hubPage);
 
-    Page<HubResult> result =
-      hubQueryService.getHubs(0, 10, "desc");
+    Page<HubResult> result = hubQueryService.getHubs(0, 10, "desc");
 
     assertEquals(17, result.getTotalElements());
     assertEquals(2, result.getTotalPages());
@@ -56,13 +52,11 @@ class HubQueryServiceTest {
 
   @Test
   void getHubsWithSorting() {
-    when(hubRepository.findAll(any(Pageable.class)))
-      .thenReturn(Page.empty());
+    when(hubRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
 
     hubQueryService.getHubs(1, 5, "desc");
 
-    ArgumentCaptor<Pageable> captor =
-      ArgumentCaptor.forClass(Pageable.class);
+    ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
 
     verify(hubRepository).findAll(captor.capture());
 
@@ -86,8 +80,7 @@ class HubQueryServiceTest {
     when(hub.getId()).thenReturn(hubId);
     when(hub.getName()).thenReturn("서울특별시 센터");
     when(hub.getAddress()).thenReturn("서울특별시 송파구 송파대로 55");
-    when(hubRepository.findById(hubId))
-      .thenReturn(Optional.of(hub));
+    when(hubRepository.findById(hubId)).thenReturn(Optional.of(hub));
 
     HubResult result = hubQueryService.getHub(hubId);
 
@@ -102,12 +95,9 @@ class HubQueryServiceTest {
   void getHubNotFound() {
     UUID hubId = UUID.randomUUID();
 
-    when(hubRepository.findById(hubId))
-      .thenReturn(Optional.empty());
+    when(hubRepository.findById(hubId)).thenReturn(Optional.empty());
 
-    assertThrows(
-      HubBusinessException.class,
-      () -> hubQueryService.getHub(hubId));
+    assertThrows(HubBusinessException.class, () -> hubQueryService.getHub(hubId));
 
     verify(hubRepository).findById(hubId);
   }
