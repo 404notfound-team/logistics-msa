@@ -11,7 +11,7 @@ public record DeliverySearchCondition(
     UUID destinationHubId,
     String address,
     String recipientName,
-    Long deliveryManagerId) {
+    UUID deliveryManagerId) {
   public DeliverySearchCondition {
     address = blankToNull(address);
     recipientName = blankToNull(recipientName);

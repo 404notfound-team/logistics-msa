@@ -36,6 +36,8 @@ class DeliveryControllerTest {
       UUID.fromString("00000000-0000-0000-0000-000000000002");
   private static final UUID DESTINATION_HUB_ID =
       UUID.fromString("00000000-0000-0000-0000-000000000003");
+  private static final UUID DELIVERY_MANAGER_ID =
+      UUID.fromString("00000000-0000-0000-0000-000000000007");
 
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DeliveryQueryService deliveryQueryService;
@@ -72,7 +74,7 @@ class DeliveryControllerTest {
             DESTINATION_HUB_ID,
             "서울특별시 송파구 송파대로 55",
             "홍길동",
-            7L,
+            DELIVERY_MANAGER_ID,
             Instant.parse("2026-01-01T00:00:00Z"),
             Instant.parse("2026-01-01T01:00:00Z"));
     given(deliveryQueryService.search(any(), any()))
@@ -87,7 +89,7 @@ class DeliveryControllerTest {
                 .param("destination_hub_id", DESTINATION_HUB_ID.toString())
                 .param("address", " 송파 ")
                 .param("recipient_name", "홍")
-                .param("delivery_manager_id", "7")
+                .param("delivery_manager_id", DELIVERY_MANAGER_ID.toString())
                 .param("page", "1")
                 .param("size", "10")
                 .param("sort", "updated_at,asc"))
@@ -101,7 +103,8 @@ class DeliveryControllerTest {
             jsonPath("$.data.content[0].destination_hub_id").value(DESTINATION_HUB_ID.toString()))
         .andExpect(jsonPath("$.data.content[0].address").value("서울특별시 송파구 송파대로 55"))
         .andExpect(jsonPath("$.data.content[0].recipient_name").value("홍길동"))
-        .andExpect(jsonPath("$.data.content[0].delivery_manager_id").value(7))
+        .andExpect(
+            jsonPath("$.data.content[0].delivery_manager_id").value(DELIVERY_MANAGER_ID.toString()))
         .andExpect(jsonPath("$.data.content[0].created_at").value("2026-01-01T00:00:00Z"))
         .andExpect(jsonPath("$.data.page").value(1))
         .andExpect(jsonPath("$.data.total_elements").value(11))
@@ -120,7 +123,7 @@ class DeliveryControllerTest {
                 DESTINATION_HUB_ID,
                 "송파",
                 "홍",
-                7L));
+                DELIVERY_MANAGER_ID));
     assertThat(pageable.getValue().getSort())
         .isEqualTo(Sort.by(Sort.Order.asc("updatedAt"), Sort.Order.asc("id")));
   }
@@ -133,6 +136,7 @@ class DeliveryControllerTest {
     "order_id, not-a-uuid",
     "status, UNKNOWN",
     "delivery_manager_id, abc",
+    "delivery_manager_id, 7",
     "sort, address",
     "sort, 'created_at,sideways'",
     "sort, 'created_at,desc,id'"
