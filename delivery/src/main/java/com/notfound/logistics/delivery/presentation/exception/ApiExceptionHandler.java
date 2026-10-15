@@ -63,7 +63,7 @@ class ApiExceptionHandler {
       if (status >= 500) {
         log.error("Request failed", exception);
       }
-      return error(status, error);
+      return ResponseEntity.status(status).headers(errorResponse.getHeaders()).body(ApiErrorResponse.of(error, traceId()));
     }
     log.error("Unexpected error", exception);
     return error(500, CommonErrorCode.INTERNAL_ERROR);
