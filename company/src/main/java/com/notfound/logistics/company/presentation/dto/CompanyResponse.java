@@ -9,7 +9,7 @@ public record CompanyResponse(
     String name,
     UUID hubId,
     String address,
-    Long managerUserId,
+    UUID managerUserId,
     Instant createdAt,
     Instant updatedAt) {
 

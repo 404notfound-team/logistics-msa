@@ -10,4 +10,4 @@ public record CompanyCreateRequest(
     @NotBlank @Size(max = 100) String name,
     @NotNull UUID hubId,
     @NotBlank @Size(max = 255) String address,
-    @NotNull Long managerUserId) {}
+    @NotNull UUID managerUserId) {}
