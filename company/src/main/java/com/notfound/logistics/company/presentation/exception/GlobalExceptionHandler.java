@@ -72,10 +72,14 @@ public class GlobalExceptionHandler {
     return error(CommonErrorCode.NOT_FOUND);
   }
 
+  // 예외에 담긴 Allow 헤더(허용 메서드 목록)를 그대로 보존한다.
   @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
   ResponseEntity<ApiErrorResponse> handleMethodNotAllowed(
       HttpRequestMethodNotSupportedException e) {
-    return error(CommonErrorCode.METHOD_NOT_ALLOWED);
+    ApiErrorCode code = CommonErrorCode.METHOD_NOT_ALLOWED;
+    return ResponseEntity.status(code.httpStatus())
+        .headers(e.getHeaders())
+        .body(ApiErrorResponse.of(code, traceId()));
   }
 
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
