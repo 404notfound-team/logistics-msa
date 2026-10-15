@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.config;
+package com.notfound.logistics.users.infrastructure.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

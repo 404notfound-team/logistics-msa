@@ -1,11 +1,11 @@
-package com.notfound.logistics.users.controller;
+package com.notfound.logistics.users.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
-import com.notfound.logistics.users.dto.UserRegisterRequestDto;
-import com.notfound.logistics.users.dto.UserRegisterResponseDto;
-import com.notfound.logistics.users.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.dto.UserSignInResponseDto;
-import com.notfound.logistics.users.service.UserService;
+import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

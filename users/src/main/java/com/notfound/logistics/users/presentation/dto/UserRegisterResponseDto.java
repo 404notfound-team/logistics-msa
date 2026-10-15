@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.dto;
+package com.notfound.logistics.users.presentation.dto;
 
 import java.util.UUID;
 

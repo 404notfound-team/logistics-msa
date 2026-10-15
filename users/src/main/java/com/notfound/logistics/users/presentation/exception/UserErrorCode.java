@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.exception;
+package com.notfound.logistics.users.presentation.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
 

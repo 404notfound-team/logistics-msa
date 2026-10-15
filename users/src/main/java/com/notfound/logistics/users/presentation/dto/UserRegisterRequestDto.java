@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.dto;
+package com.notfound.logistics.users.presentation.dto;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
