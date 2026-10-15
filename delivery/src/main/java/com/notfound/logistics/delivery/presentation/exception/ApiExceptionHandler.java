@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.MethodParameter;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -63,18 +64,22 @@ class ApiExceptionHandler {
       if (status >= 500) {
         log.error("Request failed", exception);
       }
-      return ResponseEntity.status(status).headers(errorResponse.getHeaders()).body(ApiErrorResponse.of(error, traceId()));
+      return error(status, errorResponse.getHeaders(), error);
     }
     log.error("Unexpected error", exception);
-    return error(500, CommonErrorCode.INTERNAL_ERROR);
+    return error(500, HttpHeaders.EMPTY, CommonErrorCode.INTERNAL_ERROR);
   }
 
   private ResponseEntity<ApiErrorResponse> validation(List<FieldViolation> violations) {
     return ResponseEntity.badRequest().body(ApiErrorResponse.validation(traceId(), violations));
   }
 
-  private ResponseEntity<ApiErrorResponse> error(int status, ApiErrorCode error) {
-    return ResponseEntity.status(status).body(ApiErrorResponse.of(error, traceId()));
+  // 405의 Allow, 415의 Accept 같은 프레임워크 응답 헤더를 유지한다.
+  private ResponseEntity<ApiErrorResponse> error(
+      int status, HttpHeaders headers, ApiErrorCode error) {
+    return ResponseEntity.status(status)
+        .headers(headers)
+        .body(ApiErrorResponse.of(error, traceId()));
   }
 
   private static String requestParameterName(MethodParameter parameter) {
