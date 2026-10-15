@@ -2,12 +2,15 @@ package com.notfound.logistics.company.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.model.Product;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import java.time.Clock;
@@ -25,6 +28,7 @@ import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @ExtendWith(MockitoExtension.class)
 class CompanyServiceTest {
@@ -33,6 +37,7 @@ class CompanyServiceTest {
 
   private static final UUID COMPANY_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
   private static final UUID OTHER_HUB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+  private static final UUID PRODUCT_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
   private static final Instant NOW = Instant.parse("2026-10-15T00:00:00Z");
 
   @Mock private CompanyRepository companyRepository;
@@ -162,5 +167,103 @@ class CompanyServiceTest {
     assertThatThrownBy(() -> companyService.deleteCompany(COMPANY_ID))
         .isInstanceOf(IllegalStateException.class);
     assertThat(company.getDeletedAt()).isNull();
+  }
+
+  @Test
+  void deleteCompanyAlsoDeletesItsProducts() {
+    Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
+    Product product = company.addProduct("상품", null, 1000L);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
+
+    companyService.deleteCompany(COMPANY_ID);
+
+    // 루트가 삭제되면 내부 상품도 같은 작업자·시각으로 삭제 기록된다.
+    assertThat(product.getDeletedAt()).isEqualTo(NOW);
+    assertThat(product.getDeletedBy()).isEqualTo("test-user");
+  }
+
+  @Test
+  void createProductAddsProductThroughCompany() {
+    Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    Product product = companyService.createProduct(COMPANY_ID, "무선 키보드", "설명", 35000L);
+
+    assertThat(product.getCompany()).isSameAs(company);
+    assertThat(product.getName()).isEqualTo("무선 키보드");
+    assertThat(product.getDescription()).isEqualTo("설명");
+    assertThat(product.getPrice()).isEqualTo(35000L);
+    // 새 상품은 업체를 통해서만 추가되므로, 같은 업체에서 다시 찾을 수 있어야 한다.
+    ReflectionTestUtils.setField(product, "id", PRODUCT_ID);
+    assertThat(company.getProduct(PRODUCT_ID)).isSameAs(product);
+  }
+
+  @Test
+  void createProductForMissingCompanyThrowsCompanyNotFound() {
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> companyService.createProduct(COMPANY_ID, "상품", null, 1000L))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+  }
+
+  @Test
+  void findProductOfOtherCompanyThrowsProductNotFound() {
+    Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    // 이 업체에 없는 상품 ID(다른 업체의 상품 포함)는 찾을 수 없다.
+    assertThatThrownBy(() -> companyService.findProduct(COMPANY_ID, PRODUCT_ID))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.PRODUCT_NOT_FOUND);
+  }
+
+  @Test
+  void updateProductChangesOnlyProvidedFields() {
+    Company company = companyWithProduct();
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    Product updated = companyService.updateProduct(COMPANY_ID, PRODUCT_ID, null, null, 39000L);
+
+    assertThat(updated.getName()).isEqualTo("기존 상품");
+    assertThat(updated.getDescription()).isEqualTo("기존 설명");
+    assertThat(updated.getPrice()).isEqualTo(39000L);
+  }
+
+  @Test
+  void deleteProductRecordsActorAndTime() {
+    Company company = companyWithProduct();
+    Product product = company.getProduct(PRODUCT_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
+
+    companyService.deleteProduct(COMPANY_ID, PRODUCT_ID);
+
+    assertThat(product.getDeletedAt()).isEqualTo(NOW);
+    assertThat(product.getDeletedBy()).isEqualTo("test-user");
+    // 상품만 삭제되고 업체는 그대로다.
+    assertThat(company.getDeletedAt()).isNull();
+  }
+
+  @Test
+  void searchProductsOfMissingCompanyThrowsCompanyNotFound() {
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> companyService.searchProducts(COMPANY_ID, null, PageRequest.of(0, 20)))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+    verify(companyRepository, never()).searchProducts(any(), any());
+  }
+
+  // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 상품 ID를 직접 넣는다.
+  private static Company companyWithProduct() {
+    Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
+    Product product = company.addProduct("기존 상품", "기존 설명", 35000L);
+    ReflectionTestUtils.setField(product, "id", PRODUCT_ID);
+    return company;
   }
 }
