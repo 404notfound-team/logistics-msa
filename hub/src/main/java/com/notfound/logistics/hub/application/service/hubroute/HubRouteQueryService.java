@@ -60,16 +60,13 @@ public class HubRouteQueryService {
     return routes.map(HubRouteResult::from);
   }
 
-  public HubRouteResult getRoute(
-    UUID departureHubId,
-    UUID arrivalHubId) {
+  public HubRouteResult getRoute(UUID departureHubId, UUID arrivalHubId) {
 
-    HubRoute route = hubRouteRepository
-      .findByDepartureHubIdAndArrivalHubId(
-        departureHubId, arrivalHubId)
-      .orElseThrow(() ->
-        new HubRouteBusinessException(
-          HubRouteErrorCode.HUB_ROUTE_NOT_FOUND));
+    HubRoute route =
+        hubRouteRepository
+            .findByDepartureHubIdAndArrivalHubId(departureHubId, arrivalHubId)
+            .orElseThrow(
+                () -> new HubRouteBusinessException(HubRouteErrorCode.HUB_ROUTE_NOT_FOUND));
 
     return HubRouteResult.from(route);
   }

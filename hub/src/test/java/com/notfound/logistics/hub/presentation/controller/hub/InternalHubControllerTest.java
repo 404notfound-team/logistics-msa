@@ -34,49 +34,43 @@ class InternalHubControllerTest {
     String name = "서울특별시 센터";
 
     when(hubQueryService.getHubsByName(name))
-      .thenReturn(
-        List.of(
-          new HubResult(
-            hubId,
-            name,
-            "서울특별시 송파구 송파대로 55")));
+        .thenReturn(List.of(new HubResult(hubId, name, "서울특별시 송파구 송파대로 55")));
 
     mockMvc
-      .perform(get("/internal/hubs").param("name", name))
-      .andExpect(status().isOk())
-      .andExpect(jsonPath("$.data.length()").value(1))
-      .andExpect(jsonPath("$.data[0].id").value(hubId.toString()))
-      .andExpect(jsonPath("$.data[0].name").value(name))
-      .andExpect(jsonPath("$.data[0].address").doesNotExist());
+        .perform(get("/internal/hubs").param("name", name))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.data[0].id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data[0].name").value(name))
+        .andExpect(jsonPath("$.data[0].address").doesNotExist());
   }
 
   @Test
   void getInternalHubsByNameEmpty() throws Exception {
     String name = "존재하지 않는 허브";
 
-    when(hubQueryService.getHubsByName(name))
-      .thenReturn(List.of());
+    when(hubQueryService.getHubsByName(name)).thenReturn(List.of());
 
     mockMvc
-      .perform(get("/internal/hubs").param("name", name))
-      .andExpect(status().isOk())
-      .andExpect(jsonPath("$.data").isEmpty());
+        .perform(get("/internal/hubs").param("name", name))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isEmpty());
   }
 
   @Test
   void getInternalHubsByNameMissing() throws Exception {
     mockMvc
-      .perform(get("/internal/hubs"))
-      .andExpect(status().isBadRequest())
-      .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(get("/internal/hubs"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
   void getInternalHubsByNameBlank() throws Exception {
     mockMvc
-      .perform(get("/internal/hubs").param("name", " "))
-      .andExpect(status().isBadRequest())
-      .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(get("/internal/hubs").param("name", " "))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
@@ -84,20 +78,14 @@ class InternalHubControllerTest {
     UUID hubId = UUID.randomUUID();
 
     when(hubQueryService.getHub(hubId))
-      .thenReturn(
-        new HubResult(
-          hubId,
-          "서울특별시 센터",
-          "서울특별시 송파구 송파대로 55"));
+        .thenReturn(new HubResult(hubId, "서울특별시 센터", "서울특별시 송파구 송파대로 55"));
 
     mockMvc
-      .perform(get("/internal/hubs/{id}", hubId))
-      .andExpect(status().isOk())
-      .andExpect(jsonPath("$.data.id").value(hubId.toString()))
-      .andExpect(jsonPath("$.data.name").value("서울특별시 센터"))
-      .andExpect(
-        jsonPath("$.data.address")
-          .value("서울특별시 송파구 송파대로 55"));
+        .perform(get("/internal/hubs/{id}", hubId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.name").value("서울특별시 센터"))
+        .andExpect(jsonPath("$.data.address").value("서울특별시 송파구 송파대로 55"));
   }
 
   @Test
@@ -105,20 +93,19 @@ class InternalHubControllerTest {
     UUID hubId = UUID.randomUUID();
 
     when(hubQueryService.getHub(hubId))
-      .thenThrow(
-        new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
+        .thenThrow(new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
 
     mockMvc
-      .perform(get("/internal/hubs/{id}", hubId))
-      .andExpect(status().isNotFound())
-      .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
+        .perform(get("/internal/hubs/{id}", hubId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
   }
 
   @Test
   void getInternalHubInvalidUuid() throws Exception {
     mockMvc
-      .perform(get("/internal/hubs/not-a-uuid"))
-      .andExpect(status().isBadRequest())
-      .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(get("/internal/hubs/not-a-uuid"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 }

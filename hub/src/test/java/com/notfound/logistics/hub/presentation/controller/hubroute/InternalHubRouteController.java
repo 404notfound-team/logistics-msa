@@ -22,10 +22,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(InternalHubRouteController.class)
-@Import({
-  GlobalExceptionHandler.class,
-  HubRouteExceptionHandler.class
-})
+@Import({GlobalExceptionHandler.class, HubRouteExceptionHandler.class})
 class InternalHubRouteControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -40,40 +37,24 @@ class InternalHubRouteControllerTest {
     UUID arrivalHubId = UUID.randomUUID();
 
     HubRouteResult result =
-      new HubRouteResult(
-        routeId,
-        departureHubId,
-        arrivalHubId,
-        120,
-        new BigDecimal("150.50"));
+        new HubRouteResult(routeId, departureHubId, arrivalHubId, 120, new BigDecimal("150.50"));
 
-    when(hubRouteQueryService.getRoute(
-      departureHubId, arrivalHubId))
-      .thenReturn(result);
+    when(hubRouteQueryService.getRoute(departureHubId, arrivalHubId)).thenReturn(result);
 
     // when & then
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param("departure_hub_id", departureHubId.toString())
-          .param("arrival_hub_id", arrivalHubId.toString()))
-      .andExpect(status().isOk())
-      .andExpect(jsonPath("$.data.id").value(routeId.toString()))
-      .andExpect(
-        jsonPath("$.data.departure_hub_id")
-          .value(departureHubId.toString()))
-      .andExpect(
-        jsonPath("$.data.arrival_hub_id")
-          .value(arrivalHubId.toString()))
-      .andExpect(
-        jsonPath("$.data.duration_minutes")
-          .value(120))
-      .andExpect(
-        jsonPath("$.data.distance_km")
-          .value(150.50));
+        .perform(
+            get("/internal/hub-routes")
+                .param("departure_hub_id", departureHubId.toString())
+                .param("arrival_hub_id", arrivalHubId.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(routeId.toString()))
+        .andExpect(jsonPath("$.data.departure_hub_id").value(departureHubId.toString()))
+        .andExpect(jsonPath("$.data.arrival_hub_id").value(arrivalHubId.toString()))
+        .andExpect(jsonPath("$.data.duration_minutes").value(120))
+        .andExpect(jsonPath("$.data.distance_km").value(150.50));
 
-    verify(hubRouteQueryService)
-      .getRoute(departureHubId, arrivalHubId);
+    verify(hubRouteQueryService).getRoute(departureHubId, arrivalHubId);
   }
 
   @Test
@@ -82,31 +63,19 @@ class InternalHubRouteControllerTest {
     UUID hubId = UUID.randomUUID();
 
     when(hubRouteQueryService.getRoute(hubId, hubId))
-      .thenReturn(
-        new HubRouteResult(
-          UUID.randomUUID(),
-          hubId,
-          hubId,
-          0,
-          BigDecimal.ZERO));
+        .thenReturn(new HubRouteResult(UUID.randomUUID(), hubId, hubId, 0, BigDecimal.ZERO));
 
     // when & then
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param("departure_hub_id", hubId.toString())
-          .param("arrival_hub_id", hubId.toString()))
-      .andExpect(status().isOk())
-      .andExpect(
-        jsonPath("$.data.departure_hub_id")
-          .value(hubId.toString()))
-      .andExpect(
-        jsonPath("$.data.arrival_hub_id")
-          .value(hubId.toString()))
-      .andExpect(
-        jsonPath("$.data.duration_minutes").value(0))
-      .andExpect(
-        jsonPath("$.data.distance_km").value(0));
+        .perform(
+            get("/internal/hub-routes")
+                .param("departure_hub_id", hubId.toString())
+                .param("arrival_hub_id", hubId.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.departure_hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.arrival_hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.duration_minutes").value(0))
+        .andExpect(jsonPath("$.data.distance_km").value(0));
   }
 
   @Test
@@ -115,93 +84,68 @@ class InternalHubRouteControllerTest {
     UUID departureHubId = UUID.randomUUID();
     UUID arrivalHubId = UUID.randomUUID();
 
-    when(hubRouteQueryService.getRoute(
-      departureHubId, arrivalHubId))
-      .thenThrow(
-        new HubRouteBusinessException(
-          HubRouteErrorCode.HUB_ROUTE_NOT_FOUND));
+    when(hubRouteQueryService.getRoute(departureHubId, arrivalHubId))
+        .thenThrow(new HubRouteBusinessException(HubRouteErrorCode.HUB_ROUTE_NOT_FOUND));
 
     // when & then
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param("departure_hub_id", departureHubId.toString())
-          .param("arrival_hub_id", arrivalHubId.toString()))
-      .andExpect(status().isNotFound())
-      .andExpect(
-        jsonPath("$.code").value("HUB_ROUTE_NOT_FOUND"));
+        .perform(
+            get("/internal/hub-routes")
+                .param("departure_hub_id", departureHubId.toString())
+                .param("arrival_hub_id", arrivalHubId.toString()))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("HUB_ROUTE_NOT_FOUND"));
   }
 
   @Test
-  void getInternalHubRouteMissingDepartureHubId()
-    throws Exception {
+  void getInternalHubRouteMissingDepartureHubId() throws Exception {
 
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param(
-            "arrival_hub_id",
-            UUID.randomUUID().toString()))
-      .andExpect(status().isBadRequest())
-      .andExpect(
-        jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(get("/internal/hub-routes").param("arrival_hub_id", UUID.randomUUID().toString()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  void getInternalHubRouteMissingArrivalHubId()
-    throws Exception {
+  void getInternalHubRouteMissingArrivalHubId() throws Exception {
 
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param(
-            "departure_hub_id",
-            UUID.randomUUID().toString()))
-      .andExpect(status().isBadRequest())
-      .andExpect(
-        jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(
+            get("/internal/hub-routes").param("departure_hub_id", UUID.randomUUID().toString()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  void getInternalHubRouteInvalidDepartureHubId()
-    throws Exception {
+  void getInternalHubRouteInvalidDepartureHubId() throws Exception {
 
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param("departure_hub_id", "invalid-uuid")
-          .param(
-            "arrival_hub_id",
-            UUID.randomUUID().toString()))
-      .andExpect(status().isBadRequest())
-      .andExpect(
-        jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(
+            get("/internal/hub-routes")
+                .param("departure_hub_id", "invalid-uuid")
+                .param("arrival_hub_id", UUID.randomUUID().toString()))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  void getInternalHubRouteInvalidArrivalHubId()
-    throws Exception {
+  void getInternalHubRouteInvalidArrivalHubId() throws Exception {
 
     mockMvc
-      .perform(
-        get("/internal/hub-routes")
-          .param(
-            "departure_hub_id",
-            UUID.randomUUID().toString())
-          .param("arrival_hub_id", "invalid-uuid"))
-      .andExpect(status().isBadRequest())
-      .andExpect(
-        jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(
+            get("/internal/hub-routes")
+                .param("departure_hub_id", UUID.randomUUID().toString())
+                .param("arrival_hub_id", "invalid-uuid"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
-  void getInternalHubRouteMissingBothParameters()
-    throws Exception {
+  void getInternalHubRouteMissingBothParameters() throws Exception {
 
     mockMvc
-      .perform(get("/internal/hub-routes"))
-      .andExpect(status().isBadRequest())
-      .andExpect(
-        jsonPath("$.code").value("INVALID_REQUEST"));
+        .perform(get("/internal/hub-routes"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 }
