@@ -5,9 +5,11 @@ import com.notfound.logistics.hub.domain.hub.domain.Hub;
 import com.notfound.logistics.hub.domain.hub.domain.HubRepository;
 import com.notfound.logistics.hub.global.exception.HubBusinessException;
 import com.notfound.logistics.hub.global.exception.HubErrorCode;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -30,6 +32,12 @@ public class HubQueryService {
             page,
             size,
             Sort.by(sortDirection, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+
+    if (pageable.getOffset() >= Integer.MAX_VALUE) {
+      long totalElements = hubRepository.count();
+
+      return new PageImpl<>(List.of(), pageable, totalElements);
+    }
 
     return hubRepository.findAll(pageable).map(HubResult::from);
   }
