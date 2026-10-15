@@ -38,16 +38,16 @@ public class Company extends AuditEntity {
 
   // 사용자 정보는 users 서비스가 소유하므로 여기에는 ID만 저장한다.
   @Column(name = "manager_user_id", nullable = false)
-  private Long managerUserId;
+  private UUID managerUserId;
 
-  private Company(String name, UUID hubId, String address, Long managerUserId) {
+  private Company(String name, UUID hubId, String address, UUID managerUserId) {
     this.name = name;
     this.hubId = hubId;
     this.address = address;
     this.managerUserId = managerUserId;
   }
 
-  public static Company of(String name, UUID hubId, String address, Long managerUserId) {
+  public static Company of(String name, UUID hubId, String address, UUID managerUserId) {
     return new Company(name, hubId, address, managerUserId);
   }
 }
