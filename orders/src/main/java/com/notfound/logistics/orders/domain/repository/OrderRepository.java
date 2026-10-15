@@ -9,12 +9,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-public interface OrderRepository extends JpaRepository<Order, UUID> {
+public interface OrderRepository
+    extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
   Optional<Order> findByCreatedByAndIdempotencyKey(String createdBy, UUID idempotencyKey);
 
   // Native lookup deliberately retains reserved keys, including soft-deleted orders.
