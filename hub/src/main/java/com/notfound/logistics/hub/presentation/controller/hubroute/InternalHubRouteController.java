@@ -19,12 +19,10 @@ public class InternalHubRouteController {
 
   @GetMapping
   public ApiResponse<HubRouteResponse> getRoute(
-    @RequestParam("departure_hub_id") UUID departureHubId,
-    @RequestParam("arrival_hub_id") UUID arrivalHubId) {
+      @RequestParam("departure_hub_id") UUID departureHubId,
+      @RequestParam("arrival_hub_id") UUID arrivalHubId) {
 
     return new ApiResponse<>(
-      HubRouteResponse.from(
-        hubRouteQueryService.getRoute(
-          departureHubId, arrivalHubId)));
+        HubRouteResponse.from(hubRouteQueryService.getRoute(departureHubId, arrivalHubId)));
   }
 }
