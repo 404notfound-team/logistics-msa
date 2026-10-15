@@ -16,6 +16,7 @@ import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -29,6 +30,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+@Slf4j
 @WebMvcTest(DeliveryController.class)
 class DeliveryControllerTest {
   private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -61,6 +63,22 @@ class DeliveryControllerTest {
     assertThat(pageable.getValue().getPageSize()).isEqualTo(20);
     assertThat(pageable.getValue().getSort())
         .isEqualTo(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id")));
+  }
+
+  @Test
+  void largestPageNumberIsAcceptedAndReturnsAnEmptyPage() throws Exception {
+    given(deliveryQueryService.search(any(), any()))
+        .willAnswer(
+            invocation -> new PageImpl<DeliveryResult>(List.of(), invocation.getArgument(1), 3));
+
+    mockMvc
+        .perform(get("/api/deliveries").param("page", "2147483647").param("size", "20"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.page").value(Integer.MAX_VALUE))
+        .andExpect(jsonPath("$.data.size").value(20))
+        .andExpect(jsonPath("$.data.total_elements").value(3))
+        .andExpect(jsonPath("$.data.total_pages").value(1));
   }
 
   @Test
@@ -127,6 +145,9 @@ class DeliveryControllerTest {
     assertThat(pageable.getValue().getSort())
         .isEqualTo(Sort.by(Sort.Order.asc("updatedAt"), Sort.Order.asc("id")));
   }
+
+  @Test
+  void test() {}
 
   @ParameterizedTest
   @CsvSource({
