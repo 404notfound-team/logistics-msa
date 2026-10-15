@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.infra;
+package com.notfound.logistics.users.infrastructure.client;
 
 import java.util.List;
 import java.util.UUID;

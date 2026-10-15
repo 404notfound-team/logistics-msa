@@ -3,7 +3,7 @@ package com.notfound.logistics.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.notfound.logistics.users.UsersApplication;
-import com.notfound.logistics.users.service.UserService;
+import com.notfound.logistics.users.application.service.UserService;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Id;

@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.config;
+package com.notfound.logistics.users.infrastructure.config;
 
 import java.util.Optional;
 import org.springframework.beans.factory.annotation.Value;

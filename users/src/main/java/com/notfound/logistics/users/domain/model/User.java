@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.entity;
+package com.notfound.logistics.users.domain.model;
 
 import com.notfound.logistics.common.audit.AuditEntity;
 import jakarta.persistence.Column;

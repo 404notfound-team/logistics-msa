@@ -1,4 +1,4 @@
-package com.notfound.logistics.users.config;
+package com.notfound.logistics.users.infrastructure.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.nimbusds.jose.proc.SecurityContext;

@@ -12,7 +12,7 @@ import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
-import com.notfound.logistics.users.service.UserService;
+import com.notfound.logistics.users.application.service.UserService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import org.junit.jupiter.api.Test;

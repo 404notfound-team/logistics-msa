@@ -1,9 +1,10 @@
-package com.notfound.logistics.users.exception;
+package com.notfound.logistics.users.presentation.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
+import com.notfound.logistics.users.domain.exception.UserException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;

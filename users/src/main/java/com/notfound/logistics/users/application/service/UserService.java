@@ -1,15 +1,15 @@
-package com.notfound.logistics.users.service;
+package com.notfound.logistics.users.application.service;
 
-import com.notfound.logistics.users.dto.UserRegisterRequestDto;
-import com.notfound.logistics.users.dto.UserRegisterResponseDto;
-import com.notfound.logistics.users.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.dto.UserSignInResponseDto;
-import com.notfound.logistics.users.entity.User;
-import com.notfound.logistics.users.exception.UserErrorCode;
-import com.notfound.logistics.users.exception.UserException;
-import com.notfound.logistics.users.infra.CompanyLookupClient;
-import com.notfound.logistics.users.infra.HubLookupClient;
-import com.notfound.logistics.users.repository.UserRepository;
+import com.notfound.logistics.users.domain.exception.UserException;
+import com.notfound.logistics.users.domain.model.User;
+import com.notfound.logistics.users.domain.repository.UserRepository;
+import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
+import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
+import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
+import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
