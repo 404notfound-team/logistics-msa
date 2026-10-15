@@ -27,6 +27,7 @@ spring:
   cloud:
     openfeign:
       client:
+        default-to-properties: false
         config:
           default:
             connect-timeout: 2000
@@ -56,3 +57,15 @@ management:
 slack:
   enabled: ${SLACK_ENABLED:false}
   webhook-url: "${SLACK_WEBHOOK_URL:}"
+
+orders:
+  jwt:
+    secret: "${JWT_SECRET:}"
+  clients:
+    company-url: "${ORDERS_COMPANY_URL:}"
+    stock-url: "${ORDERS_STOCK_URL:}"
+    delivery-url: "${ORDERS_DELIVERY_URL:}"
+    service-token: "${ORDERS_SERVICE_TOKEN:}"
+  recovery:
+    enabled: ${ORDERS_RECOVERY_ENABLED:true}
+    delay-ms: ${ORDERS_RECOVERY_DELAY_MS:5000}
