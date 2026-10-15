@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
-/** JSON fields follow the global snake_case naming: name, hub_id, address, manager_user_id. */
+/** JSON 필드는 전역 snake_case 규칙을 따른다: name, hub_id, address, manager_user_id. */
 public record CompanyCreateRequest(
     @NotBlank @Size(max = 100) String name,
     @NotNull UUID hubId,

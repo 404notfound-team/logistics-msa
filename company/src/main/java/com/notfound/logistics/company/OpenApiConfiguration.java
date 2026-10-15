@@ -13,7 +13,7 @@ class OpenApiConfiguration {
   @Bean
   ModelResolver openApiModelResolver(
       ObjectMapper applicationMapper, ObjectMapperProvider provider) {
-    // Keep Swagger's schema support while matching the application's JSON field names.
+    // Swagger 스키마 기능은 유지하면서 필드 이름을 앱의 JSON 이름 규칙(snake_case)에 맞춘다.
     var schemaMapper =
         provider
             .jsonMapper()
