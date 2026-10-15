@@ -29,7 +29,7 @@ class HubRouteExceptionHandlerTest {
 
     try (var ignored = MDC.putCloseable("traceId", "hubroute-test-trace")) {
       mvc.perform(get("/api/hub-routes"))
-          .andExpect(status().isBadRequest())
+          .andExpect(status().is(new HubRouteApiErrorCode(errorCode).httpStatus()))
           .andExpect(jsonPath("$.code").value(errorCode.code()))
           .andExpect(jsonPath("$.message").value(errorCode.message()))
           .andExpect(jsonPath("$.trace_id").value("hubroute-test-trace"))
