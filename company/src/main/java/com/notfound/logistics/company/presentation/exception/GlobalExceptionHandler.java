@@ -9,14 +9,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.MethodParameter;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.validation.method.ParameterValidationResult;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
@@ -54,6 +59,24 @@ public class GlobalExceptionHandler {
     e.getBindingResult()
         .getGlobalErrors()
         .forEach(ge -> violations.add(violation("$", ge.getDefaultMessage())));
+    return ResponseEntity.badRequest().body(ApiErrorResponse.validation(traceId(), violations));
+  }
+
+  /**
+   * 쿼리·경로 파라미터의 검증(@Min, @Max 등) 실패 처리
+   *
+   * @param e HandlerMethodValidationException
+   * @return 요청에 쓰인 파라미터 이름을 field로 담은 ApiErrorResponse 응답 (HTTP 400 Bad Request)
+   */
+  @ExceptionHandler(HandlerMethodValidationException.class)
+  ResponseEntity<ApiErrorResponse> handleParameterValidation(HandlerMethodValidationException e) {
+    List<FieldViolation> violations = new ArrayList<>();
+    for (ParameterValidationResult result : e.getParameterValidationResults()) {
+      String field = externalName(result.getMethodParameter());
+      result
+          .getResolvableErrors()
+          .forEach(error -> violations.add(violation(field, error.getDefaultMessage())));
+    }
     return ResponseEntity.badRequest().body(ApiErrorResponse.validation(traceId(), violations));
   }
 
@@ -101,6 +124,20 @@ public class GlobalExceptionHandler {
 
   private static FieldViolation violation(String field, String message) {
     return new FieldViolation(field, message == null ? "올바르지 않은 값입니다." : message);
+  }
+
+  // 요청에 쓰인 파라미터 이름(@RequestParam·@PathVariable의 name)을 우선하고, 없으면 Java 이름을 변환한다.
+  private static String externalName(MethodParameter parameter) {
+    RequestParam requestParam = parameter.getParameterAnnotation(RequestParam.class);
+    if (requestParam != null && !requestParam.name().isEmpty()) {
+      return requestParam.name();
+    }
+    PathVariable pathVariable = parameter.getParameterAnnotation(PathVariable.class);
+    if (pathVariable != null && !pathVariable.name().isEmpty()) {
+      return pathVariable.name();
+    }
+    String name = parameter.getParameterName();
+    return name == null ? "$" : toSnakeCase(name);
   }
 
   // Java 필드 이름(hubId)을 외부 JSON 이름(hub_id)으로 변환한다.

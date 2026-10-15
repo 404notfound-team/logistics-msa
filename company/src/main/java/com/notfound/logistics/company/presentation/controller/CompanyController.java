@@ -1,20 +1,32 @@
 package com.notfound.logistics.company.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.presentation.dto.CompanyCreateRequest;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.net.URI;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
@@ -23,6 +35,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/companies")
 @RequiredArgsConstructor
 public class CompanyController {
+  // 공통 계약: 기본 정렬은 created_at 내림차순, 같은 시각이면 PK로 순서를 고정한다.
+  private static final Sort DEFAULT_SORT =
+      Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.ASC, "id"));
+
   private final CompanyService companyService;
 
   // HTTP 요청 DTO는 여기서 값으로 풀어 서비스에 넘기고, 결과 엔티티를 응답 DTO로 변환한다.
@@ -47,5 +63,66 @@ public class CompanyController {
     // 이 서비스는 항상 Gateway를 거쳐 호출되므로 Location은 Gateway 기준 상대 경로로 준다.
     URI location = URI.create("/api/companies/" + response.companyId());
     return ResponseEntity.created(location).body(new ApiResponse<>(response));
+  }
+
+  @Operation(summary = "업체 상세 조회", description = "업체 ID로 업체 정보를 조회합니다. 삭제된 업체는 조회되지 않습니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "조회 성공"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "잘못된 업체 ID 형식"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)")
+  })
+  @GetMapping("/{company_id}")
+  public ResponseEntity<ApiResponse<CompanyResponse>> getCompany(
+      @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
+          @PathVariable("company_id")
+          UUID companyId) {
+    CompanyResponse response = CompanyResponse.from(companyService.findCompany(companyId));
+    return ResponseEntity.ok(new ApiResponse<>(response));
+  }
+
+  // 검색 조건은 모두 선택 사항이다. 범위를 벗어난 page·size는 400으로 응답한다.
+  @Operation(
+      summary = "업체 목록·검색",
+      description = "업체명(부분 일치, 대소문자 무시)과 허브 ID로 업체를 검색합니다. 최신 생성순으로 정렬합니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "조회 성공 (결과가 없으면 빈 content)"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "page·size 범위 오류 또는 허브 ID 형식 오류")
+  })
+  @GetMapping
+  public ResponseEntity<ApiResponse<PageResponse<CompanyResponse>>> getCompanies(
+      @Parameter(description = "업체명 (부분 일치)", example = "물류")
+          @RequestParam(name = "name", required = false)
+          String name,
+      @Parameter(description = "허브 ID", example = "3fa85f64-5717-4562-b3fc-2c963f66afa6")
+          @RequestParam(name = "hub_id", required = false)
+          UUID hubId,
+      @Parameter(description = "페이지 번호 (0부터 시작)")
+          @RequestParam(name = "page", defaultValue = "0")
+          @Min(0)
+          int page,
+      @Parameter(description = "페이지 크기 (1~100)")
+          @RequestParam(name = "size", defaultValue = "20")
+          @Min(1)
+          @Max(100)
+          int size) {
+    Pageable pageable = PageRequest.of(page, size, DEFAULT_SORT);
+    Page<Company> companies = companyService.searchCompanies(name, hubId, pageable);
+    PageResponse<CompanyResponse> response =
+        new PageResponse<>(
+            companies.getContent().stream().map(CompanyResponse::from).toList(),
+            companies.getNumber(),
+            companies.getSize(),
+            companies.getTotalElements());
+    return ResponseEntity.ok(new ApiResponse<>(response));
   }
 }
