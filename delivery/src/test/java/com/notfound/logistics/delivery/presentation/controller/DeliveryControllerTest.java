@@ -6,6 +6,8 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -27,6 +29,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -148,6 +151,17 @@ class DeliveryControllerTest {
 
   @Test
   void test() {}
+
+  @Test
+  void unsupportedMethodKeepsTheAllowHeaderInTheCommonErrorFormat() throws Exception {
+    mockMvc
+        .perform(post("/api/deliveries"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string(HttpHeaders.ALLOW, "GET"))
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+    then(deliveryQueryService).should(never()).search(any(), any());
+  }
 
   @ParameterizedTest
   @CsvSource({
