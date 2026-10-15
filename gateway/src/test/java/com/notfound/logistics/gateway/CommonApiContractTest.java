@@ -25,7 +25,11 @@ import org.springframework.web.reactive.function.server.ServerResponse;
 @ActiveProfiles("test")
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"eureka.client.enabled=false", "management.tracing.enabled=false"})
+    properties = {
+      "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
+      "eureka.client.enabled=false",
+      "management.tracing.enabled=false"
+    })
 @Import(CommonApiContractTest.ContractRoutes.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CommonApiContractTest {

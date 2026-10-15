@@ -11,7 +11,11 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 @ActiveProfiles("test")
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = {"eureka.client.enabled=false", "management.tracing.enabled=false"})
+    properties = {
+      "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
+      "eureka.client.enabled=false",
+      "management.tracing.enabled=false"
+    })
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OpenApiDisabledTest {
   @LocalServerPort private int port;

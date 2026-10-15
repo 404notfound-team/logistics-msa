@@ -3,8 +3,12 @@ package com.notfound.logistics.gateway;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +29,7 @@ import reactor.netty.http.server.HttpServer;
 @SpringBootTest(
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
+      "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
       "eureka.client.enabled=false",
       "spring.cloud.service-registry.auto-registration.enabled=false",
       "management.tracing.enabled=false"
@@ -104,12 +109,52 @@ class OpenApiGatewayTest {
     return client
         .get()
         .uri(path)
+        .headers(
+            headers -> {
+              if (path.startsWith("/api/")) {
+                headers.setBearerAuth(testUserToken());
+              }
+            })
         .exchange()
         .expectStatus()
         .isOk()
         .expectBody(JsonNode.class)
         .returnResult()
         .getResponseBody();
+  }
+
+  private String testUserToken() {
+    try {
+      long now = System.currentTimeMillis() / 1000;
+      String header = encodeBase64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
+      String payload =
+          encodeBase64Url(
+              "{\"sub\":\"gateway-test-user\",\"role\":\"USER\",\"iat\":"
+                  + now
+                  + ",\"exp\":"
+                  + (now + 300)
+                  + "}");
+      String content = header + "." + payload;
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(
+          new SecretKeySpec(
+              "test-only-signing-key-for-gateway-module-tests-32bytes"
+                  .getBytes(StandardCharsets.UTF_8),
+              "HmacSHA256"));
+      return content
+          + "."
+          + Base64.getUrlEncoder()
+              .withoutPadding()
+              .encodeToString(mac.doFinal(content.getBytes(StandardCharsets.UTF_8)));
+    } catch (java.security.GeneralSecurityException exception) {
+      throw new IllegalStateException("Could not create a test JWT", exception);
+    }
+  }
+
+  private String encodeBase64Url(String value) {
+    return Base64.getUrlEncoder()
+        .withoutPadding()
+        .encodeToString(value.getBytes(StandardCharsets.UTF_8));
   }
 
   private static Map<String, DisposableServer> startDownstreams() {
