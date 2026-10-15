@@ -145,6 +145,17 @@ class CompanyControllerTest {
   }
 
   @Test
+  void unsupportedMediaTypeKeepsAcceptHeader() throws Exception {
+    // 415 응답도 공통 오류 본문을 쓰되, 지원하는 요청 형식을 알려주는 Accept 헤더는 유지해야 한다.
+    mvc.perform(post("/api/companies").contentType(MediaType.TEXT_PLAIN).content("name=업체"))
+        .andExpect(status().isUnsupportedMediaType())
+        .andExpect(header().string("Accept", containsString("application/json")))
+        .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
+
+    verify(companyService, never()).createCompany(any(), any(), any(), any());
+  }
+
+  @Test
   void getCompanyReturnsCompany() throws Exception {
     given(companyService.findCompany(COMPANY_ID)).willReturn(savedCompany());
 
