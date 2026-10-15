@@ -45,7 +45,7 @@ Rebase and merge로 각 커밋이 보존되므로 커밋 목록과 메시지도 
 ## 코드와 설정
 
 - 요청·성공/페이지/오류 응답과 감사 필드는 [공통 API·감사 규칙](docs/common-contracts.md)을 따릅니다.
-- 업무 서비스의 패키지 배치와 의존 방향은 [서비스 패키지 구조와 책임](docs/service-architecture.md)을 따릅니다.
+- 업무 서비스의 패키지 배치와 역할 분담은 [서비스 패키지 구조와 책임](docs/service-architecture.md)을 따릅니다.
 - Java 포맷은 Spotless의 Google Java Format(기본 2칸 들여쓰기)을 사용합니다.
   자동 정렬은 `./gradlew spotlessApply`, 전체 검사는 `./gradlew --continue clean build`로 실행합니다.
 - Checkstyle은 이름 규칙, 와일드카드 import, 빈 문장, equals/hashCode 쌍과 JDK 내부 API import를 검사합니다.

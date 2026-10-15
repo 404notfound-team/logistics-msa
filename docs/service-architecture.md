@@ -1,6 +1,6 @@
 # 서비스 패키지 구조와 책임
 
-업무 서비스 `users`, `company`, `hub`, `orders`, `delivery`의 도메인 주도 설계(DDD) 기준입니다. Gateway와 Eureka는 진입점·서비스 탐색 역할에 맞게 구성합니다.
+서비스 `users`, `company`, `hub`, `orders`, `delivery`의 패키지 배치와 각 계층의 역할을 정합니다. Gateway와 Eureka는 진입점·서비스 탐색 역할에 맞게 구성합니다.
 
 ## 패키지 청사진
 
@@ -13,40 +13,41 @@ com.notfound.logistics.<service>
 │   ├── dto
 │   └── exception
 ├── application
-│   ├── service
-│   └── port
+│   └── service
 ├── domain
 │   ├── model
 │   ├── exception
 │   └── repository
 └── infrastructure
-    ├── persistence
     ├── client
+    ├── config
     └── audit
 ```
 
-여러 업무 영역을 소유하면 계층 안에서 업무별 하위 패키지를 나눕니다. 사용하지 않는 인터페이스·기본 클래스는 만들지 않습니다.
+여러 기능 영역을 소유하면 계층 안에서 기능별 하위 패키지를 나눕니다. 패키지와 타입은 실제 필요한 만큼만 만듭니다.
 
 ## 계층별 책임
 
 | 계층 | 두는 코드 | 책임 |
 | --- | --- | --- |
-| `presentation` | Controller, HTTP DTO, 예외 처리기 | 입력 형식 검증, 애플리케이션 호출, HTTP 응답 구성 |
-| `application` | 유스케이스 서비스, 외부 연동 인터페이스 | 트랜잭션 경계, 도메인·외부 작업 조율 |
-| `domain` | 엔티티·값 객체, 업무 규칙·예외, 저장소 인터페이스 | 상태 전이와 업무 불변식 보장 |
-| `infrastructure` | 저장소 구현, Feign Client, 인증·감사 어댑터와 설정 | 기술 연결, 안쪽 계층의 인터페이스 구현 |
+| `presentation` | Controller, 요청·응답 DTO, HTTP 예외 처리기 | 요청 형식 검증, Service 호출, HTTP 응답 구성 |
+| `application` | Service | 회원가입·주문 생성 같은 기능의 처리 순서, 권한 확인, 트랜잭션과 외부 호출 조율 |
+| `domain` | 엔티티·값 객체, 상태 규칙·예외, Repository | 데이터 상태와 변경 조건, 데이터 조회·저장 정의 |
+| `infrastructure` | Feign Client, 설정, 감사 연동, 필요한 저장소 구현 | 외부 서비스 호출과 실행 환경·DB 연결 설정 |
 
-필수값·타입은 `presentation`에서 검증하고, 취소 가능 상태 같은 업무 조건은 `domain`에서 판단합니다. `application`은 인증 주체·권한 확인과 업무 호출을 조율합니다.
+요청의 필수값·형식은 `presentation`에서 검증합니다. 주문 취소 가능 상태나 재고 수량 같은 데이터의 변경 조건은 `domain`에서 판단합니다. `application`은 인증 주체·권한을 확인하고 필요한 조회·저장·외부 호출을 진행합니다.
 
-## 의존 방향과 경계
+## 호출과 데이터 전달
 
-- `presentation`은 `application`을 호출하고, `application`은 `domain`을 사용합니다.
-- 저장소 인터페이스는 `domain.repository`, 외부 연동 인터페이스는 `application.port`에 둡니다. `infrastructure`가 구현하고 애플리케이션에 생성자로 주입합니다.
-- `domain`은 HTTP 응답·상태 코드, Spring Data 저장소, Feign, SecurityContext와 다른 서비스의 구현을 참조하지 않습니다. `application`은 구체적인 저장소·Feign 구현 대신 인터페이스를 사용합니다.
-- 업무 엔티티는 JPA로 매핑하고 공통 `AuditEntity`를 상속합니다.
+- Controller는 Service를 호출하고, Service는 엔티티·Repository·외부 조회 결과를 사용해 기능을 처리합니다.
+- Repository는 `domain.repository`에 둡니다. `JpaRepository` 등 Spring Data 인터페이스를 상속할 수 있으며, Service에서 생성자로 주입받아 사용합니다.
+- Feign Client와 외부 API의 전송 DTO는 `infrastructure.client`에 둡니다. Service에서 Feign Client를 생성자로 주입받아 직접 호출할 수 있습니다.
+- 엔티티는 JPA로 매핑하고 공통 `AuditEntity`를 상속합니다. 엔티티는 자신의 데이터와 상태 규칙을 처리하며 HTTP 요청·응답이나 다른 서비스 호출을 담당하지 않습니다.
 - 업무 예외와 오류는 `domain.exception`, HTTP 상태·`ApiErrorCode` 구현·응답 변환은 `presentation.exception`에 둡니다.
-- `AuditorAware`와 검증된 인증 주체를 읽는 어댑터는 `infrastructure`에 둡니다. 요청 헤더를 직접 신뢰하거나 임의의 감사 주체로 대체하지 않습니다.
-- HTTP DTO는 `presentation`, 외부 API의 전송 DTO는 `infrastructure.client`에 둡니다. 경계를 넘을 때 유스케이스 입력·결과나 업무 타입으로 변환하고, 엔티티를 HTTP 응답으로 반환하지 않습니다.
+- `AuditorAware`와 인증 주체를 읽는 코드는 `infrastructure`에 둡니다. 요청 헤더를 직접 신뢰하거나 임의의 감사 주체로 대체하지 않습니다.
+- 요청·응답 DTO는 `presentation.dto`에 둡니다. Controller와 Service가 같은 데이터를 사용하면 DTO를 함께 사용할 수 있습니다. 데이터 구조나 규칙을 구분할 필요가 있을 때 별도 타입을 추가하며, 엔티티를 HTTP 응답으로 직접 반환하지 않습니다.
+
+Spring Data Repository나 Feign Client를 사용하는 것만으로 별도 인터페이스·구현 클래스를 추가할 필요는 없습니다. 서로 다른 구현을 지원하거나 반복되는 처리를 묶는 등 구체적인 필요가 있을 때 추가합니다.
 
 ## 공통 모듈과 테스트
 
