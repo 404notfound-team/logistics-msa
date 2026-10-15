@@ -1,23 +1,34 @@
 package com.notfound.logistics.company.presentation.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.notfound.logistics.company.application.service.CompanyService;
+import com.notfound.logistics.company.domain.exception.CompanyError;
+import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -131,5 +142,75 @@ class CompanyControllerTest {
         .andExpect(status().isMethodNotAllowed())
         .andExpect(header().string("Allow", containsString("POST")))
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+  }
+
+  @Test
+  void getCompanyReturnsCompany() throws Exception {
+    given(companyService.findCompany(COMPANY_ID)).willReturn(savedCompany());
+
+    mvc.perform(get("/api/companies/" + COMPANY_ID))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data.name").value("테스트 물류업체"))
+        .andExpect(jsonPath("$.data.manager_user_id").value(MANAGER_ID.toString()));
+  }
+
+  @Test
+  void getMissingCompanyReturnsNotFound() throws Exception {
+    given(companyService.findCompany(COMPANY_ID))
+        .willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND));
+
+    mvc.perform(get("/api/companies/" + COMPANY_ID))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("COMPANY_NOT_FOUND"))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void getCompanyWithInvalidIdReturnsBadRequest() throws Exception {
+    mvc.perform(get("/api/companies/not-a-uuid"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verify(companyService, never()).findCompany(any());
+  }
+
+  @Test
+  void getCompaniesReturnsPageWithDefaultPaging() throws Exception {
+    given(companyService.searchCompanies(any(), any(), any()))
+        .willReturn(new PageImpl<>(List.of(savedCompany()), PageRequest.of(0, 20), 1));
+
+    mvc.perform(get("/api/companies").param("name", "물류").param("hub_id", HUB_ID.toString()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].company_id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data.page").value(0))
+        .andExpect(jsonPath("$.data.size").value(20))
+        .andExpect(jsonPath("$.data.total_elements").value(1))
+        .andExpect(jsonPath("$.data.total_pages").value(1));
+
+    // snake_case 쿼리(hub_id)가 전달되고, 기본 page·size와 최신순 정렬이 적용되는지 확인한다.
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    verify(companyService).searchCompanies(eq("물류"), eq(HUB_ID), pageable.capture());
+    assertThat(pageable.getValue().getPageNumber()).isZero();
+    assertThat(pageable.getValue().getPageSize()).isEqualTo(20);
+    assertThat(pageable.getValue().getSort().getOrderFor("createdAt").getDirection())
+        .isEqualTo(Sort.Direction.DESC);
+  }
+
+  @Test
+  void getCompaniesWithOutOfRangeSizeReturnsBadRequest() throws Exception {
+    mvc.perform(get("/api/companies").param("size", "101"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("size"));
+
+    verify(companyService, never()).searchCompanies(any(), any(), any());
+  }
+
+  // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 ID를 직접 넣은 업체를 만든다.
+  private static Company savedCompany() {
+    Company company = Company.of("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
+    ReflectionTestUtils.setField(company, "id", COMPANY_ID);
+    return company;
   }
 }
