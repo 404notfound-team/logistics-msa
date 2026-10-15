@@ -3,6 +3,8 @@ package com.notfound.logistics.users.controller;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.users.dto.UserRegisterRequestDto;
 import com.notfound.logistics.users.dto.UserRegisterResponseDto;
+import com.notfound.logistics.users.dto.UserSignInRequestDto;
+import com.notfound.logistics.users.dto.UserSignInResponseDto;
 import com.notfound.logistics.users.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,5 +27,11 @@ public class UserController {
       @Valid @RequestBody UserRegisterRequestDto request) {
     UserRegisterResponseDto response = userService.register(request);
     return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(response));
+  }
+
+  @PostMapping("/signin")
+  public ApiResponse<UserSignInResponseDto> signin(
+      @Valid @RequestBody UserSignInRequestDto request) {
+    return new ApiResponse<>(userService.signIn(request));
   }
 }
