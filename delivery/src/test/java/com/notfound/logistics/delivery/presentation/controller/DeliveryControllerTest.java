@@ -150,9 +150,6 @@ class DeliveryControllerTest {
   }
 
   @Test
-  void test() {}
-
-  @Test
   void unsupportedMethodKeepsTheAllowHeaderInTheCommonErrorFormat() throws Exception {
     mockMvc
         .perform(post("/api/deliveries"))
