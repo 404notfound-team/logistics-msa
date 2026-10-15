@@ -10,14 +10,18 @@ import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -27,9 +31,21 @@ class CompanyServiceTest {
   private static final UUID HUB_ID = UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6");
   private static final UUID MANAGER_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
-  @Mock private CompanyRepository companyRepository;
+  private static final UUID COMPANY_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final UUID OTHER_HUB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
+  private static final Instant NOW = Instant.parse("2026-10-15T00:00:00Z");
 
-  @InjectMocks private CompanyService companyService;
+  @Mock private CompanyRepository companyRepository;
+  @Mock private AuditorAware<String> auditorAware;
+
+  private CompanyService companyService;
+
+  // 삭제 시각을 검증할 수 있도록 고정된 시계를 넣어 직접 생성한다.
+  @BeforeEach
+  void setUp() {
+    companyService =
+        new CompanyService(companyRepository, auditorAware, Clock.fixed(NOW, ZoneOffset.UTC));
+  }
 
   @Test
   void createCompanySavesRequestValues() {
@@ -87,5 +103,64 @@ class CompanyServiceTest {
 
     assertThat(companyService.searchCompanies("물류", HUB_ID, pageable)).isSameAs(page);
     verify(companyRepository).search(new CompanySearchCondition("물류", HUB_ID), pageable);
+  }
+
+  @Test
+  void updateCompanyChangesOnlyProvidedFields() {
+    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    // 이름과 허브만 보내고 주소·관리자는 null로 둔다.
+    Company updated = companyService.updateCompany(COMPANY_ID, "변경 업체", OTHER_HUB_ID, null, null);
+
+    assertThat(updated.getName()).isEqualTo("변경 업체");
+    assertThat(updated.getHubId()).isEqualTo(OTHER_HUB_ID);
+    assertThat(updated.getAddress()).isEqualTo("기존 주소");
+    assertThat(updated.getManagerUserId()).isEqualTo(MANAGER_ID);
+  }
+
+  @Test
+  void updateMissingCompanyThrowsCompanyNotFound() {
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> companyService.updateCompany(COMPANY_ID, "변경 업체", null, null, null))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+  }
+
+  @Test
+  void deleteCompanyRecordsActorAndTime() {
+    Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
+
+    companyService.deleteCompany(COMPANY_ID);
+
+    // 물리 삭제가 아니라 삭제 시각·작업자만 기록한다. 도메인 저장소에는 delete 메서드가 없어 물리 삭제 호출은 컴파일 단계에서 막힌다.
+    assertThat(company.getDeletedAt()).isEqualTo(NOW);
+    assertThat(company.getDeletedBy()).isEqualTo("test-user");
+  }
+
+  @Test
+  void deleteMissingCompanyThrowsCompanyNotFound() {
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> companyService.deleteCompany(COMPANY_ID))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+  }
+
+  @Test
+  void deleteWithoutAuditorFailsWithoutDeleting() {
+    Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(auditorAware.getCurrentAuditor()).willReturn(Optional.empty());
+
+    // 공통 계약: 작업자를 알 수 없으면 임의 값으로 채우지 않고 실패한다.
+    assertThatThrownBy(() -> companyService.deleteCompany(COMPANY_ID))
+        .isInstanceOf(IllegalStateException.class);
+    assertThat(company.getDeletedAt()).isNull();
   }
 }

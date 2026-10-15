@@ -6,11 +6,14 @@ import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -229,6 +232,77 @@ class CompanyControllerTest {
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.page").value(Integer.MAX_VALUE))
         .andExpect(jsonPath("$.data.total_elements").value(1));
+  }
+
+  @Test
+  void updateCompanyPassesOnlySentFieldsAndReturnsCompany() throws Exception {
+    given(companyService.updateCompany(any(), any(), any(), any(), any()))
+        .willReturn(savedCompany());
+
+    mvc.perform(
+            patch("/api/companies/" + COMPANY_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    { "name": "변경 업체" }
+                    """))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()));
+
+    // 보내지 않은 필드는 null로 전달되어 서비스에서 기존 값을 유지한다.
+    verify(companyService).updateCompany(eq(COMPANY_ID), eq("변경 업체"), eq(null), eq(null), eq(null));
+  }
+
+  @Test
+  void updateWithBlankNameReturnsFieldError() throws Exception {
+    mvc.perform(
+            patch("/api/companies/" + COMPANY_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    { "name": "   " }
+                    """))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("name"));
+
+    verify(companyService, never()).updateCompany(any(), any(), any(), any(), any());
+  }
+
+  @Test
+  void updateMissingCompanyReturnsNotFound() throws Exception {
+    given(companyService.updateCompany(any(), any(), any(), any(), any()))
+        .willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND));
+
+    mvc.perform(
+            patch("/api/companies/" + COMPANY_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    { "address": "서울특별시 송파구 올림픽로 300" }
+                    """))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("COMPANY_NOT_FOUND"));
+  }
+
+  @Test
+  void deleteCompanyReturnsNoContent() throws Exception {
+    mvc.perform(delete("/api/companies/" + COMPANY_ID))
+        .andExpect(status().isNoContent())
+        .andExpect(content().string(""));
+
+    verify(companyService).deleteCompany(COMPANY_ID);
+  }
+
+  @Test
+  void deleteMissingCompanyReturnsNotFound() throws Exception {
+    willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND))
+        .given(companyService)
+        .deleteCompany(COMPANY_ID);
+
+    mvc.perform(delete("/api/companies/" + COMPANY_ID))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("COMPANY_NOT_FOUND"));
   }
 
   // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 ID를 직접 넣은 업체를 만든다.
