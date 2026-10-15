@@ -5,6 +5,10 @@ springdoc:
     enabled: false
   paths-to-match:
     - /api/users/**
+users:
+  audit:
+    # Anonymous signup has no authenticated username yet; this is its designated audit actor.
+    signup-actor: signup-service
 spring:
   application:
     name: users
