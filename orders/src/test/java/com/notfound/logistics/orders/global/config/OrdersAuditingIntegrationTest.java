@@ -81,6 +81,7 @@ class OrdersAuditingIntegrationTest {
   void createAndUpdateUseVerifiedUsernamesAndPreserveTheCreator() {
     authenticate("creator");
     var saved = repository.saveAndFlush(new Fixture("before"));
+    var persisted = repository.findById(saved.id).orElseThrow();
     assertThat(saved.getCreatedBy()).isEqualTo("creator");
     assertThat(saved.getUpdatedBy()).isEqualTo("creator");
     assertThat(saved.getCreatedAt()).isNotNull();
@@ -96,9 +97,9 @@ class OrdersAuditingIntegrationTest {
             });
     var updated = repository.findById(saved.id).orElseThrow();
     assertThat(updated.getCreatedBy()).isEqualTo("creator");
-    assertThat(updated.getCreatedAt()).isEqualTo(saved.getCreatedAt());
+    assertThat(updated.getCreatedAt()).isEqualTo(persisted.getCreatedAt());
     assertThat(updated.getUpdatedBy()).isEqualTo("editor");
-    assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(saved.getUpdatedAt());
+    assertThat(updated.getUpdatedAt()).isAfterOrEqualTo(persisted.getUpdatedAt());
   }
 
   @Test
@@ -118,6 +119,7 @@ class OrdersAuditingIntegrationTest {
   void missingActorRollsBackAnUpdateInsteadOfPreservingAStaleEditor() {
     authenticate("creator");
     var saved = repository.saveAndFlush(new Fixture("before"));
+    var persisted = repository.findById(saved.id).orElseThrow();
     SecurityContextHolder.clearContext();
     assertThatThrownBy(
             () ->
@@ -132,7 +134,7 @@ class OrdersAuditingIntegrationTest {
     var retained = repository.findById(saved.id).orElseThrow();
     assertThat(retained.name).isEqualTo("before");
     assertThat(retained.getUpdatedBy()).isEqualTo("creator");
-    assertThat(retained.getUpdatedAt()).isEqualTo(saved.getUpdatedAt());
+    assertThat(retained.getUpdatedAt()).isEqualTo(persisted.getUpdatedAt());
   }
 
   private void assertRejectedActor(Authentication authentication) {
