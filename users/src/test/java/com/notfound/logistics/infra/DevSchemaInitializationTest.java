@@ -3,6 +3,7 @@ package com.notfound.logistics.infra;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.service.UserService;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Id;
@@ -18,6 +19,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -30,11 +32,16 @@ import org.testcontainers.utility.MountableFile;
     properties = {
       "eureka.client.enabled=false",
       "management.tracing.enabled=false",
-      "springdoc.api-docs.enabled=false"
+      "springdoc.api-docs.enabled=false",
+      "spring.data.jpa.repositories.enabled=false",
+      "users.audit.enabled=false",
+      "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes"
     })
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DevSchemaInitializationTest {
+  @MockitoBean private UserService userService;
+
   @Container
   static final PostgreSQLContainer<?> DATABASE =
       new PostgreSQLContainer<>("postgres:18")
