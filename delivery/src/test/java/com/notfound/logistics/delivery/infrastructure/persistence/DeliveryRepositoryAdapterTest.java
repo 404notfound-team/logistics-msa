@@ -130,6 +130,16 @@ class DeliveryRepositoryAdapterTest {
     assertThat(page.getTotalElements()).isEqualTo(3);
   }
 
+  @Test
+  void pageWhoseOffsetExceedsTheJpaLimitIsEmptyButKeepsTheTotal() {
+    Page<Delivery> page =
+        repository.search(
+            condition(null, null, null, null, null, null, null), page(Integer.MAX_VALUE, 20));
+    assertThat(page.getContent()).isEmpty();
+    assertThat(page.getTotalElements()).isEqualTo(3);
+    assertThat(page.getNumber()).isEqualTo(Integer.MAX_VALUE);
+  }
+
   private List<UUID> ids(DeliverySearchCondition condition) {
     return repository.search(condition, page(0, 20)).map(Delivery::getId).getContent();
   }
