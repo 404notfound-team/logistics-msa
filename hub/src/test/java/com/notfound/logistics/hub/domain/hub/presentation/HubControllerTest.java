@@ -115,4 +115,24 @@ class HubControllerTest {
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.total_elements").value(17));
   }
+
+  @Test
+  void getHubsWithVeryLargePageReturnsEmptyContent() throws Exception {
+    int page = 21474837;
+    int size = 100;
+
+    when(hubQueryService.getHubs(page, size, "desc"))
+        .thenReturn(new PageImpl<>(List.of(), PageRequest.of(page, size), 17));
+
+    mockMvc
+        .perform(
+            get("/api/hubs")
+                .param("page", String.valueOf(page))
+                .param("size", String.valueOf(size)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.page").value(page))
+        .andExpect(jsonPath("$.data.size").value(size))
+        .andExpect(jsonPath("$.data.total_elements").value(17));
+  }
 }

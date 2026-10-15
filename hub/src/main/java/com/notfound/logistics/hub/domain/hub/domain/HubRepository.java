@@ -13,4 +13,6 @@ public interface HubRepository {
   Optional<Hub> findById(UUID id);
 
   Page<Hub> findAll(Pageable pageable);
+
+  long count();
 }

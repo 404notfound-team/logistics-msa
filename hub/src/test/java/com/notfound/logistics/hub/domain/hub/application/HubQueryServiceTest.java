@@ -1,9 +1,11 @@
 package com.notfound.logistics.hub.domain.hub.application;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -48,6 +50,52 @@ class HubQueryServiceTest {
     assertEquals(10, result.getSize());
 
     verify(hubRepository).findAll(any(Pageable.class));
+  }
+
+  @Test
+  void getHubsWithOffsetExceedingIntegerMaxValue() {
+    int page = 21474837;
+    int size = 100;
+
+    when(hubRepository.count()).thenReturn(17L);
+
+    Page<HubResult> result = hubQueryService.getHubs(page, size, "desc");
+
+    assertThat(result.getContent()).isEmpty();
+    assertThat(result.getNumber()).isEqualTo(page);
+    assertThat(result.getSize()).isEqualTo(size);
+    assertThat(result.getTotalElements()).isEqualTo(17L);
+
+    verify(hubRepository, never()).findAll(any(Pageable.class));
+    verify(hubRepository).count();
+  }
+
+  @Test
+  void getHubsWithOffsetAtIntegerMaxValue() {
+    int page = Integer.MAX_VALUE;
+
+    when(hubRepository.count()).thenReturn(17L);
+
+    Page<HubResult> result = hubQueryService.getHubs(page, 1, "desc");
+
+    assertThat(result.getContent()).isEmpty();
+    assertThat(result.getTotalElements()).isEqualTo(17L);
+
+    verify(hubRepository, never()).findAll(any(Pageable.class));
+  }
+
+  @Test
+  void getHubsWithOffsetBelowIntegerMaxValue() {
+    int page = Integer.MAX_VALUE - 1;
+
+    when(hubRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+
+    Page<HubResult> result = hubQueryService.getHubs(page, 1, "desc");
+
+    assertThat(result.getContent()).isEmpty();
+
+    verify(hubRepository).findAll(any(Pageable.class));
+    verify(hubRepository, never()).count();
   }
 
   @Test
