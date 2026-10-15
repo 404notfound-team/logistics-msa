@@ -205,6 +205,10 @@ public class OrderService {
     }
   }
 
+  public OrderResult get(UUID id, String username, boolean master) {
+    return OrderResult.from(accessible(id, username, master));
+  }
+
   public void recover() {
     for (Order candidate :
         repository.findTop50ByStatusInOrderByUpdatedAtAsc(
@@ -237,6 +241,13 @@ public class OrderService {
         active.end(id);
       }
     }
+  }
+
+  private Order accessible(UUID id, String username, boolean master) {
+    Order order = load(id);
+    if (!master && !order.getCreatedBy().equals(username))
+      throw business(OrderErrorCode.ORDER_FORBIDDEN);
+    return order;
   }
 
   private Order load(UUID id) {

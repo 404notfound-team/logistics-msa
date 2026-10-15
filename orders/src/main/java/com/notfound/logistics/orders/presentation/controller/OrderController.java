@@ -5,6 +5,7 @@ import com.notfound.logistics.orders.application.dto.OrderOperationResult;
 import com.notfound.logistics.orders.application.service.OrderService;
 import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.presentation.dto.CreateOrderRequest;
+import com.notfound.logistics.orders.presentation.dto.OrderDetailResponse;
 import com.notfound.logistics.orders.presentation.dto.OrderResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,13 +19,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Order", description = "주문 생성")
+@Tag(name = "Order", description = "주문 생성·상세 조회")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/orders")
@@ -58,6 +61,18 @@ public class OrderController {
           @RequestHeader("Idempotency-Key")
           UUID key) {
     return operation(service.create(request.toCommand(key), principal.getSubject()));
+  }
+
+  @Operation(summary = "주문 상세 조회", description = "MASTER 또는 주문 작성자가 주문 당시 정보를 조회합니다.")
+  @GetMapping("/{id}")
+  public ApiResponse<OrderDetailResponse> get(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal, @PathVariable UUID id) {
+    return new ApiResponse<>(
+        OrderDetailResponse.from(service.get(id, principal.getSubject(), isMaster(principal))));
+  }
+
+  private boolean isMaster(Jwt principal) {
+    return "MASTER".equals(principal.getClaimAsString("role"));
   }
 
   private ResponseEntity<ApiResponse<OrderResponse>> operation(OrderOperationResult result) {
