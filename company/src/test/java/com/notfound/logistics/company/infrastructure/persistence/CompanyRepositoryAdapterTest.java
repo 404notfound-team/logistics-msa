@@ -130,6 +130,19 @@ class CompanyRepositoryAdapterTest {
     assertThat(result.getTotalElements()).isEqualTo(1);
   }
 
+  @Test
+  void searchBeyondIntOffsetReturnsEmptyPageWithTotal() {
+    persist("업체 A", HUB_ID);
+    persist("업체 B", HUB_ID);
+
+    // offset(page × size)이 int 범위를 넘는 요청도 예외 없이 빈 목록과 실제 전체 개수를 반환해야 한다.
+    Page<Company> result = repository.search(null, null, PageRequest.of(Integer.MAX_VALUE, 20));
+
+    assertThat(result.getContent()).isEmpty();
+    assertThat(result.getTotalElements()).isEqualTo(2);
+    assertThat(result.getNumber()).isEqualTo(Integer.MAX_VALUE);
+  }
+
   private Company persist(String name, UUID hubId) {
     Company company = repository.save(Company.of(name, hubId, "서울특별시 강남구 테헤란로 123", MANAGER_ID));
     entityManager.flush();
