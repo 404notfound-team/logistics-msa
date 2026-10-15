@@ -147,6 +147,22 @@ class CompanyRepositoryAdapterTest {
     assertThat(result.getNumber()).isEqualTo(Integer.MAX_VALUE);
   }
 
+  @Test
+  void changedCompanyIsPersisted() {
+    Company company = persist("기존 업체", HUB_ID);
+
+    // 변경 메서드만 호출하고 save는 다시 부르지 않는다. 트랜잭션 안의 변경 감지로 반영되어야 한다.
+    company.changeName("변경 업체");
+    company.moveToHub(OTHER_HUB_ID);
+    entityManager.flush();
+    entityManager.clear();
+
+    Company reloaded = repository.findById(company.getId()).orElseThrow();
+    assertThat(reloaded.getName()).isEqualTo("변경 업체");
+    assertThat(reloaded.getHubId()).isEqualTo(OTHER_HUB_ID);
+    assertThat(reloaded.getAddress()).isEqualTo("서울특별시 강남구 테헤란로 123");
+  }
+
   private Company persist(String name, UUID hubId) {
     Company company = repository.save(Company.of(name, hubId, "서울특별시 강남구 테헤란로 123", MANAGER_ID));
     entityManager.flush();
