@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.global.exception;
+package com.notfound.logistics.orders.domain.exception;
 
 import java.util.Objects;
 

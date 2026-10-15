@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.global.config;
+package com.notfound.logistics.orders.infrastructure.audit;
 
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
