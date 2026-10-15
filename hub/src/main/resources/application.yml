@@ -7,6 +7,7 @@ springdoc:
     - /api/hubs/**
     - /api/hub-routes/**
     - /api/stocks/**
+    - /api/products/*/stocks
 spring:
   application:
     name: hub

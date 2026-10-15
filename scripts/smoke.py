@@ -17,6 +17,10 @@ API_DOCS = {
     "orders": ("주문 API", ["/api/orders"]),
     "delivery": ("배송 API", ["/api/deliveries"]),
 }
+# 다른 서비스의 리소스명으로 시작하는 경로는 접두사 전체가 아닌 정확한 업무 경로만 허용한다.
+API_DOCS_EXACT_PATHS = {
+    "hub": {"/api/products/{productId}/stocks"},
+}
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -122,7 +126,10 @@ def check_openapi(url):
         assert document["info"]["title"] == title, document["info"]
         assert [server["url"] for server in document["servers"]] == ["/"], document["servers"]
         for path in document.get("paths", {}):
-            assert any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes), (service, path)
+            assert (
+                path in API_DOCS_EXACT_PATHS.get(service, set())
+                or any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+            ), (service, path)
     for path in ["/v3/api-docs/eureka", "/v3/api-docs/users/internal/infra/ping"]:
         try:
             get(f"{url}{path}")
