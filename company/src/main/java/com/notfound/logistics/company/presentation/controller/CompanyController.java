@@ -1,5 +1,6 @@
 package com.notfound.logistics.company.presentation.controller;
 
+import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.company.application.service.CompanyService;
@@ -9,6 +10,8 @@ import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import com.notfound.logistics.company.presentation.dto.CompanyUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -33,6 +36,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
+// 오류 응답에는 ApiErrorResponse 형식을 지정한다. 지정하지 않으면 성공 응답 타입이 모든 상태 코드에 표시된다.
 @Tag(name = "Company", description = "업체 API")
 @RestController
 @RequestMapping("/api/companies")
@@ -54,7 +58,8 @@ public class CompanyController {
         description = "생성 성공"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
-        description = "요청 값 검증 실패 (필수 값 누락, 길이 초과, UUID 형식 오류)")
+        description = "요청 값 검증 실패 (필수 값 누락, 길이 초과, UUID 형식 오류)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<CompanyResponse>> createCompany(
@@ -75,10 +80,12 @@ public class CompanyController {
         description = "조회 성공"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
-        description = "잘못된 업체 ID 형식"),
+        description = "잘못된 업체 ID 형식",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)")
+        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @GetMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> getCompany(
@@ -99,7 +106,8 @@ public class CompanyController {
         description = "조회 성공 (결과가 없으면 빈 content)"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
-        description = "page·size 범위 오류 또는 허브 ID 형식 오류")
+        description = "page·size 범위 오류 또는 허브 ID 형식 오류",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @GetMapping
   public ResponseEntity<ApiResponse<PageResponse<CompanyResponse>>> getCompanies(
@@ -136,10 +144,12 @@ public class CompanyController {
         description = "수정 성공"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
-        description = "요청 값 검증 실패 (공백 값, 길이 초과, UUID 형식 오류)"),
+        description = "요청 값 검증 실패 (공백 값, 길이 초과, UUID 형식 오류)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)")
+        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PatchMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
@@ -160,10 +170,12 @@ public class CompanyController {
         description = "삭제 성공"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "400",
-        description = "잘못된 업체 ID 형식"),
+        description = "잘못된 업체 ID 형식",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "업체를 찾을 수 없음 (이미 삭제된 업체 포함)")
+        description = "업체를 찾을 수 없음 (이미 삭제된 업체 포함)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @DeleteMapping("/{company_id}")
   public ResponseEntity<Void> deleteCompany(
