@@ -5,8 +5,10 @@ import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
+import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.AuditorAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -16,6 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class CompanyService {
   private final CompanyRepository companyRepository;
+  private final AuditorAware<String> auditorAware;
+  private final Clock clock;
 
   @Transactional
   public Company createCompany(String name, UUID hubId, String address, UUID managerUserId) {
@@ -46,5 +50,39 @@ public class CompanyService {
   public Page<Company> searchCompanies(String name, UUID hubId, Pageable pageable) {
     // 목록과 전체 개수는 같은 검색·삭제 제외 조건으로 조회된다.
     return companyRepository.search(new CompanySearchCondition(name, hubId), pageable);
+  }
+
+  /** null인 값은 변경하지 않는다. 변경 내용은 트랜잭션 종료 시 저장된다. */
+  @Transactional
+  public Company updateCompany(
+      UUID id, String name, UUID hubId, String address, UUID managerUserId) {
+    // TODO(auth): MASTER 또는 해당 업체 관리자만 수정할 수 있다. 그 외 403.
+    Company company = findCompany(id);
+    if (name != null) {
+      company.changeName(name);
+    }
+    if (address != null) {
+      company.changeAddress(address);
+    }
+    if (hubId != null) {
+      // TODO(hub): 변경할 허브가 실제 존재하는지 hub 서비스로 확인한다. 없으면 CompanyError.HUB_NOT_FOUND.
+      company.moveToHub(hubId);
+    }
+    if (managerUserId != null) {
+      company.changeManager(managerUserId);
+    }
+    return company;
+  }
+
+  @Transactional
+  public void deleteCompany(UUID id) {
+    // TODO(auth): MASTER 또는 해당 업체 관리자만 삭제할 수 있다. 그 외 403.
+    Company company = findCompany(id);
+    // 생성·수정 기록과 같은 작업자 출처를 쓴다. 인증 연동 시 AuditorAware만 바꾸면 삭제 기록도 함께 바뀐다.
+    String actor =
+        auditorAware
+            .getCurrentAuditor()
+            .orElseThrow(() -> new IllegalStateException("감사 작업자를 확인할 수 없습니다."));
+    company.markDeleted(actor, clock.instant());
   }
 }

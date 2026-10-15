@@ -6,6 +6,7 @@ import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.presentation.dto.CompanyCreateRequest;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
+import com.notfound.logistics.company.presentation.dto.CompanyUpdateRequest;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
@@ -21,7 +22,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -124,5 +127,50 @@ public class CompanyController {
             companies.getSize(),
             companies.getTotalElements());
     return ResponseEntity.ok(new ApiResponse<>(response));
+  }
+
+  @Operation(summary = "업체 수정", description = "보낸 필드만 변경합니다. 생략하거나 null인 필드는 기존 값을 유지합니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "수정 성공"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "요청 값 검증 실패 (공백 값, 길이 초과, UUID 형식 오류)"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)")
+  })
+  @PatchMapping("/{company_id}")
+  public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
+      @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
+          @PathVariable("company_id")
+          UUID companyId,
+      @Valid @RequestBody CompanyUpdateRequest request) {
+    Company company =
+        companyService.updateCompany(
+            companyId, request.name(), request.hubId(), request.address(), request.managerUserId());
+    return ResponseEntity.ok(new ApiResponse<>(CompanyResponse.from(company)));
+  }
+
+  @Operation(summary = "업체 논리 삭제", description = "업체를 논리 삭제하고 삭제 시각·작업자를 기록합니다. 삭제된 업체는 조회되지 않습니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "204",
+        description = "삭제 성공"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "400",
+        description = "잘못된 업체 ID 형식"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "업체를 찾을 수 없음 (이미 삭제된 업체 포함)")
+  })
+  @DeleteMapping("/{company_id}")
+  public ResponseEntity<Void> deleteCompany(
+      @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
+          @PathVariable("company_id")
+          UUID companyId) {
+    companyService.deleteCompany(companyId);
+    return ResponseEntity.noContent().build();
   }
 }
