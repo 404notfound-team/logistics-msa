@@ -1,10 +1,10 @@
-package com.notfound.logistics.company.application;
+package com.notfound.logistics.company.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
-import com.notfound.logistics.company.domain.Company;
-import com.notfound.logistics.company.domain.CompanyRepository;
+import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.presentation.dto.CompanyCreateRequest;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import java.util.UUID;

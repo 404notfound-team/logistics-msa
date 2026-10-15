@@ -1,4 +1,4 @@
-package com.notfound.logistics.company.domain;
+package com.notfound.logistics.company.domain.model;
 
 import com.notfound.logistics.common.audit.AuditEntity;
 import jakarta.persistence.Column;

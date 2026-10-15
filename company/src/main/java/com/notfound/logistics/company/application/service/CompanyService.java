@@ -1,7 +1,7 @@
-package com.notfound.logistics.company.application;
+package com.notfound.logistics.company.application.service;
 
-import com.notfound.logistics.company.domain.Company;
-import com.notfound.logistics.company.domain.CompanyRepository;
+import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.presentation.dto.CompanyCreateRequest;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import lombok.RequiredArgsConstructor;

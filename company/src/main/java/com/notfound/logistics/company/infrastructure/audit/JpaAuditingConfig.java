@@ -1,4 +1,4 @@
-package com.notfound.logistics.company.config;
+package com.notfound.logistics.company.infrastructure.audit;
 
 import java.util.Optional;
 import org.springframework.context.annotation.Bean;

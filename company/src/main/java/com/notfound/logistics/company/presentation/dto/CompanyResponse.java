@@ -1,6 +1,6 @@
 package com.notfound.logistics.company.presentation.dto;
 
-import com.notfound.logistics.company.domain.Company;
+import com.notfound.logistics.company.domain.model.Company;
 import java.time.Instant;
 import java.util.UUID;
 
