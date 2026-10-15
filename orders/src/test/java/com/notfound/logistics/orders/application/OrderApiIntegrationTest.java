@@ -376,6 +376,50 @@ class OrderApiIntegrationTest {
   }
 
   @Test
+  void searchAppliesTheSameOwnerFiltersToContentAndCountsAndValidatesPaging() throws Exception {
+    create(UUID.randomUUID(), body(), alice);
+    create(UUID.randomUUID(), body(), alice);
+    create(UUID.randomUUID(), body(), bob);
+    UUID deletedId = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update(
+        "UPDATE p_orders SET deleted_at=current_timestamp, deleted_by='admin' WHERE id=?",
+        deletedId);
+    var page = json(request("GET", "/api/orders?size=1", null, alice, null)).path("data");
+    assertThat(page.path("total_elements").asInt()).isEqualTo(2);
+    assertThat(page.path("total_pages").asInt()).isEqualTo(2);
+    assertThat(page.path("content")).hasSize(1);
+    var empty = json(request("GET", "/api/orders?page=5&size=1", null, alice, null)).path("data");
+    assertThat(empty.path("content")).isEmpty();
+    assertThat(empty.path("total_elements").asInt()).isEqualTo(2);
+    assertThat(
+            json(request("GET", "/api/orders", null, admin, null))
+                .at("/data/total_elements")
+                .asInt())
+        .isEqualTo(3);
+    assertThat(
+            json(request("GET", "/api/orders?product_id=" + UUID.randomUUID(), null, alice, null))
+                .at("/data/total_elements")
+                .asInt())
+        .isZero();
+    var beyond =
+        json(request("GET", "/api/orders?page=2147483647&size=20", null, alice, null)).path("data");
+    assertThat(beyond.path("content")).isEmpty();
+    assertThat(beyond.path("total_elements").asLong()).isEqualTo(2);
+    for (String query :
+        List.of(
+            "page=-1",
+            "page=2147483647&sort=created_by,desc",
+            "size=0",
+            "size=101",
+            "sort=created_by,desc",
+            "sort=created_at,invalid",
+            "status=invalid",
+            "created_from=invalid",
+            "created_from=2026-10-16T00:00:00Z&created_to=2026-10-15T00:00:00Z"))
+      assertStatus(request("GET", "/api/orders?" + query, null, alice, null), 400);
+  }
+
+  @Test
   void documentsActualPublicContractsAndSupportsBigintQuantityAndTextNotes() throws Exception {
     STUB.control(Map.of("action", "stock", "quantity", 5000000000L));
     var body = body();

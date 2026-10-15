@@ -1,9 +1,11 @@
 package com.notfound.logistics.orders.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult;
 import com.notfound.logistics.orders.application.service.OrderService;
 import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
+import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.presentation.dto.CreateOrderRequest;
 import com.notfound.logistics.orders.presentation.dto.OrderDetailResponse;
 import com.notfound.logistics.orders.presentation.dto.OrderResponse;
@@ -14,8 +16,10 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.net.URI;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -25,9 +29,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Order", description = "주문 생성·상세 조회")
+@Tag(name = "Order", description = "주문 생성·조회")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/orders")
@@ -73,6 +78,40 @@ public class OrderController {
 
   private boolean isMaster(Jwt principal) {
     return "MASTER".equals(principal.getClaimAsString("role"));
+  }
+
+  @Operation(summary = "주문 목록·검색", description = "USER는 본인 주문, MASTER는 전체 주문을 검색합니다.")
+  @GetMapping
+  public ApiResponse<PageResponse<OrderDetailResponse>> search(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
+      @RequestParam(name = "product_id", required = false) UUID productId,
+      @RequestParam(required = false) OrderStatus status,
+      @RequestParam(name = "created_from", required = false)
+          @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+          Instant from,
+      @RequestParam(name = "created_to", required = false)
+          @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+          Instant to,
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "20") int size,
+      @RequestParam(defaultValue = "created_at,desc") String sort) {
+    var result =
+        service.search(
+            productId,
+            status,
+            from,
+            to,
+            page,
+            size,
+            sort,
+            principal.getSubject(),
+            isMaster(principal));
+    return new ApiResponse<>(
+        new PageResponse<>(
+            result.content().stream().map(OrderDetailResponse::from).toList(),
+            result.page(),
+            result.size(),
+            result.totalElements()));
   }
 
   private ResponseEntity<ApiResponse<OrderResponse>> operation(OrderOperationResult result) {

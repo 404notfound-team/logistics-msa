@@ -1,6 +1,6 @@
 # 주문 서비스
 
-주문 생성·자동 복구와 주문 상세 조회를 구현합니다.
+주문 생성·자동 복구와 상세·목록·검색을 구현합니다.
 다른 서비스의 미구현 내부 API는 별도 로컬 HTTP Stub으로 검증합니다.
 
 ```text
@@ -28,8 +28,13 @@ JWT는 users 구현과 같은 HS256, issuer `logistics-users`, subject `username
 | --- | --- |
 | `POST /api/orders` | 로그인 사용자. `Idempotency-Key` UUID 필수. 최초 확정 201, 종료된 동일 요청 200, 처리·복구 중 202 |
 | `GET /api/orders/{id}` | MASTER 또는 작성자. 주문 당시 상품·가격·허브·배송 입력 반환 |
+| `GET /api/orders` | MASTER 전체 / USER 본인. 상품·상태·생성 기간·페이지·정렬 검색 |
 
 JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiErrorResponse`를 사용합니다.
+목록은 현재 공통 `PageResponse`의 `content`, `page`, `size`, `total_elements`, `total_pages`를 반환합니다.
+기본 정렬은 `created_at,desc`와 주문 ID이며 `created_at`, `order_id`, `status`, `quantity`의 `asc`/`desc`를 허용합니다.
+`created_from`·`created_to`는 UTC ISO 8601 시각이며 양 끝을 포함합니다.
+마지막 페이지 이후는 큰 페이지 번호도 빈 목록을 반환합니다. 실제 결과가 있는 페이지의 시작 위치가 2,147,483,647건을 넘으면 400을 반환합니다.
 
 ## 상태와 복구
 
@@ -123,5 +128,5 @@ Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:180
 ```
 
 테스트는 임시 HTTP Stub과 독립 PostgreSQL 18을 사용하고 종료 시 제거합니다.
-정상·중복·동시 요청, 입력·권한, 배송 실패 시 재고 유지, 차감 응답 유실 시 재차감 금지, 배송 결과의 재확인,
+정상·중복·동시 요청, 입력·권한·검색, 배송 실패 시 재고 유지, 차감 응답 유실 시 재차감 금지, 배송 결과의 재확인,
 앱 재기동 후 자동 복구와 최초 상품·허브·감사 주체 보존을 검증합니다.

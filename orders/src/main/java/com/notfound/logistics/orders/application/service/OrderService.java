@@ -1,5 +1,6 @@
 package com.notfound.logistics.orders.application.service;
 
+import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.orders.application.dto.CreateOrderCommand;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult.Outcome;
@@ -21,12 +22,18 @@ import com.notfound.logistics.orders.infrastructure.client.StockClient;
 import com.notfound.logistics.orders.infrastructure.notification.SlackNotifier;
 import feign.FeignException;
 import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -207,6 +214,64 @@ public class OrderService {
 
   public OrderResult get(UUID id, String username, boolean master) {
     return OrderResult.from(accessible(id, username, master));
+  }
+
+  public PageResponse<OrderResult> search(
+      UUID productId,
+      OrderStatus status,
+      Instant from,
+      Instant to,
+      int page,
+      int size,
+      String sort,
+      String username,
+      boolean master) {
+    if (page < 0 || size < 1 || size > 100 || (from != null && to != null && from.isAfter(to)))
+      throw business(OrderErrorCode.INVALID_ORDER_INPUT);
+    Specification<Order> specification =
+        (root, query, builder) -> {
+          var predicates = new ArrayList<jakarta.persistence.criteria.Predicate>();
+          if (!master) predicates.add(builder.equal(root.get("createdBy"), username));
+          if (productId != null) predicates.add(builder.equal(root.get("productId"), productId));
+          if (status != null) predicates.add(builder.equal(root.get("status"), status));
+          if (from != null)
+            predicates.add(builder.greaterThanOrEqualTo(root.get("createdAt"), from));
+          if (to != null) predicates.add(builder.lessThanOrEqualTo(root.get("createdAt"), to));
+          return builder.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+        };
+    var requestedSort = sort(sort);
+    long offset = (long) page * size;
+    if (offset > Integer.MAX_VALUE) {
+      long total = repository.count(specification);
+      if (offset >= total) return new PageResponse<>(List.of(), page, size, total);
+      throw business(OrderErrorCode.INVALID_ORDER_INPUT);
+    }
+    var results = repository.findAll(specification, PageRequest.of(page, size, requestedSort));
+    return new PageResponse<>(
+        results.getContent().stream().map(OrderResult::from).toList(),
+        page,
+        size,
+        results.getTotalElements());
+  }
+
+  private Sort sort(String value) {
+    String[] parts = value.split(",", -1);
+    var fields =
+        Map.of(
+            "created_at",
+            "createdAt",
+            "order_id",
+            "id",
+            "status",
+            "status",
+            "quantity",
+            "quantity");
+    if (parts.length != 2
+        || !fields.containsKey(parts[0])
+        || !Set.of("asc", "desc").contains(parts[1]))
+      throw business(OrderErrorCode.INVALID_ORDER_INPUT);
+    var sort = Sort.by(Sort.Direction.fromString(parts[1]), fields.get(parts[0]));
+    return parts[0].equals("order_id") ? sort : sort.and(Sort.by("id"));
   }
 
   public void recover() {
