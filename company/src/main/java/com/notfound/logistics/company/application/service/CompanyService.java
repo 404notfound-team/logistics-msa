@@ -3,8 +3,10 @@ package com.notfound.logistics.company.application.service;
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.model.Product;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
+import com.notfound.logistics.company.domain.repository.ProductSearchCondition;
 import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -80,6 +82,39 @@ public class CompanyService {
     Company company = findCompany(id);
     // 업체와 소속 상품을 같은 작업자·시각으로 함께 논리 삭제한다.
     company.delete(currentActor(), clock.instant());
+  }
+
+  @Transactional
+  public Product createProduct(UUID companyId, String name, String description, Long price) {
+    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 생성할 수 있다. 그 외 403.
+    // 상품은 Company를 통해 추가하고, 업체 저장 시 함께 저장된다(cascade). ID는 커밋 시점에 채워진다.
+    return findCompany(companyId).addProduct(name, description, price);
+  }
+
+  @Transactional(readOnly = true)
+  public Product findProduct(UUID companyId, UUID productId) {
+    return findCompany(companyId).getProduct(productId);
+  }
+
+  @Transactional(readOnly = true)
+  public Page<Product> searchProducts(UUID companyId, String name, Pageable pageable) {
+    // 없는 업체·삭제된 업체의 상품 목록은 COMPANY_NOT_FOUND로 응답한다.
+    findCompany(companyId);
+    return companyRepository.searchProducts(new ProductSearchCondition(companyId, name), pageable);
+  }
+
+  /** null인 값은 변경하지 않는다. */
+  @Transactional
+  public Product updateProduct(
+      UUID companyId, UUID productId, String name, String description, Long price) {
+    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 수정할 수 있다. 그 외 403.
+    return findCompany(companyId).updateProduct(productId, name, description, price);
+  }
+
+  @Transactional
+  public void deleteProduct(UUID companyId, UUID productId) {
+    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 삭제할 수 있다. 그 외 403.
+    findCompany(companyId).deleteProduct(productId, currentActor(), clock.instant());
   }
 
   // 생성·수정 기록과 같은 작업자 출처를 쓴다. 인증 연동 시 AuditorAware만 바꾸면 삭제 기록도 함께 바뀐다.
