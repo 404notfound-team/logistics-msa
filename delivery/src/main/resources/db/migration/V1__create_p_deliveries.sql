@@ -6,7 +6,7 @@ CREATE TABLE p_deliveries (
     destination_hub_id  uuid         NOT NULL,
     address             varchar(255) NOT NULL,
     recipient_name      varchar(100) NOT NULL,
-    delivery_manager_id bigint,
+    delivery_manager_id uuid,
     created_at          timestamptz  NOT NULL,
     created_by          varchar(100) NOT NULL,
     updated_at          timestamptz  NOT NULL,

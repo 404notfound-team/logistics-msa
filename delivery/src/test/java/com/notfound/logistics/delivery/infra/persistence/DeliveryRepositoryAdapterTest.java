@@ -41,6 +41,8 @@ class DeliveryRepositoryAdapterTest {
   private static final UUID HUB_A = UUID.randomUUID();
   private static final UUID HUB_B = UUID.randomUUID();
   private static final UUID HUB_C = UUID.randomUUID();
+  private static final UUID MANAGER_A = UUID.randomUUID();
+  private static final UUID MANAGER_B = UUID.randomUUID();
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
   private static final Sort NEWEST_FIRST =
       Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
@@ -64,10 +66,13 @@ class DeliveryRepositoryAdapterTest {
 
   @BeforeEach
   void insertFixtures() {
-    first = insert(HUB_A, HUB_B, "서울특별시 송파구 송파대로 55", "김철수", 1L, DeliveryStatus.HUB_WAITING, 1);
-    second = insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", 2L, DeliveryStatus.HUB_MOVING, 2);
+    first =
+        insert(HUB_A, HUB_B, "서울특별시 송파구 송파대로 55", "김철수", MANAGER_A, DeliveryStatus.HUB_WAITING, 1);
+    second =
+        insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", MANAGER_B, DeliveryStatus.HUB_MOVING, 2);
     third = insert(HUB_B, HUB_C, "대전광역시 서구 둔산로 100", "Hong", null, DeliveryStatus.DELIVERED, 3);
-    UUID deleted = insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", 1L, DeliveryStatus.HUB_WAITING, 4);
+    UUID deleted =
+        insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", MANAGER_A, DeliveryStatus.HUB_WAITING, 4);
     jdbc.update(
         "UPDATE p_deliveries SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_id = ?",
         Timestamp.from(BASE.plusSeconds(5)),
@@ -93,8 +98,10 @@ class DeliveryRepositoryAdapterTest {
         .containsExactly(third, second);
     assertThat(ids(condition(null, DeliveryStatus.HUB_MOVING, null, null, null, null, null)))
         .containsExactly(second);
-    assertThat(ids(condition(null, null, null, null, null, null, 1L))).containsExactly(first);
-    assertThat(ids(condition(null, null, HUB_A, HUB_C, null, null, 2L))).containsExactly(second);
+    assertThat(ids(condition(null, null, null, null, null, null, MANAGER_A)))
+        .containsExactly(first);
+    assertThat(ids(condition(null, null, HUB_A, HUB_C, null, null, MANAGER_B)))
+        .containsExactly(second);
     assertThat(ids(condition(null, null, HUB_B, HUB_B, null, null, null))).isEmpty();
   }
 
@@ -138,7 +145,7 @@ class DeliveryRepositoryAdapterTest {
       UUID destinationHubId,
       String address,
       String recipientName,
-      Long deliveryManagerId) {
+      UUID deliveryManagerId) {
     return new DeliverySearchCondition(
         orderId,
         status,
@@ -154,7 +161,7 @@ class DeliveryRepositoryAdapterTest {
       UUID destinationHubId,
       String address,
       String recipientName,
-      Long deliveryManagerId,
+      UUID deliveryManagerId,
       DeliveryStatus status,
       int createdOffsetSeconds) {
     UUID id = UUID.randomUUID();

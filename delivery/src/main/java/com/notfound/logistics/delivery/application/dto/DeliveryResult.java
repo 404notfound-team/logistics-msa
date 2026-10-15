@@ -13,7 +13,7 @@ public record DeliveryResult(
     UUID destinationHubId,
     String address,
     String recipientName,
-    Long deliveryManagerId,
+    UUID deliveryManagerId,
     Instant createdAt,
     Instant updatedAt) {
   public static DeliveryResult from(Delivery delivery) {
