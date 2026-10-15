@@ -30,8 +30,7 @@ public class HubRouteQueryService {
         PageRequest.of(
             page,
             size,
-            Sort.by(Sort.Direction.ASC, "departureHubId")
-                .and(Sort.by(Sort.Direction.ASC, "arrivalHubId")));
+            Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
 
     // JPA Offset의 정수 범위 초과 방지
     if (pageable.getOffset() >= Integer.MAX_VALUE) {
