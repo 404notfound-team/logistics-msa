@@ -1,9 +1,10 @@
-package com.notfound.logistics.orders.global.exception;
+package com.notfound.logistics.orders.presentation.exception;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
+import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -27,18 +28,18 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 @RestControllerAdvice
-public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
-  private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+public class OrderExceptionHandler extends ResponseEntityExceptionHandler {
+  private static final Logger LOG = LoggerFactory.getLogger(OrderExceptionHandler.class);
   private static final String INVALID_FIELD = "올바른 값을 입력해 주세요.";
   private final ValidationFieldNames names;
 
-  public GlobalExceptionHandler(ObjectMapper mapper) {
+  public OrderExceptionHandler(ObjectMapper mapper) {
     names = new ValidationFieldNames(mapper);
   }
 
   @ExceptionHandler(OrderBusinessException.class)
   ResponseEntity<Object> business(OrderBusinessException exception) {
-    var code = exception.getErrorCode();
+    var code = new OrderApiErrorCode(exception.getErrorCode());
     return ResponseEntity.status(code.httpStatus()).body(ApiErrorResponse.of(code, traceId()));
   }
 
@@ -144,8 +145,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 error ->
                     violation(
                         jsonBody ? names.bodyField(target, error.getField()) : error.getField()));
-    var globalViolations = errors.getGlobalErrors().stream().map(ignored -> violation("$"));
-    return Stream.concat(fieldViolations, globalViolations).toList();
+    var objectViolations = errors.getGlobalErrors().stream().map(ignored -> violation("$"));
+    return Stream.concat(fieldViolations, objectViolations).toList();
   }
 
   private FieldViolation violation(String field) {

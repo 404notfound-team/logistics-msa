@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.global.exception;
+package com.notfound.logistics.orders.presentation.exception;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.global.config;
+package com.notfound.logistics.orders.infrastructure.audit;
 
 import java.util.Optional;
 import org.springframework.data.domain.AuditorAware;

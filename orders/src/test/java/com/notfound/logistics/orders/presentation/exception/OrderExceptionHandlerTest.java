@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.global.exception;
+package com.notfound.logistics.orders.presentation.exception;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
+import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -39,7 +41,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-class GlobalExceptionHandlerTest {
+class OrderExceptionHandlerTest {
   private MockMvc mvc;
   private LocalValidatorFactoryBean validator;
 
@@ -50,7 +52,7 @@ class GlobalExceptionHandlerTest {
     validator.afterPropertiesSet();
     mvc =
         MockMvcBuilders.standaloneSetup(new FixtureController())
-            .setControllerAdvice(new GlobalExceptionHandler(mapper))
+            .setControllerAdvice(new OrderExceptionHandler(mapper))
             .setValidator(validator)
             .setMessageConverters(new MappingJackson2HttpMessageConverter(mapper))
             .build();
@@ -145,11 +147,13 @@ class GlobalExceptionHandlerTest {
     mvc.perform(get("/fixture/business").param("conflict", "false"))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("ORDER_NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("주문을 찾을 수 없습니다."))
         .andExpect(jsonPath("$.trace_id").value("fixture-trace"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
     mvc.perform(get("/fixture/business").param("conflict", "true"))
         .andExpect(status().isConflict())
-        .andExpect(jsonPath("$.code").value("ORDER_STATE_CONFLICT"));
+        .andExpect(jsonPath("$.code").value("ORDER_STATE_CONFLICT"))
+        .andExpect(jsonPath("$.message").value("현재 주문 상태에서는 요청을 처리할 수 없습니다."));
   }
 
   @Test
