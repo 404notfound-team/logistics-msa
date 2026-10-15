@@ -16,4 +16,6 @@ public interface HubRepository {
   Page<Hub> findAll(Pageable pageable);
 
   long count();
+
+  List<Hub> findByName(String name);
 }

@@ -50,4 +50,10 @@ public class HubQueryService {
 
     return HubResult.from(hub);
   }
+
+  public List<HubResult> getHubsByName(String name) {
+    return hubRepository.findByName(name).stream()
+      .map(HubResult::from)
+      .toList();
+  }
 }

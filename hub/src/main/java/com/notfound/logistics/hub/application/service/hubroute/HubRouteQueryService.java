@@ -1,6 +1,8 @@
 package com.notfound.logistics.hub.application.service.hubroute;
 
 import com.notfound.logistics.hub.application.dto.hubroute.HubRouteResult;
+import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteBusinessException;
+import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteErrorCode;
 import com.notfound.logistics.hub.domain.model.hubroute.HubRoute;
 import com.notfound.logistics.hub.domain.repository.hubroute.HubRouteRepository;
 import java.util.List;
@@ -56,6 +58,20 @@ public class HubRouteQueryService {
     }
 
     return routes.map(HubRouteResult::from);
+  }
+
+  public HubRouteResult getRoute(
+    UUID departureHubId,
+    UUID arrivalHubId) {
+
+    HubRoute route = hubRouteRepository
+      .findByDepartureHubIdAndArrivalHubId(
+        departureHubId, arrivalHubId)
+      .orElseThrow(() ->
+        new HubRouteBusinessException(
+          HubRouteErrorCode.HUB_ROUTE_NOT_FOUND));
+
+    return HubRouteResult.from(route);
   }
 
   private long countRoutes(UUID departureHubId, UUID arrivalHubId) {

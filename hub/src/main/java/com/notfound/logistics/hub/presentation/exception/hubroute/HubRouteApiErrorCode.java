@@ -18,6 +18,7 @@ public record HubRouteApiErrorCode(HubRouteErrorCode error) implements ApiErrorC
   public int httpStatus() {
     return switch (error) {
       case INVALID_HUB_ROUTE_DURATION, INVALID_HUB_ROUTE_DISTANCE, INVALID_SAME_HUB_ROUTE -> 400;
+      case HUB_ROUTE_NOT_FOUND -> 404;
     };
   }
 }
