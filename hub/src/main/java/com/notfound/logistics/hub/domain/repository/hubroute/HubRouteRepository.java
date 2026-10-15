@@ -1,6 +1,8 @@
 package com.notfound.logistics.hub.domain.repository.hubroute;
 
 import com.notfound.logistics.hub.domain.model.hubroute.HubRoute;
+
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -15,6 +17,10 @@ public interface HubRouteRepository {
 
   Page<HubRoute> findByDepartureHubIdAndArrivalHubId(
       UUID departureHubId, UUID arrivalHubId, Pageable pageable);
+
+  Optional<HubRoute> findByDepartureHubIdAndArrivalHubId(
+    UUID departureHubId,
+    UUID arrivalHubId);
 
   long count();
 
