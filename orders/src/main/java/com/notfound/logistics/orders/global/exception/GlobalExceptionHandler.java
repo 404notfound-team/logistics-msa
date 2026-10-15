@@ -6,6 +6,7 @@ import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -132,17 +133,19 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
   }
 
   private List<FieldViolation> fields(Errors errors, boolean jsonBody) {
-    var result = new ArrayList<FieldViolation>();
-    Object target = errors instanceof BindingResult binding ? binding.getTarget() : null;
-    if (errors instanceof ParameterErrors parameterErrors) {
-      target = parameterErrors.getArgument();
-    }
-    for (var error : errors.getFieldErrors()) {
-      result.add(
-          violation(jsonBody ? names.bodyField(target, error.getField()) : error.getField()));
-    }
-    errors.getGlobalErrors().forEach(ignored -> result.add(violation("$")));
-    return result;
+    Object bindingTarget = errors instanceof BindingResult binding ? binding.getTarget() : null;
+    Object target =
+        errors instanceof ParameterErrors parameterErrors
+            ? parameterErrors.getArgument()
+            : bindingTarget;
+    var fieldViolations =
+        errors.getFieldErrors().stream()
+            .map(
+                error ->
+                    violation(
+                        jsonBody ? names.bodyField(target, error.getField()) : error.getField()));
+    var globalViolations = errors.getGlobalErrors().stream().map(ignored -> violation("$"));
+    return Stream.concat(fieldViolations, globalViolations).toList();
   }
 
   private FieldViolation violation(String field) {
