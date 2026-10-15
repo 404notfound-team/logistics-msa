@@ -82,14 +82,7 @@ public class User extends AuditEntity {
       UUID companyId,
       UUID hubId) {
     return new User(
-        username,
-        name,
-        passwordHash,
-        UserRoleEnum.USER,
-        slackId,
-        companyId,
-        hubId,
-        false);
+        username, name, passwordHash, UserRoleEnum.USER, slackId, companyId, hubId, false);
   }
 
   private static String requireText(String value, String fieldName) {
@@ -103,7 +96,8 @@ public class User extends AuditEntity {
   private static String requireUsername(String username) {
     requireText(username, "username");
     if (!username.matches("[a-z0-9]{4,10}")) {
-      throw new IllegalArgumentException("username must contain 4 to 10 lowercase letters or digits");
+      throw new IllegalArgumentException(
+          "username must contain 4 to 10 lowercase letters or digits");
     }
     return username;
   }
