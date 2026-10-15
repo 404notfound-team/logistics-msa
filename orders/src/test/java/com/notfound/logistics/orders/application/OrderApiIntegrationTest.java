@@ -112,10 +112,7 @@ class OrderApiIntegrationTest {
             "hub_id",
             "00000000-0000-0000-0000-000000000099"));
     assertStatus(create(key, body(), alice), 200);
-    var details =
-        mapper.valueToTree(
-            com.notfound.logistics.orders.application.dto.OrderResult.from(
-                repository.findById(id).orElseThrow()));
+    var details = json(request("GET", "/api/orders/" + id, null, alice, null)).path("data");
     assertThat(details.path("product_name").asText()).isEqualTo("테스트 상품");
     assertThat(details.path("unit_price").decimalValue()).isEqualByComparingTo("10000.00");
     assertThat(details.path("total_price").decimalValue()).isEqualByComparingTo("30000.00");
@@ -181,7 +178,7 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void rejectsUnauthenticatedExpiredAndTamperedTokens() throws Exception {
+  void rejectsUnauthenticatedExpiredAndTamperedTokensAndChecksOwnership() throws Exception {
     assertStatus(create(UUID.randomUUID(), body(), null), 401);
     assertStatus(create(UUID.randomUUID(), body(), alice + "tampered"), 401);
     String expired =
@@ -189,7 +186,9 @@ class OrderApiIntegrationTest {
             .path("access_token")
             .asText();
     assertStatus(create(UUID.randomUUID(), body(), expired), 401);
-    assertStatus(create(UUID.randomUUID(), body(), alice), 201);
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertStatus(request("GET", "/api/orders/" + id, null, bob, null), 403);
+    assertStatus(request("GET", "/api/orders/" + id, null, admin, null), 200);
     assertInventory(997, 1, 1);
   }
 
@@ -431,6 +430,16 @@ class OrderApiIntegrationTest {
         .isEqualTo("CONFIRMED");
     assertThat(STUB.state().at("/counts/slack").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+  }
+
+  @Test
+  void detailExcludesDeletedOrdersAndPreservesAccessBoundaries() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertStatus(request("GET", "/api/orders/" + UUID.randomUUID(), null, alice, null), 404);
+    jdbc.update(
+        "UPDATE p_orders SET deleted_at=current_timestamp, deleted_by='admin' WHERE id=?", id);
+    assertStatus(request("GET", "/api/orders/" + id, null, alice, null), 404);
+    assertStatus(request("GET", "/api/orders/" + id, null, admin, null), 404);
   }
 
   private Map<String, Object> body() {
