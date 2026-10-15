@@ -12,6 +12,7 @@ import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.service.UserService;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +33,9 @@ import org.springframework.web.bind.annotation.RestController;
     classes = UsersApplication.class,
     properties = {
       "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
+      "spring.data.jpa.repositories.enabled=false",
+      "users.audit.enabled=false",
+      "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes",
       "eureka.client.enabled=false",
       "management.tracing.enabled=false"
     })
@@ -38,6 +43,8 @@ import org.springframework.web.bind.annotation.RestController;
 @Import(OpenApiDocumentationTest.ContractController.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class OpenApiDocumentationTest {
+  @MockitoBean private UserService userService;
+
   @Autowired private MockMvc mvc;
 
   @Test
