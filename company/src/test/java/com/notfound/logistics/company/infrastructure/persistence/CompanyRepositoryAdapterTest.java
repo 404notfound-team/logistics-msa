@@ -1,9 +1,13 @@
 package com.notfound.logistics.company.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.model.Product;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
+import com.notfound.logistics.company.domain.repository.ProductSearchCondition;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -161,6 +165,97 @@ class CompanyRepositoryAdapterTest {
     assertThat(reloaded.getName()).isEqualTo("변경 업체");
     assertThat(reloaded.getHubId()).isEqualTo(OTHER_HUB_ID);
     assertThat(reloaded.getAddress()).isEqualTo("서울특별시 강남구 테헤란로 123");
+  }
+
+  @Test
+  void productIsSavedThroughCompanyAndReloaded() {
+    Company company = persist("업체", HUB_ID);
+
+    // 상품 저장소 없이 업체에 추가한 상품이 cascade로 함께 저장되어야 한다.
+    Product product = company.addProduct("무선 키보드", "블루투스 키보드", 35000L);
+    entityManager.flush();
+    entityManager.clear();
+
+    Company reloaded = repository.findById(company.getId()).orElseThrow();
+    Product found = reloaded.getProduct(product.getId());
+    assertThat(found.getName()).isEqualTo("무선 키보드");
+    assertThat(found.getDescription()).isEqualTo("블루투스 키보드");
+    assertThat(found.getPrice()).isEqualTo(35000L);
+    assertThat(found.getCreatedBy()).isEqualTo("test-user");
+  }
+
+  @Test
+  void searchProductsMatchesNameWithinCompanyOnly() {
+    Company company = persist("업체 A", HUB_ID);
+    Company other = persist("업체 B", HUB_ID);
+    company.addProduct("Wireless Keyboard", null, 1000L);
+    company.addProduct("유선 마우스", null, 1000L);
+    other.addProduct("Gaming Keyboard", null, 1000L);
+    entityManager.flush();
+    entityManager.clear();
+
+    Page<Product> result =
+        repository.searchProducts(
+            new ProductSearchCondition(company.getId(), "keyboard"), FIRST_PAGE);
+
+    // 다른 업체의 상품은 이름이 맞아도 나오지 않는다.
+    assertThat(result.getContent())
+        .extracting(Product::getName)
+        .containsExactly("Wireless Keyboard");
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void deletedProductIsExcludedFromLookupAndSearch() {
+    Company company = persist("업체", HUB_ID);
+    Product kept = company.addProduct("유지 상품", null, 1000L);
+    Product deleted = company.addProduct("삭제 상품", null, 1000L);
+    entityManager.flush();
+    company.deleteProduct(deleted.getId(), "test-user", Instant.parse("2026-10-16T00:00:00Z"));
+    entityManager.flush();
+    entityManager.clear();
+
+    Company reloaded = repository.findById(company.getId()).orElseThrow();
+    assertThatThrownBy(() -> reloaded.getProduct(deleted.getId()))
+        .isInstanceOf(CompanyException.class);
+    Page<Product> result =
+        repository.searchProducts(new ProductSearchCondition(company.getId(), null), FIRST_PAGE);
+    assertThat(result.getContent()).extracting(Product::getId).containsExactly(kept.getId());
+    assertThat(result.getTotalElements()).isEqualTo(1);
+  }
+
+  @Test
+  void deletingCompanyDeletesItsProducts() {
+    Company company = persist("업체", HUB_ID);
+    company.addProduct("상품 A", null, 1000L);
+    company.addProduct("상품 B", null, 1000L);
+    entityManager.flush();
+    company.delete("test-user", Instant.parse("2026-10-16T00:00:00Z"));
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(repository.findById(company.getId())).isEmpty();
+    // 업체와 함께 논리 삭제되어 상품도 조회되지 않는다.
+    assertThat(
+            repository
+                .searchProducts(new ProductSearchCondition(company.getId(), null), FIRST_PAGE)
+                .getTotalElements())
+        .isZero();
+  }
+
+  @Test
+  void searchProductsBeyondIntOffsetReturnsEmptyPageWithTotal() {
+    Company company = persist("업체", HUB_ID);
+    company.addProduct("상품", null, 1000L);
+    entityManager.flush();
+
+    Page<Product> result =
+        repository.searchProducts(
+            new ProductSearchCondition(company.getId(), null),
+            PageRequest.of(Integer.MAX_VALUE, 20));
+
+    assertThat(result.getContent()).isEmpty();
+    assertThat(result.getTotalElements()).isEqualTo(1);
   }
 
   private Company persist(String name, UUID hubId) {
