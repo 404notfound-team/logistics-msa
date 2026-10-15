@@ -105,10 +105,14 @@ public class GlobalExceptionHandler {
         .body(ApiErrorResponse.of(code, traceId()));
   }
 
+  // 예외에 담긴 Accept 헤더(지원하는 요청 형식 목록)를 그대로 보존한다.
   @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
   ResponseEntity<ApiErrorResponse> handleUnsupportedMediaType(
       HttpMediaTypeNotSupportedException e) {
-    return error(CommonErrorCode.UNSUPPORTED_MEDIA_TYPE);
+    ApiErrorCode code = CommonErrorCode.UNSUPPORTED_MEDIA_TYPE;
+    return ResponseEntity.status(code.httpStatus())
+        .headers(e.getHeaders())
+        .body(ApiErrorResponse.of(code, traceId()));
   }
 
   // 상세 내용은 로그에만 남기고, 응답에는 내부 예외 정보를 노출하지 않는다.
