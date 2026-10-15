@@ -1,4 +1,4 @@
-package com.notfound.logistics.company.presentation;
+package com.notfound.logistics.company.presentation.controller;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.mockito.ArgumentMatchers.any;
@@ -10,7 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.notfound.logistics.company.application.CompanyService;
+import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import java.time.Instant;
 import java.util.UUID;

@@ -1,10 +1,10 @@
-package com.notfound.logistics.company.presentation;
+package com.notfound.logistics.company.presentation.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
-import com.notfound.logistics.company.domain.CompanyException;
+import com.notfound.logistics.company.domain.exception.CompanyException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -28,12 +28,12 @@ public class GlobalExceptionHandler {
   /**
    * 업무 예외(CompanyException) 처리 서비스, 도메인 계층 등에서 발생한 비즈니스 예외를 처리합니다.
    *
-   * @param e CompanyException (오류 코드를 담은 업무 예외)
-   * @return 오류 코드에 정의된 HTTP 상태와 ApiErrorResponse 응답
+   * @param e CompanyException (도메인 업무 오류를 담은 예외)
+   * @return CompanyErrorCode로 변환한 HTTP 상태와 ApiErrorResponse 응답
    */
   @ExceptionHandler(CompanyException.class)
   ResponseEntity<ApiErrorResponse> handleCompany(CompanyException e) {
-    ApiErrorCode code = e.getErrorCode();
+    ApiErrorCode code = CompanyErrorCode.from(e.getError());
     log.warn("업무 예외 발생: {}", code.code());
     return ResponseEntity.status(code.httpStatus()).body(ApiErrorResponse.of(code, traceId()));
   }

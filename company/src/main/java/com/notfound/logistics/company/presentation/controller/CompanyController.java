@@ -1,7 +1,7 @@
-package com.notfound.logistics.company.presentation;
+package com.notfound.logistics.company.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
-import com.notfound.logistics.company.application.CompanyService;
+import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.presentation.dto.CompanyCreateRequest;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import jakarta.validation.Valid;
