@@ -29,8 +29,8 @@ final class CompanySpecifications {
     };
   }
 
-  // 사용자가 입력한 %, _ 를 와일드카드가 아닌 일반 문자로 검색되게 한다.
-  private static String containsPattern(String keyword) {
+  // 사용자가 입력한 %, _ 를 와일드카드가 아닌 일반 문자로 검색되게 한다. 상품명 검색도 같은 규칙을 쓴다.
+  static String containsPattern(String keyword) {
     String escaped =
         keyword
             .toLowerCase(Locale.ROOT)

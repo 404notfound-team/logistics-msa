@@ -47,6 +47,24 @@ final class ErrorExamples {
         "field_errors": []
       }
       """;
+  static final String PRODUCT_CREATE_INVALID_EXAMPLE =
+      """
+      {
+        "code": "INVALID_REQUEST",
+        "message": "요청 값이 올바르지 않습니다.",
+        "trace_id": null,
+        "field_errors": [{ "field": "price", "message": "0 이상이어야 합니다" }]
+      }
+      """;
+  static final String PRODUCT_NOT_FOUND_EXAMPLE =
+      """
+      {
+        "code": "PRODUCT_NOT_FOUND",
+        "message": "상품을 찾을 수 없습니다.",
+        "trace_id": null,
+        "field_errors": []
+      }
+      """;
 
   private ErrorExamples() {}
 }

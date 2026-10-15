@@ -1,8 +1,10 @@
 package com.notfound.logistics.company.infrastructure.persistence;
 
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.model.Product;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
+import com.notfound.logistics.company.domain.repository.ProductSearchCondition;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -37,5 +39,23 @@ class CompanyRepositoryAdapter implements CompanyRepository {
       return new PageImpl<>(List.of(), pageable, jpaRepository.count(specification));
     }
     return jpaRepository.findAll(specification, pageable);
+  }
+
+  @Override
+  public Page<Product> searchProducts(ProductSearchCondition condition, Pageable pageable) {
+    UUID companyId = condition.companyId();
+    String pattern =
+        condition.name() == null ? null : CompanySpecifications.containsPattern(condition.name());
+    // 업체 검색과 같은 이유로 int 범위를 넘는 offset은 목록 없이 전체 개수만 돌려준다.
+    if (pageable.getOffset() > Integer.MAX_VALUE) {
+      long total =
+          pattern == null
+              ? jpaRepository.countProducts(companyId)
+              : jpaRepository.countProductsByName(companyId, pattern);
+      return new PageImpl<>(List.of(), pageable, total);
+    }
+    return pattern == null
+        ? jpaRepository.findProducts(companyId, pageable)
+        : jpaRepository.findProductsByName(companyId, pattern, pageable);
   }
 }
