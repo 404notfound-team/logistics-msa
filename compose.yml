@@ -41,6 +41,8 @@ services:
       retries: 30
       start_period: 30s
     networks: [backend]
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   zipkin:
     image: openzipkin/zipkin:3.6.1
@@ -129,6 +131,8 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/orders_db?currentSchema=orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
+      SLACK_ENABLED: ${SLACK_ENABLED:-false}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     depends_on:
       postgres:
         condition: service_healthy

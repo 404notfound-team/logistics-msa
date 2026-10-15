@@ -1,4 +1,4 @@
-package com.notfound.logistics.hub.infra;
+package com.notfound.logistics.hub.presentation.controller.infra;
 
 import java.util.Map;
 import org.springframework.context.annotation.Profile;

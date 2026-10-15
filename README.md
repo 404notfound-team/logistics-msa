@@ -4,7 +4,7 @@
 PostgreSQL, Zipkin을 Docker Compose로 함께 실행합니다.
 
 현재 범위는 앱 기동·서비스 탐색·DB 연결·라우팅·분산 추적·서비스별 API 문서입니다.
-업무 API, JWT 인증/권한, 엔티티·마이그레이션·초기 데이터, 주문 보상 처리와 Slack 알림은 아직 구현하지 않았습니다.
+업무 API, JWT 인증/권한, 엔티티·초기 데이터, 주문 보상 처리와 Slack 알림은 아직 구현하지 않았습니다.
 로컬 개발용 구성으로, 외부 서버 배포에 사용하지 않습니다.
 
 ## 구성
@@ -82,13 +82,40 @@ Spring Boot 3.5와 호환되는 [springdoc 2.8 계열](https://springdoc.org/v2/
 현재는 업무 API가 없어서 **`No operations defined in spec!`가 정상**입니다.
 각 서비스에 공개 경로의 컨트롤러를 구현하고 앱을 다시 빌드·실행하면 문서에 나타납니다.
 
+## 개발 DB 스키마
+
+운영 배포를 하지 않는 개발 전용 프로젝트이므로 정식 마이그레이션 체계를 필수로 요구하지 않습니다.
+users·company·hub·orders·delivery는 `local` 프로필에서 `ddl-auto: update`로
+각자의 엔티티를 기준으로 자기 스키마의 테이블을 생성·갱신합니다. 각 담당자는 자기 서비스 모듈에서
+엔티티와 테스트를 변경하고, 공유 DB 초기화 SQL에는 업무 테이블을 추가하지 않습니다.
+DB 초기화 파일은 DB·스키마·계정 준비만 담당합니다. 이 방식은 공유 SQL 편집을 줄입니다.
+
+각 앱은 자기 스키마에 테이블을 생성할 수 있고, 자신이 생성한 테이블의 구조를 변경할 수 있습니다.
+관리자 소유의 기존 테이블은 자동 변경되지 않으므로 필요한 경우 해당 테이블의 소유권을 별도로 맞춥니다.
+기본 프로필의 `validate` 설정은 유지하며, 로컬 실행에는 `local` 프로필을 사용합니다.
+
+기존 로컬 DB 볼륨에는 초기화 파일 변경이 자동 적용되지 않습니다. 데이터를 보존하면서
+자기 스키마의 생성 권한을 추가하려면 PostgreSQL을 실행한 상태에서 다음을 한 번 실행합니다.
+이 명령은 테이블과 데이터를 삭제하거나 소유권을 변경하지 않습니다.
+
+```bash
+docker compose exec -T postgres bash -eu <<'SH'
+for service in users company hub orders delivery; do
+  psql --username "$POSTGRES_USER" --dbname "$service"_db -v ON_ERROR_STOP=1 \
+    --set=schema="$service" --set=role="$service"_app <<'SQL'
+SELECT format('GRANT USAGE, CREATE ON SCHEMA %I TO %I', :'schema', :'role') \gexec
+SQL
+done
+SH
+```
+
 ## 개발과 종료
 
 로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
 Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
 `build`는 Spotless 포맷 검사, Checkstyle, Java 컴파일, JUnit 테스트와 패키징을 수행합니다.
 Gateway·사용자 모듈의 OpenAPI/응답 계약 테스트와 공통 API·감사 테스트를 실행합니다.
-감사 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로컬에서도 Docker가 필요합니다.
+감사 및 개발 스키마 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로컬에서도 Docker가 필요합니다.
 업무 테스트는 각 모듈의 `src/test/java`에 추가합니다.
 실제 서비스 연동 검증은 `scripts/smoke.py`가 수행합니다.
 
@@ -124,9 +151,9 @@ CI에서는 Eureka 서버 응답 캐시와 클라이언트 목록을 5초마다 
   `/api/hub-routes/**`, `/api/stocks/**`, `/api/orders/**`, `/api/deliveries/**`만 업무 서비스로 보냅니다.
   `/internal/**`을 외부 경로로 자동 공개하는 discovery locator는 사용하지 않습니다.
 - PostgreSQL 컨테이너와 볼륨은 하나이며 DB·스키마·접속 계정은 서비스마다 다릅니다.
-  앱 계정은 자기 DB 접속과 자기 스키마 사용만 가능하고 DDL·관리 권한은 없습니다.
-  관리자 `postgres`로 자기 스키마에 테이블을 만들면 앱의 CRUD 권한이 기본 부여됩니다.
-  실제 테이블을 추가할 때 서비스별 마이그레이션 절차도 함께 구현해야 합니다.
+  앱 계정은 자기 DB 접속과 자기 스키마의 테이블 생성을 허용하며 자신이 생성한 테이블을 변경합니다.
+  다른 DB 접속·public 스키마 생성·관리 권한은 없습니다.
+  엔티티 변경과 기존 볼륨의 권한 반영은 [개발 DB 스키마](#개발-db-스키마)를 따릅니다.
 - 다른 서비스 데이터는 Feign으로 조회합니다. 다른 DB 직접 SQL·물리 FK·업무 엔티티 공유를 하지 않습니다.
 - Slack은 외부 Webhook 연동 대상입니다. 현재 컨테이너나 호출 코드를 만들지 않았습니다.
 
