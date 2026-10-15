@@ -8,13 +8,16 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import lombok.AccessLevel;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
 @Table(name = "p_companies")
 @SQLRestriction("deleted_at IS NULL")
 @Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Company extends AuditEntity {
   static final int NAME_MAX_LENGTH = 100;
   static final int ADDRESS_MAX_LENGTH = 255;
