@@ -78,11 +78,15 @@ public class CompanyService {
   public void deleteCompany(UUID id) {
     // TODO(auth): MASTER 또는 해당 업체 관리자만 삭제할 수 있다. 그 외 403.
     Company company = findCompany(id);
-    // 생성·수정 기록과 같은 작업자 출처를 쓴다. 인증 연동 시 AuditorAware만 바꾸면 삭제 기록도 함께 바뀐다.
-    String actor =
-        auditorAware
-            .getCurrentAuditor()
-            .orElseThrow(() -> new IllegalStateException("감사 작업자를 확인할 수 없습니다."));
-    company.markDeleted(actor, clock.instant());
+    // 업체와 소속 상품을 같은 작업자·시각으로 함께 논리 삭제한다.
+    company.delete(currentActor(), clock.instant());
+  }
+
+  // 생성·수정 기록과 같은 작업자 출처를 쓴다. 인증 연동 시 AuditorAware만 바꾸면 삭제 기록도 함께 바뀐다.
+  // 작업자를 알 수 없으면 임의 값으로 채우지 않고 실패한다(공통 계약).
+  private String currentActor() {
+    return auditorAware
+        .getCurrentAuditor()
+        .orElseThrow(() -> new IllegalStateException("감사 작업자를 확인할 수 없습니다."));
   }
 }
