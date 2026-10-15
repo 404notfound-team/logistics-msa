@@ -1,9 +1,13 @@
 package com.notfound.logistics.company.application.service;
 
+import com.notfound.logistics.company.domain.exception.CompanyError;
+import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,5 +31,19 @@ public class CompanyService {
     Company company = Company.of(name, hubId, address, managerUserId);
     companyRepository.save(company);
     return company;
+  }
+
+  @Transactional(readOnly = true)
+  public Company findCompany(UUID id) {
+    // 삭제된 업체는 엔티티의 @SQLRestriction("deleted_at IS NULL")으로 조회되지 않아 여기서 함께 404가 된다.
+    return companyRepository
+        .findById(id)
+        .orElseThrow(() -> new CompanyException(CompanyError.COMPANY_NOT_FOUND));
+  }
+
+  @Transactional(readOnly = true)
+  public Page<Company> searchCompanies(String name, UUID hubId, Pageable pageable) {
+    // 목록과 전체 개수는 같은 검색·삭제 제외 조건으로 조회된다.
+    return companyRepository.search(name, hubId, pageable);
   }
 }
