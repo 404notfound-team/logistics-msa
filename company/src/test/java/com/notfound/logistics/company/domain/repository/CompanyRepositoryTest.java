@@ -1,4 +1,4 @@
-package com.notfound.logistics.company.infrastructure.persistence;
+package com.notfound.logistics.company.domain.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -35,11 +35,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import({CompanyRepositoryAdapter.class, CompanyRepositoryAdapterTest.AuditingTestConfig.class})
+@Import(CompanyRepositoryTest.AuditingTestConfig.class)
 @Testcontainers
 // 컨테이너가 내려가기 전에 Spring 컨텍스트를 먼저 닫아 종료 시 DB 연결 대기(30초)를 막는다.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class CompanyRepositoryAdapterTest {
+class CompanyRepositoryTest {
   private static final UUID HUB_ID = UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6");
   private static final UUID MANAGER_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
   private static final UUID OTHER_HUB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
@@ -48,7 +48,7 @@ class CompanyRepositoryAdapterTest {
   @Container
   static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
 
-  @Autowired private CompanyRepositoryAdapter repository;
+  @Autowired private CompanyRepository repository;
   @Autowired private TestEntityManager entityManager;
 
   @DynamicPropertySource
