@@ -12,7 +12,7 @@ import static org.mockito.Mockito.when;
 import com.notfound.logistics.hub.domain.hub.application.dto.HubResult;
 import com.notfound.logistics.hub.domain.hub.domain.Hub;
 import com.notfound.logistics.hub.domain.hub.domain.HubRepository;
-import com.notfound.logistics.hub.global.exception.HubBusinessException;
+import com.notfound.logistics.hub.domain.hub.domain.exception.HubBusinessException;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

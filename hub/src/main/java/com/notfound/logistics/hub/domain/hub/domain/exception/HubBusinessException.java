@@ -1,4 +1,4 @@
-package com.notfound.logistics.hub.global.exception;
+package com.notfound.logistics.hub.domain.hub.domain.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
 import java.util.Objects;

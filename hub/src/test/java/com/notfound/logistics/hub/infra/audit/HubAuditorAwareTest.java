@@ -1,4 +1,4 @@
-package com.notfound.logistics.hub.global.config;
+package com.notfound.logistics.hub.infra.audit;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
