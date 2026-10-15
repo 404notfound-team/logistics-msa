@@ -63,6 +63,7 @@ public class UserExceptionHandler {
   @ExceptionHandler(NoResourceFoundException.class)
   public ResponseEntity<ApiErrorResponse> handleNotFound(NoResourceFoundException exception) {
     return ResponseEntity.status(HttpStatusCode.valueOf(CommonErrorCode.NOT_FOUND.httpStatus()))
+        .headers(exception.getHeaders())
         .body(ApiErrorResponse.of(CommonErrorCode.NOT_FOUND, traceId()));
   }
 
@@ -70,6 +71,7 @@ public class UserExceptionHandler {
   public ResponseEntity<ApiErrorResponse> handleMethodNotAllowed(
       HttpRequestMethodNotSupportedException exception) {
     return ResponseEntity.status(CommonErrorCode.METHOD_NOT_ALLOWED.httpStatus())
+        .headers(exception.getHeaders())
         .body(ApiErrorResponse.of(CommonErrorCode.METHOD_NOT_ALLOWED, traceId()));
   }
 
@@ -78,7 +80,9 @@ public class UserExceptionHandler {
     if (exception instanceof ErrorResponse webException
         && webException.getStatusCode().is4xxClientError()) {
       HttpStatusCode status = webException.getStatusCode();
-      return ResponseEntity.status(status).body(ApiErrorResponse.of(errorCode(status), traceId()));
+      return ResponseEntity.status(status)
+          .headers(webException.getHeaders())
+          .body(ApiErrorResponse.of(errorCode(status), traceId()));
     }
     LOG.error("Unexpected error while handling users API request", exception);
     return ResponseEntity.internalServerError()
