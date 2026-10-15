@@ -1,9 +1,9 @@
-package com.notfound.logistics.delivery.presentation;
+package com.notfound.logistics.delivery.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
-import com.notfound.logistics.delivery.application.DeliveryQueryService;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryResponse;

@@ -1,4 +1,4 @@
-package com.notfound.logistics.delivery.application;
+package com.notfound.logistics.delivery.application.service;
 
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;

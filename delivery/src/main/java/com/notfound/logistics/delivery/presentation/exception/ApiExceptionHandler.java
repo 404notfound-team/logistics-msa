@@ -1,4 +1,4 @@
-package com.notfound.logistics.delivery.presentation;
+package com.notfound.logistics.delivery.presentation.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;

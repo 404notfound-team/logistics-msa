@@ -1,4 +1,4 @@
-package com.notfound.logistics.delivery.infra.persistence;
+package com.notfound.logistics.delivery.infrastructure.persistence;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;

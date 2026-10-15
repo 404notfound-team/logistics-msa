@@ -1,4 +1,4 @@
-package com.notfound.logistics.delivery;
+package com.notfound.logistics.delivery.infrastructure.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.core.jackson.ModelResolver;
