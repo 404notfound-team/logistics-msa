@@ -53,3 +53,6 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+slack:
+  enabled: ${SLACK_ENABLED:false}
+  webhook-url: "${SLACK_WEBHOOK_URL:}"
