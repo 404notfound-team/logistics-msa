@@ -8,6 +8,11 @@ springdoc:
 spring:
   application:
     name: gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          secret: ${JWT_SECRET}
   web:
     resources:
       add-mappings: false
