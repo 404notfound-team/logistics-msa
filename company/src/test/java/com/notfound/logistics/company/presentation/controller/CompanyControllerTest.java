@@ -218,6 +218,19 @@ class CompanyControllerTest {
     verify(companyService, never()).searchCompanies(any(), any(), any());
   }
 
+  @Test
+  void getCompaniesBeyondLastPageReturnsEmptyContent() throws Exception {
+    // 마지막 페이지를 넘긴 요청(int 최대 페이지 번호 포함)도 공통 계약대로 200과 빈 content를 반환한다.
+    given(companyService.searchCompanies(any(), any(), any()))
+        .willReturn(new PageImpl<>(List.of(), PageRequest.of(Integer.MAX_VALUE, 20), 1));
+
+    mvc.perform(get("/api/companies").param("page", "2147483647").param("size", "20"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.page").value(Integer.MAX_VALUE))
+        .andExpect(jsonPath("$.data.total_elements").value(1));
+  }
+
   // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 ID를 직접 넣은 업체를 만든다.
   private static Company savedCompany() {
     Company company = Company.of("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
