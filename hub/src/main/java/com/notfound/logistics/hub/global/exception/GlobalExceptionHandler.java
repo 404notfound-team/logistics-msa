@@ -36,12 +36,6 @@ public class GlobalExceptionHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
-  // 허브 서비스의 비즈니스 예외
-  @ExceptionHandler(HubBusinessException.class)
-  public ResponseEntity<ApiErrorResponse> business(HubBusinessException exception) {
-    return error(exception.getErrorCode());
-  }
-
   // @Valid DTO 검증 실패
   @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
   public ResponseEntity<ApiErrorResponse> validation(BindException exception) {

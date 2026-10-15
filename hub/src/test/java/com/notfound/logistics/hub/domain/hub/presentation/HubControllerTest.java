@@ -7,9 +7,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.hub.domain.hub.application.HubQueryService;
 import com.notfound.logistics.hub.domain.hub.application.dto.HubResult;
+import com.notfound.logistics.hub.domain.hub.domain.exception.HubBusinessException;
+import com.notfound.logistics.hub.domain.hub.domain.exception.HubErrorCode;
+import com.notfound.logistics.hub.domain.hub.presentation.exception.HubExceptionHandler;
 import com.notfound.logistics.hub.global.exception.GlobalExceptionHandler;
-import com.notfound.logistics.hub.global.exception.HubBusinessException;
-import com.notfound.logistics.hub.global.exception.HubErrorCode;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(HubController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, HubExceptionHandler.class})
 class HubControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -71,7 +72,7 @@ class HubControllerTest {
     mockMvc
         .perform(get("/api/hubs/{id}", id))
         .andExpect(status().isNotFound())
-        .andExpect(jsonPath("$.code").exists());
+        .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
   }
 
   @Test

@@ -12,17 +12,6 @@ class GlobalExceptionHandlerTest {
   private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
   @Test
-  void hubNotFoundUsesSharedErrorContract() {
-    ResponseEntity<ApiErrorResponse> response =
-        handler.business(new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
-
-    assertThat(response.getStatusCode().value()).isEqualTo(404);
-    assertThat(response.getBody()).isNotNull();
-    assertThat(response.getBody().code()).isEqualTo("HUB_NOT_FOUND");
-    assertThat(response.getBody().fieldErrors()).isEmpty();
-  }
-
-  @Test
   void unexpectedErrorHidesInternalDetails() {
     ResponseEntity<ApiErrorResponse> response =
         handler.unexpected(new IllegalStateException("database secret"));
