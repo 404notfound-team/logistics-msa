@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
 import com.notfound.logistics.company.application.CompanyService;
 import com.notfound.logistics.company.presentation.dto.CompanyResponse;
 import java.time.Instant;
@@ -115,7 +116,8 @@ class CompanyControllerTest {
                     """))
         .andExpect(status().isBadRequest())
         .andExpect(
-            jsonPath("$.field_errors[*].field").value(containsInAnyOrder("hub_id", "manager_user_id")));
+            jsonPath("$.field_errors[*].field")
+                .value(containsInAnyOrder("hub_id", "manager_user_id")));
 
     verify(companyService, never()).createCompany(any());
   }
