@@ -6,6 +6,7 @@ import com.notfound.logistics.company.domain.exception.CompanyError;
 /** 도메인 업무 오류(CompanyError)를 HTTP 상태와 응답 메시지로 변환한다. */
 public enum CompanyErrorCode implements ApiErrorCode {
   COMPANY_NOT_FOUND(404, "업체를 찾을 수 없습니다."),
+  PRODUCT_NOT_FOUND(404, "상품을 찾을 수 없습니다."),
   HUB_NOT_FOUND(404, "허브를 찾을 수 없습니다."),
   COMPANY_ACCESS_DENIED(403, "업체에 대한 권한이 없습니다.");
 
@@ -21,6 +22,7 @@ public enum CompanyErrorCode implements ApiErrorCode {
   public static CompanyErrorCode from(CompanyError error) {
     return switch (error) {
       case COMPANY_NOT_FOUND -> COMPANY_NOT_FOUND;
+      case PRODUCT_NOT_FOUND -> PRODUCT_NOT_FOUND;
       case HUB_NOT_FOUND -> HUB_NOT_FOUND;
       case COMPANY_ACCESS_DENIED -> COMPANY_ACCESS_DENIED;
     };
