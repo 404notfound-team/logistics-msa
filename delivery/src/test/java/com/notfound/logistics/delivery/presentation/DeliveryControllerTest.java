@@ -1,0 +1,150 @@
+package com.notfound.logistics.delivery.presentation;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.notfound.logistics.delivery.application.DeliveryQueryService;
+import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
+import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+@WebMvcTest(DeliveryController.class)
+class DeliveryControllerTest {
+  private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+  private static final UUID DEPARTURE_HUB_ID =
+      UUID.fromString("00000000-0000-0000-0000-000000000002");
+  private static final UUID DESTINATION_HUB_ID =
+      UUID.fromString("00000000-0000-0000-0000-000000000003");
+
+  @Autowired private MockMvc mockMvc;
+  @MockitoBean private DeliveryQueryService deliveryQueryService;
+
+  @Test
+  void defaultSearchUsesFirstPageAndNewestFirstWithPrimaryKeyTieBreaker() throws Exception {
+    given(deliveryQueryService.search(any(), any())).willReturn(Page.empty());
+
+    mockMvc
+        .perform(get("/api/deliveries"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.page").value(0))
+        .andExpect(jsonPath("$.data.size").value(20))
+        .andExpect(jsonPath("$.data.total_elements").value(0))
+        .andExpect(jsonPath("$.data.total_pages").value(0));
+
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    then(deliveryQueryService).should().search(any(), pageable.capture());
+    assertThat(pageable.getValue().getPageNumber()).isZero();
+    assertThat(pageable.getValue().getPageSize()).isEqualTo(20);
+    assertThat(pageable.getValue().getSort())
+        .isEqualTo(Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id")));
+  }
+
+  @Test
+  void snakeCaseFiltersAreMappedToTheSearchConditionAndResultsAreSnakeCase() throws Exception {
+    DeliveryResult result =
+        new DeliveryResult(
+            UUID.fromString("00000000-0000-0000-0000-0000000000aa"),
+            ORDER_ID,
+            DeliveryStatus.HUB_MOVING,
+            DEPARTURE_HUB_ID,
+            DESTINATION_HUB_ID,
+            "서울특별시 송파구 송파대로 55",
+            "홍길동",
+            7L,
+            Instant.parse("2026-01-01T00:00:00Z"),
+            Instant.parse("2026-01-01T01:00:00Z"));
+    given(deliveryQueryService.search(any(), any()))
+        .willReturn(new PageImpl<>(List.of(result), Pageable.ofSize(10).withPage(1), 11));
+
+    mockMvc
+        .perform(
+            get("/api/deliveries")
+                .param("order_id", ORDER_ID.toString())
+                .param("status", "HUB_MOVING")
+                .param("departure_hub_id", DEPARTURE_HUB_ID.toString())
+                .param("destination_hub_id", DESTINATION_HUB_ID.toString())
+                .param("address", " 송파 ")
+                .param("recipient_name", "홍")
+                .param("delivery_manager_id", "7")
+                .param("page", "1")
+                .param("size", "10")
+                .param("sort", "updated_at,asc"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].delivery_id").value(result.deliveryId().toString()))
+        .andExpect(jsonPath("$.data.content[0].order_id").value(ORDER_ID.toString()))
+        .andExpect(jsonPath("$.data.content[0].status").value("HUB_MOVING"))
+        .andExpect(
+            jsonPath("$.data.content[0].departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
+        .andExpect(
+            jsonPath("$.data.content[0].destination_hub_id").value(DESTINATION_HUB_ID.toString()))
+        .andExpect(jsonPath("$.data.content[0].address").value("서울특별시 송파구 송파대로 55"))
+        .andExpect(jsonPath("$.data.content[0].recipient_name").value("홍길동"))
+        .andExpect(jsonPath("$.data.content[0].delivery_manager_id").value(7))
+        .andExpect(jsonPath("$.data.content[0].created_at").value("2026-01-01T00:00:00Z"))
+        .andExpect(jsonPath("$.data.page").value(1))
+        .andExpect(jsonPath("$.data.total_elements").value(11))
+        .andExpect(jsonPath("$.data.total_pages").value(2));
+
+    ArgumentCaptor<DeliverySearchCondition> condition =
+        ArgumentCaptor.forClass(DeliverySearchCondition.class);
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    then(deliveryQueryService).should().search(condition.capture(), pageable.capture());
+    assertThat(condition.getValue())
+        .isEqualTo(
+            new DeliverySearchCondition(
+                ORDER_ID,
+                DeliveryStatus.HUB_MOVING,
+                DEPARTURE_HUB_ID,
+                DESTINATION_HUB_ID,
+                "송파",
+                "홍",
+                7L));
+    assertThat(pageable.getValue().getSort())
+        .isEqualTo(Sort.by(Sort.Order.asc("updatedAt"), Sort.Order.asc("id")));
+  }
+
+  @ParameterizedTest
+  @CsvSource({
+    "size, 0",
+    "size, 101",
+    "page, -1",
+    "order_id, not-a-uuid",
+    "status, UNKNOWN",
+    "delivery_manager_id, abc",
+    "sort, address",
+    "sort, 'created_at,sideways'",
+    "sort, 'created_at,desc,id'"
+  })
+  void invalidParametersAreRejectedWithTheCommonErrorFormat(String field, String value)
+      throws Exception {
+    mockMvc
+        .perform(get("/api/deliveries").param(field, value))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value(field))
+        .andExpect(jsonPath("$.field_errors.length()").value(1));
+    then(deliveryQueryService).should(never()).search(any(), any());
+  }
+}

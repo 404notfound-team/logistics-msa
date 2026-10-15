@@ -1,0 +1,181 @@
+package com.notfound.logistics.delivery.infra.persistence;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import com.notfound.logistics.delivery.domain.model.Delivery;
+import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
+import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
+import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
+import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+/** 운영과 같은 마이그레이션 SQL로 테이블을 만들고 ddl-auto=validate로 엔티티 매핑까지 확인한다. */
+@DataJpaTest(
+    properties = {
+      "spring.jpa.hibernate.ddl-auto=validate",
+      "spring.sql.init.mode=always",
+      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
+          + "classpath:db/migration/V1__create_p_deliveries.sql"
+    })
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
+@Import(DeliveryRepositoryAdapter.class)
+@Testcontainers(disabledWithoutDocker = true)
+class DeliveryRepositoryAdapterTest {
+  private static final UUID HUB_A = UUID.randomUUID();
+  private static final UUID HUB_B = UUID.randomUUID();
+  private static final UUID HUB_C = UUID.randomUUID();
+  private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
+  private static final Sort NEWEST_FIRST =
+      Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
+
+  @Container
+  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+
+  @Autowired private DeliveryRepository repository;
+  @Autowired private JdbcTemplate jdbc;
+
+  private UUID first;
+  private UUID second;
+  private UUID third;
+
+  @DynamicPropertySource
+  static void databaseProperties(DynamicPropertyRegistry registry) {
+    registry.add("spring.datasource.url", () -> DATABASE.getJdbcUrl() + "&currentSchema=delivery");
+    registry.add("spring.datasource.username", DATABASE::getUsername);
+    registry.add("spring.datasource.password", DATABASE::getPassword);
+  }
+
+  @BeforeEach
+  void insertFixtures() {
+    first = insert(HUB_A, HUB_B, "서울특별시 송파구 송파대로 55", "김철수", 1L, DeliveryStatus.HUB_WAITING, 1);
+    second = insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", 2L, DeliveryStatus.HUB_MOVING, 2);
+    third = insert(HUB_B, HUB_C, "대전광역시 서구 둔산로 100", "Hong", null, DeliveryStatus.DELIVERED, 3);
+    UUID deleted = insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", 1L, DeliveryStatus.HUB_WAITING, 4);
+    jdbc.update(
+        "UPDATE p_deliveries SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_id = ?",
+        Timestamp.from(BASE.plusSeconds(5)),
+        deleted);
+  }
+
+  @Test
+  void emptyConditionReturnsActiveDeliveriesNewestFirstAndCountsOnlyThem() {
+    Page<Delivery> page =
+        repository.search(condition(null, null, null, null, null, null, null), page(0, 2));
+
+    assertThat(page.getContent()).extracting(Delivery::getId).containsExactly(third, second);
+    assertThat(page.getTotalElements()).isEqualTo(3);
+    assertThat(page.getContent().getFirst().getStatus()).isEqualTo(DeliveryStatus.DELIVERED);
+    assertThat(page.getContent().getFirst().getCreatedAt()).isEqualTo(BASE.plusSeconds(3));
+  }
+
+  @Test
+  void eachFilterNarrowsTheResultAndFiltersCombineWithAnd() {
+    assertThat(ids(condition(null, null, HUB_A, null, null, null, null)))
+        .containsExactly(second, first);
+    assertThat(ids(condition(null, null, null, HUB_C, null, null, null)))
+        .containsExactly(third, second);
+    assertThat(ids(condition(null, DeliveryStatus.HUB_MOVING, null, null, null, null, null)))
+        .containsExactly(second);
+    assertThat(ids(condition(null, null, null, null, null, null, 1L))).containsExactly(first);
+    assertThat(ids(condition(null, null, HUB_A, HUB_C, null, null, 2L))).containsExactly(second);
+    assertThat(ids(condition(null, null, HUB_B, HUB_B, null, null, null))).isEmpty();
+  }
+
+  @Test
+  void orderIdMatchesExactly() {
+    UUID orderId =
+        jdbc.queryForObject(
+            "SELECT order_id FROM p_deliveries WHERE delivery_id = ?", UUID.class, second);
+    assertThat(ids(condition(orderId, null, null, null, null, null, null))).containsExactly(second);
+  }
+
+  @Test
+  void addressAndRecipientArePartialCaseInsensitiveAndTreatWildcardsLiterally() {
+    assertThat(ids(condition(null, null, null, null, "송파", null, null))).containsExactly(first);
+    assertThat(ids(condition(null, null, null, null, null, "hong", null))).containsExactly(third);
+    assertThat(ids(condition(null, null, null, null, "100%", null, null))).containsExactly(second);
+    assertThat(ids(condition(null, null, null, null, "%", null, null))).containsExactly(second);
+    assertThat(ids(condition(null, null, null, null, "_", null, null))).isEmpty();
+  }
+
+  @Test
+  void pagePastTheEndIsEmptyButKeepsTheTotal() {
+    Page<Delivery> page =
+        repository.search(condition(null, null, null, null, null, null, null), page(5, 2));
+    assertThat(page.getContent()).isEmpty();
+    assertThat(page.getTotalElements()).isEqualTo(3);
+  }
+
+  private List<UUID> ids(DeliverySearchCondition condition) {
+    return repository.search(condition, page(0, 20)).map(Delivery::getId).getContent();
+  }
+
+  private static PageRequest page(int page, int size) {
+    return PageRequest.of(page, size, NEWEST_FIRST);
+  }
+
+  private static DeliverySearchCondition condition(
+      UUID orderId,
+      DeliveryStatus status,
+      UUID departureHubId,
+      UUID destinationHubId,
+      String address,
+      String recipientName,
+      Long deliveryManagerId) {
+    return new DeliverySearchCondition(
+        orderId,
+        status,
+        departureHubId,
+        destinationHubId,
+        address,
+        recipientName,
+        deliveryManagerId);
+  }
+
+  private UUID insert(
+      UUID departureHubId,
+      UUID destinationHubId,
+      String address,
+      String recipientName,
+      Long deliveryManagerId,
+      DeliveryStatus status,
+      int createdOffsetSeconds) {
+    UUID id = UUID.randomUUID();
+    Timestamp createdAt = Timestamp.from(BASE.plusSeconds(createdOffsetSeconds));
+    jdbc.update(
+        """
+        INSERT INTO p_deliveries (
+            delivery_id, order_id, status, departure_hub_id, destination_hub_id, address,
+            recipient_name, delivery_manager_id, created_at, created_by, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'tester', ?, 'tester')
+        """,
+        id,
+        UUID.randomUUID(),
+        status.name(),
+        departureHubId,
+        destinationHubId,
+        address,
+        recipientName,
+        deliveryManagerId,
+        createdAt,
+        createdAt);
+    return id;
+  }
+}
