@@ -50,4 +50,20 @@ public class Company extends AuditEntity {
   public static Company of(String name, UUID hubId, String address, UUID managerUserId) {
     return new Company(name, hubId, address, managerUserId);
   }
+
+  public void changeName(String name) {
+    this.name = name;
+  }
+
+  public void changeAddress(String address) {
+    this.address = address;
+  }
+
+  public void moveToHub(UUID hubId) {
+    this.hubId = hubId;
+  }
+
+  public void changeManager(UUID managerUserId) {
+    this.managerUserId = managerUserId;
+  }
 }
