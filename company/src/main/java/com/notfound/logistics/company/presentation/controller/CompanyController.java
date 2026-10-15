@@ -47,53 +47,6 @@ public class CompanyController {
   private static final Sort DEFAULT_SORT =
       Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.ASC, "id"));
 
-  // Swagger 오류 응답 예시. 실제 응답과 같은 코드·메시지를 보여준다.
-  private static final String CREATE_INVALID_EXAMPLE =
-      """
-      {
-        "code": "INVALID_REQUEST",
-        "message": "요청 값이 올바르지 않습니다.",
-        "trace_id": null,
-        "field_errors": [{ "field": "hub_id", "message": "널이어서는 안됩니다" }]
-      }
-      """;
-  private static final String UPDATE_INVALID_EXAMPLE =
-      """
-      {
-        "code": "INVALID_REQUEST",
-        "message": "요청 값이 올바르지 않습니다.",
-        "trace_id": null,
-        "field_errors": [{ "field": "name", "message": "공백일 수 없습니다" }]
-      }
-      """;
-  private static final String LIST_INVALID_EXAMPLE =
-      """
-      {
-        "code": "INVALID_REQUEST",
-        "message": "요청 값이 올바르지 않습니다.",
-        "trace_id": null,
-        "field_errors": [{ "field": "size", "message": "100 이하여야 합니다" }]
-      }
-      """;
-  private static final String INVALID_ID_EXAMPLE =
-      """
-      {
-        "code": "INVALID_REQUEST",
-        "message": "요청 값이 올바르지 않습니다.",
-        "trace_id": null,
-        "field_errors": []
-      }
-      """;
-  private static final String NOT_FOUND_EXAMPLE =
-      """
-      {
-        "code": "COMPANY_NOT_FOUND",
-        "message": "업체를 찾을 수 없습니다.",
-        "trace_id": null,
-        "field_errors": []
-      }
-      """;
-
   private final CompanyService companyService;
 
   // HTTP 요청 DTO는 여기서 값으로 풀어 서비스에 넘기고, 결과 엔티티를 응답 DTO로 변환한다.
@@ -110,7 +63,7 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = CREATE_INVALID_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.CREATE_INVALID_EXAMPLE)))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<CompanyResponse>> createCompany(
@@ -135,14 +88,14 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = INVALID_ID_EXAMPLE))),
+                examples = @ExampleObject(value = ErrorExamples.INVALID_ID_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
         description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)",
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
   })
   @GetMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> getCompany(
@@ -167,7 +120,7 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = LIST_INVALID_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.LIST_INVALID_EXAMPLE)))
   })
   @GetMapping
   public ResponseEntity<ApiResponse<PageResponse<CompanyResponse>>> getCompanies(
@@ -208,14 +161,14 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = UPDATE_INVALID_EXAMPLE))),
+                examples = @ExampleObject(value = ErrorExamples.UPDATE_INVALID_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
         description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)",
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
   })
   @PatchMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
@@ -240,14 +193,14 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = INVALID_ID_EXAMPLE))),
+                examples = @ExampleObject(value = ErrorExamples.INVALID_ID_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
         description = "업체를 찾을 수 없음 (이미 삭제된 업체 포함)",
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
   })
   @DeleteMapping("/{company_id}")
   public ResponseEntity<Void> deleteCompany(
