@@ -1,10 +1,12 @@
 package com.notfound.logistics.company.presentation.controller;
 
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -120,5 +122,14 @@ class CompanyControllerTest {
                 .value(containsInAnyOrder("hub_id", "manager_user_id")));
 
     verify(companyService, never()).createCompany(any(), any(), any(), any());
+  }
+
+  @Test
+  void unsupportedMethodKeepsAllowHeader() throws Exception {
+    // 405 응답도 공통 오류 본문을 쓰되, 허용 메서드를 알려주는 Allow 헤더는 유지해야 한다.
+    mvc.perform(delete("/api/companies"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(header().string("Allow", containsString("POST")))
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
   }
 }
