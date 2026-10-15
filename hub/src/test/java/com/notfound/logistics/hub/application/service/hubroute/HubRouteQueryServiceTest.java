@@ -16,9 +16,11 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 
 class HubRouteQueryServiceTest {
   private final HubRouteRepository repository = mock(HubRouteRepository.class);
@@ -50,15 +52,18 @@ class HubRouteQueryServiceTest {
   }
 
   private void verifyNoMoreInteractionsAfterSearch(UUID from, UUID to) {
+    var pageable = ArgumentCaptor.forClass(Pageable.class);
     if (from != null && to != null) {
-      verify(repository).findByDepartureHubIdAndArrivalHubId(eq(from), eq(to), any());
+      verify(repository).findByDepartureHubIdAndArrivalHubId(eq(from), eq(to), pageable.capture());
     } else if (from != null) {
-      verify(repository).findByDepartureHubId(eq(from), any());
+      verify(repository).findByDepartureHubId(eq(from), pageable.capture());
     } else if (to != null) {
-      verify(repository).findByArrivalHubId(eq(to), any());
+      verify(repository).findByArrivalHubId(eq(to), pageable.capture());
     } else {
-      verify(repository).findAll(any(Pageable.class));
+      verify(repository).findAll(pageable.capture());
     }
+    assertThat(pageable.getValue().getSort())
+        .containsExactly(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
     verifyNoMoreInteractions(repository);
   }
 
@@ -106,6 +111,8 @@ class HubRouteQueryServiceTest {
     assertThat(result.getContent()).isEmpty();
     assertThat(result.getTotalElements()).isEqualTo(289);
     assertThat(result.getPageable().getOffset()).isEqualTo((long) page * size);
+    assertThat(result.getSort())
+        .containsExactly(Sort.Order.desc("createdAt"), Sort.Order.desc("id"));
     if (countOnly) {
       verify(repository).count();
     } else {

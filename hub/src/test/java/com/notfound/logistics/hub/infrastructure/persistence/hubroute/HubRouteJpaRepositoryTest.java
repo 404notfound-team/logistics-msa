@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.notfound.logistics.hub.application.service.hubroute.HubRouteQueryService;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,15 +49,47 @@ class HubRouteJpaRepositoryTest extends HubRouteDatabaseTestSupport {
     assertThat(repository.findByDepartureHubId(UUID.randomUUID(), page).getContent()).isEmpty();
   }
 
-  @Test
-  void sortsAndPaginatesWithoutDuplicates() {
-    var sort = Sort.by("departureHubId", "arrivalHubId");
-    var first = repository.findAll(PageRequest.of(0, 1, sort));
-    var second = repository.findAll(PageRequest.of(1, 1, sort));
-    assertThat(first.getContent().getFirst().getDepartureHubId()).isEqualTo(hub(1));
-    assertThat(first.getContent().getFirst().getArrivalHubId()).isEqualTo(hub(1));
-    assertThat(second.getContent().getFirst().getArrivalHubId()).isEqualTo(hub(2));
-    assertThat(repository.findAll(PageRequest.of(289, 1, sort)).getContent()).isEmpty();
+  @ParameterizedTest
+  @CsvSource({"false,false", "true,false", "false,true", "true,true"})
+  void serviceOrdersByCreationDescendingThenIdAcrossPages(boolean departure, boolean arrival) {
+    jdbc.update("DELETE FROM hub.p_hub_routes");
+    insertRoute(1, 1, 1, "2026-01-03T00:00:00Z");
+    insertRoute(2, 1, 2, "2026-01-01T00:00:00Z");
+    insertRoute(3, 1, 3, "2026-01-02T00:00:00Z");
+    insertRoute(4, 2, 1, "2026-01-02T00:00:00Z");
+    insertRoute(5, 3, 1, "2026-01-01T12:00:00Z");
+    insertRoute(6, 4, 4, "2025-12-31T00:00:00Z");
+    List<UUID> expected =
+        departure && arrival
+            ? List.of(hub(1))
+            : departure
+                ? List.of(hub(1), hub(3), hub(2))
+                : arrival
+                    ? List.of(hub(1), hub(4), hub(5))
+                    : List.of(hub(1), hub(4), hub(3), hub(5), hub(2), hub(6));
+    UUID from = departure ? hub(1) : null;
+    UUID to = arrival ? hub(1) : null;
+    assertThat(service.getRoutes(from, to, 0, 100).getContent())
+        .extracting(result -> result.id())
+        .containsExactlyElementsOf(expected);
+    List<UUID> paged = new ArrayList<>();
+    for (int page = 0; page < expected.size(); page++) {
+      var result = service.getRoutes(from, to, page, 1);
+      assertThat(result.getTotalElements()).isEqualTo(expected.size());
+      paged.add(result.getContent().getFirst().id());
+    }
+    assertThat(paged).containsExactlyElementsOf(expected).doesNotHaveDuplicates();
+    assertThat(service.getRoutes(from, to, expected.size(), 1).getContent()).isEmpty();
+  }
+
+  private void insertRoute(int id, int departure, int arrival, String createdAt) {
+    jdbc.update(
+        "INSERT INTO hub.p_hub_routes (id, departure_hub_id, arrival_hub_id, duration_minutes, distance_km, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, 0, 0, ?, 'test', ?, 'test')",
+        hub(id),
+        hub(departure),
+        hub(arrival),
+        java.sql.Timestamp.from(Instant.parse(createdAt)),
+        java.sql.Timestamp.from(Instant.parse(createdAt)));
   }
 
   @Test
