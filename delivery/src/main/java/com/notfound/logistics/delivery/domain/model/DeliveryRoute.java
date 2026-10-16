@@ -1,5 +1,6 @@
 package com.notfound.logistics.delivery.domain.model;
 
+import com.notfound.logistics.common.audit.AuditEntity;
 import jakarta.annotation.Nullable;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -14,13 +15,15 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
 
 /** 배송의 허브 간 이동 구간. 소속 배송을 @ManyToOne으로 참조한다. */
 @Entity
 @Table(name = "p_delivery_routes")
+@SQLRestriction("deleted_at IS NULL")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class DeliveryRoute {
+public class DeliveryRoute extends AuditEntity {
   @Id
   @Column(name = "delivery_route_id")
   private UUID id;
