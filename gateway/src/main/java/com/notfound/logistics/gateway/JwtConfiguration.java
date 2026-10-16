@@ -4,8 +4,13 @@ import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 @Configuration
@@ -14,7 +19,13 @@ public class JwtConfiguration {
   JwtDecoder jwtDecoder(
       @Value("${spring.security.oauth2.resourceserver.jwt.secret}") String secret) {
     SecretKey key = signingKey(secret);
-    return NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+    NimbusJwtDecoder decoder =
+        NimbusJwtDecoder.withSecretKey(key).macAlgorithm(MacAlgorithm.HS256).build();
+    OAuth2TokenValidator<Jwt> validators =
+        new DelegatingOAuth2TokenValidator<>(
+            JwtValidators.createDefault(), new JwtIssuerValidator("logistics-users"));
+    decoder.setJwtValidator(validators);
+    return decoder;
   }
 
   private SecretKey signingKey(String secret) {
