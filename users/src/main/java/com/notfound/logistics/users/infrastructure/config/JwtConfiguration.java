@@ -8,11 +8,30 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 @Configuration
 public class JwtConfiguration {
+  @Bean
+  JwtDecoder jwtDecoder(@Value("${users.jwt.secret}") String secret) {
+    NimbusJwtDecoder decoder =
+        NimbusJwtDecoder.withSecretKey(signingKey(secret)).macAlgorithm(MacAlgorithm.HS256).build();
+    OAuth2TokenValidator<Jwt> validators =
+        new DelegatingOAuth2TokenValidator<>(
+            JwtValidators.createDefault(), new JwtIssuerValidator("logistics-users"));
+    decoder.setJwtValidator(validators);
+    return decoder;
+  }
+
   @Bean
   JwtEncoder jwtEncoder(@Value("${users.jwt.secret}") String secret) {
     SecretKey key = signingKey(secret);

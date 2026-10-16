@@ -79,10 +79,11 @@ public class User extends AuditEntity {
       String name,
       String passwordHash,
       String slackId,
+      UserRoleEnum role,
       UUID companyId,
       UUID hubId) {
     return new User(
-        username, name, passwordHash, UserRoleEnum.USER, slackId, companyId, hubId, false);
+        username, name, passwordHash, role, slackId, companyId, hubId, false);
   }
 
   private static String requireText(String value, String fieldName) {
