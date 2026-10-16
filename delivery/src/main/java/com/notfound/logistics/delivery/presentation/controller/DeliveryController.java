@@ -88,7 +88,7 @@ class DeliveryController {
   }
 
   @Operation(summary = "배송 경로 조회", description = "id에 해당하는 배송 경로를 조회합니다")
-  @GetMapping("/api/deliveries/{id}/routes")
+  @GetMapping("/{id}/routes")
   ApiResponse<List<DeliveryRouteResponse>> searchRoutes(
       @Parameter(description = "배송 ID") @PathVariable() UUID id) {
     // TODO: 권한 검사하기
