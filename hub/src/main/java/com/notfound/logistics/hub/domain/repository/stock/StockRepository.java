@@ -31,4 +31,6 @@ public interface StockRepository {
   long countByProductId(UUID productId);
 
   long count();
+
+  Optional<Stock> findLockedByHubIdAndProductId(UUID hubId, UUID productId);
 }

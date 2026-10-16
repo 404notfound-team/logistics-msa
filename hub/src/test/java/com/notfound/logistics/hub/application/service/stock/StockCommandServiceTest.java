@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
+import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.hub.Hub;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
@@ -49,5 +50,40 @@ class StockCommandServiceTest {
     assertThat(result.hubId()).isEqualTo(hubId);
     assertThat(result.productId()).isEqualTo(productId);
     assertThat(result.quantity()).isZero();
+  }
+
+  @Test
+  void addsStockQuantity() {
+    Stock stock = Stock.create(hubId, productId, 100);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    var result = service.add(hubId, productId, 10);
+
+    assertThat(result.quantity()).isEqualTo(110);
+    assertThat(stock.getQuantity()).isEqualTo(110);
+  }
+
+  /** 재고 추가 */
+  @Test
+  void missingStockCannotBeIncreased() {
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.add(hubId, productId, 10))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
+  }
+
+  @Test
+  void stockQuantityOverflowIsRejected() {
+    Stock stock = Stock.create(hubId, productId, Long.MAX_VALUE);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    assertThatThrownBy(() -> service.add(hubId, productId, 1))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
   }
 }

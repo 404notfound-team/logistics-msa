@@ -278,4 +278,32 @@ class StockControllerTest {
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.size").value(size));
   }
+
+  @Test
+  void addStockReturnsUpdatedQuantity() throws Exception {
+    when(command.add(hubId, productId, 10))
+        .thenReturn(new StockResult(stockId, hubId, productId, 110));
+
+    mvc.perform(
+            post("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"quantity\":10}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.quantity").value(110));
+
+    verify(command).add(hubId, productId, 10);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"0", "-1", "1.5", "\"10\"", "1e3", "null", "9223372036854775808"})
+  void addStockRejectsInvalidQuantity(String quantity) throws Exception {
+    mvc.perform(
+            post("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"quantity\":" + quantity + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verifyNoInteractions(command);
+  }
 }

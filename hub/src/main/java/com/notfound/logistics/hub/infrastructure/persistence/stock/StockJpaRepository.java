@@ -2,11 +2,13 @@ package com.notfound.logistics.hub.infrastructure.persistence.stock;
 
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -31,4 +33,15 @@ public interface StockJpaRepository extends JpaRepository<Stock, UUID>, StockRep
   long countByHubId(UUID hubId);
 
   long countByProductId(UUID productId);
+
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query(
+      """
+    SELECT s
+    FROM Stock s
+    WHERE s.hubId = :hubId
+      AND s.productId = :productId
+    """)
+  Optional<Stock> findLockedByHubIdAndProductId(
+      @Param("hubId") UUID hubId, @Param("productId") UUID productId);
 }
