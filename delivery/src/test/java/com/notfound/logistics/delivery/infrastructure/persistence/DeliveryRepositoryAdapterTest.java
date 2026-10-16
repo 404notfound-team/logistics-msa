@@ -176,6 +176,26 @@ class DeliveryRepositoryAdapterTest {
   }
 
   @Test
+  void findRoutesByDeliveryIdsReturnsTheRoutesOfAllGivenDeliveriesInSequenceOrder() {
+    UUID secondOfSecond = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
+    UUID firstOfFirst = insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    UUID firstOfSecond = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, null);
+    insertRoute(third, 1, HUB_B, HUB_C, DeliveryStatus.DELIVERED, null);
+    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+
+    List<DeliveryRoute> routes =
+        repository.findRoutesByDeliveryIds(List.of(first, second, deleted));
+
+    assertThat(routes)
+        .extracting(DeliveryRoute::getId)
+        .containsExactlyInAnyOrder(firstOfFirst, firstOfSecond, secondOfSecond);
+    assertThat(routes)
+        .filteredOn(route -> route.getDelivery().getId().equals(second))
+        .extracting(DeliveryRoute::getId)
+        .containsExactly(firstOfSecond, secondOfSecond);
+  }
+
+  @Test
   void findRoutesByDeliveryIdIsEmptyForADeliveryWithoutRoutesOrADeletedOne() {
     insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
 

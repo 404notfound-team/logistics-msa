@@ -2,6 +2,7 @@ package com.notfound.logistics.delivery.domain.repository;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,4 +17,7 @@ public interface DeliveryRepository {
 
   /** 배송의 이동 구간을 sequence 순서로 읽는다. */
   List<DeliveryRoute> findRoutesByDeliveryId(UUID deliveryId);
+
+  /** 여러 배송의 이동 구간을 한 번에 sequence 순서로 읽는다. 목록 조회의 N+1을 피한다. */
+  List<DeliveryRoute> findRoutesByDeliveryIds(Collection<UUID> deliveryIds);
 }
