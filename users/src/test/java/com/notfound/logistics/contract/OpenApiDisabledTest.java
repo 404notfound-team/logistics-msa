@@ -23,6 +23,8 @@ import org.springframework.test.web.servlet.MockMvc;
       "spring.data.jpa.repositories.enabled=false",
       "users.audit.enabled=false",
       "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes",
+      "USERS_SERVICE_TOKEN=test-only-users-service-token",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
       "eureka.client.enabled=false",
       "management.tracing.enabled=false"
     })

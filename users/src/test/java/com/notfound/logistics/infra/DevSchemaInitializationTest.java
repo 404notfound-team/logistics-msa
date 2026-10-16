@@ -35,7 +35,9 @@ import org.testcontainers.utility.MountableFile;
       "springdoc.api-docs.enabled=false",
       "spring.data.jpa.repositories.enabled=false",
       "users.audit.enabled=false",
-      "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes"
+      "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes",
+      "USERS_SERVICE_TOKEN=test-only-users-service-token",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token"
     })
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)

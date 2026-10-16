@@ -112,6 +112,7 @@ public class UserService {
             .subject(user.getId().toString())
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
+            .claim("username", user.getUsername())
             .claim("role", user.getRole().name())
             .claim("is_delivery_staff", user.isDeliveryStaff())
             .build();
@@ -131,7 +132,7 @@ public class UserService {
         .map(
             user ->
                 new UserAuthorizationResponseDto(
-                    user.getId(), true, user.getRole(), user.isDeliveryStaff()))
-        .orElseGet(() -> new UserAuthorizationResponseDto(id, false, null, false));
+                    user.getId(), user.getUsername(), true, user.getRole(), user.isDeliveryStaff()))
+        .orElseGet(() -> new UserAuthorizationResponseDto(id, null, false, null, false));
   }
 }
