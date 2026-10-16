@@ -91,9 +91,7 @@ public class UserExceptionHandler {
 
   private FieldViolation toViolation(FieldError error) {
     String field =
-        "exactlyOneAffiliationProvided".equals(error.getField())
-            ? "$"
-            : toSnakeCase(error.getField());
+        error.getField().endsWith("AffiliationProvided") ? "$" : toSnakeCase(error.getField());
     String message =
         error.getDefaultMessage() == null
             ? CommonErrorCode.INVALID_REQUEST.message()
