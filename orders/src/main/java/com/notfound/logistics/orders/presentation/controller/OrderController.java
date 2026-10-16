@@ -23,6 +23,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,7 +33,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Order", description = "주문 생성·조회·취소")
+@Tag(name = "Order", description = "주문 생성·조회·취소·삭제")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/orders")
@@ -119,6 +120,14 @@ public class OrderController {
   public ResponseEntity<ApiResponse<OrderResponse>> cancel(
       @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal, @PathVariable UUID id) {
     return operation(service.cancel(id, principal.getSubject(), isMaster(principal)));
+  }
+
+  @Operation(summary = "주문 논리 삭제", description = "MASTER가 종료된 주문과 연관 배송·경로를 논리 삭제합니다.")
+  @DeleteMapping("/{id}")
+  public ResponseEntity<Void> delete(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal, @PathVariable UUID id) {
+    service.delete(id, principal.getSubject(), isMaster(principal));
+    return ResponseEntity.noContent().build();
   }
 
   private ResponseEntity<ApiResponse<OrderResponse>> operation(OrderOperationResult result) {

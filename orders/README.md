@@ -1,6 +1,6 @@
 # 주문 서비스
 
-주문 생성·조회·취소와 자동 복구를 구현합니다.
+팀 SA·구현 설계의 주문 생성·조회·취소·삭제와 자동 복구를 구현합니다.
 다른 서비스의 미구현 내부 API는 별도 로컬 HTTP Stub으로 검증합니다.
 
 ```text
@@ -30,6 +30,7 @@ JWT는 users 구현과 같은 HS256, issuer `logistics-users`, subject `username
 | `GET /api/orders/{id}` | MASTER 또는 작성자. 주문 당시 상품·가격·허브·배송 입력 반환 |
 | `GET /api/orders` | MASTER 전체 / USER 본인. 상품·상태·생성 기간·페이지·정렬 검색 |
 | `POST /api/orders/{id}/cancel` | MASTER 또는 작성자. 취소 완료 200, 취소 처리·복구 중 202, 취소 불가 409 |
+| `DELETE /api/orders/{id}` | MASTER. 연관 배송·경로 삭제 확인 후 논리 삭제 204. 연동 결과 불명 503으로 동일 요청 재시도 |
 
 JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiErrorResponse`를 사용합니다.
 목록은 현재 공통 `PageResponse`의 `content`, `page`, `size`, `total_elements`, `total_pages`를 반환합니다.
@@ -132,4 +133,4 @@ Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:180
 
 테스트는 임시 HTTP Stub과 독립 PostgreSQL 18을 사용하고 종료 시 제거합니다.
 정상·중복·동시 요청, 입력·권한·검색, 배송 실패 시 재고 유지, 차감 응답 유실 시 재차감 금지, 배송 결과의 재확인,
-취소·출발 경합의 양쪽 결과, 취소 재시도, 앱 재기동 후 자동 복구와 최초 상품·허브·감사 주체 보존을 검증합니다.
+취소·출발 경합의 양쪽 결과, 취소·삭제 재시도, 앱 재기동 후 자동 복구와 최초 상품·허브·감사 주체 보존을 검증합니다.
