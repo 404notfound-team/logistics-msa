@@ -5,6 +5,9 @@ import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * presentation -> application 의존 방향 유지를 위해 사용
+ */
 public record DeliveryResult(
     UUID deliveryId,
     UUID orderId,
