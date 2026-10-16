@@ -69,7 +69,7 @@ class CompanyControllerTest {
                     """))
         .andExpect(status().isCreated())
         .andExpect(header().string("Location", "/api/companies/" + COMPANY_ID))
-        .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data.id").value(COMPANY_ID.toString()))
         .andExpect(jsonPath("$.data.hub_id").value(HUB_ID.toString()))
         .andExpect(jsonPath("$.data.manager_user_id").value(MANAGER_ID.toString()));
   }
@@ -164,7 +164,7 @@ class CompanyControllerTest {
 
     mvc.perform(get("/api/companies/" + COMPANY_ID))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data.id").value(COMPANY_ID.toString()))
         .andExpect(jsonPath("$.data.name").value("테스트 물류업체"))
         .andExpect(jsonPath("$.data.manager_user_id").value(MANAGER_ID.toString()));
   }
@@ -196,7 +196,7 @@ class CompanyControllerTest {
 
     mvc.perform(get("/api/companies").param("name", "물류").param("hub_id", HUB_ID.toString()))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.content[0].company_id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data.content[0].id").value(COMPANY_ID.toString()))
         .andExpect(jsonPath("$.data.page").value(0))
         .andExpect(jsonPath("$.data.size").value(20))
         .andExpect(jsonPath("$.data.total_elements").value(1))
@@ -247,7 +247,7 @@ class CompanyControllerTest {
                     { "name": "변경 업체" }
                     """))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()));
+        .andExpect(jsonPath("$.data.id").value(COMPANY_ID.toString()));
 
     // 보내지 않은 필드는 null로 전달되어 서비스에서 기존 값을 유지한다.
     verify(companyService).updateCompany(eq(COMPANY_ID), eq("변경 업체"), eq(null), eq(null), eq(null));

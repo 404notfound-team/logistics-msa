@@ -73,7 +73,7 @@ public class CompanyController {
             request.name(), request.hubId(), request.address(), request.managerUserId());
     CompanyResponse response = CompanyResponse.from(company);
     // 이 서비스는 항상 Gateway를 거쳐 호출되므로 Location은 Gateway 기준 상대 경로로 준다.
-    URI location = URI.create("/api/companies/" + response.companyId());
+    URI location = URI.create("/api/companies/" + response.id());
     return ResponseEntity.created(location).body(new ApiResponse<>(response));
   }
 
