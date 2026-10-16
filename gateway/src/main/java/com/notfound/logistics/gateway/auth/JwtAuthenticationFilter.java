@@ -1,4 +1,4 @@
-package com.notfound.logistics.gateway;
+package com.notfound.logistics.gateway.auth;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
