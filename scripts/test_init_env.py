@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """실제 Compose dotenv 파서로 기존 키 보존과 빈 값 보충을 검증한다."""
 import importlib.util
+import json
 import os
 import stat
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,6 +37,30 @@ class InitEnvTest(unittest.TestCase):
         init_env.initialize(self.path)
         self.assertEqual(self.path.read_bytes(), first)
 
+    def test_compose_passes_tokens_to_callers_and_receivers(self):
+        init_env.initialize(self.path)
+        values = init_env.configured_values(self.path)
+        result = subprocess.run(
+            ["docker", "compose", "--env-file", str(self.path), "-f", str(init_env.ROOT / "compose.yml"),
+             "config", "--format", "json"], text=True, capture_output=True, check=True)
+        services = json.loads(result.stdout)["services"]
+        expected = {
+            "gateway": {"GATEWAY_SERVICE_TOKEN"},
+            "users": {"USERS_SERVICE_TOKEN", "GATEWAY_SERVICE_TOKEN"},
+            "company": {"COMPANY_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN", "USERS_SERVICE_TOKEN", "HUB_SERVICE_TOKEN"},
+            "hub": {"HUB_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN", "USERS_SERVICE_TOKEN", "COMPANY_SERVICE_TOKEN", "DELIVERY_SERVICE_TOKEN"},
+            "orders": {"ORDERS_SERVICE_TOKEN"},
+            "delivery": {"DELIVERY_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN"},
+        }
+        for service, keys in expected.items():
+            with self.subTest(service=service):
+                environment = services[service]["environment"]
+                actual = {key for key in environment if key.endswith("_SERVICE_TOKEN")}
+                self.assertEqual(actual, keys)
+                for key in keys:
+                    self.assertEqual(environment[key], values[key])
+                self.assertEqual(environment["JWT_SECRET"], values["JWT_SECRET"])
+
     def test_valid_existing_formats_are_preserved_byte_for_byte(self):
         formats = ["export {key}='{value}'", " {key} = \"{value}\" # keep", "{key}={value}"]
         for format_ in formats:
@@ -52,6 +78,25 @@ class InitEnvTest(unittest.TestCase):
         updated = self.path.read_text()
         self.assertTrue(updated.startswith(original))
         self.assertTrue(all(init_env.configured_values(self.path).values()))
+        init_env.initialize(self.path)
+        self.assertEqual(self.path.read_text(), updated)
+
+    def test_upgrade_adds_only_the_three_missing_service_tokens(self):
+        old = {key: "test-existing-" + key for key in [
+            "JWT_SECRET", "GATEWAY_SERVICE_TOKEN", "USERS_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN", "DEV_DATA_PASSWORD"]}
+        original = "COMPANY_DB_PASSWORD=keep-db-password\n" + "".join(key + "=" + value + "\n" for key, value in old.items())
+        self.path.write_text(original)
+        init_env.initialize(self.path)
+        updated = self.path.read_text()
+        self.assertTrue(updated.startswith(original))
+        values = init_env.configured_values(self.path)
+        for key, value in old.items():
+            self.assertEqual(values[key], value)
+        added = updated[len(original):].splitlines()
+        self.assertEqual({line.split("=", 1)[0] for line in added},
+                         {"HUB_SERVICE_TOKEN", "COMPANY_SERVICE_TOKEN", "DELIVERY_SERVICE_TOKEN"})
+        self.assertTrue(all(values.values()))
+        self.assertEqual(len(set(values.values())), len(values))
         init_env.initialize(self.path)
         self.assertEqual(self.path.read_text(), updated)
 
