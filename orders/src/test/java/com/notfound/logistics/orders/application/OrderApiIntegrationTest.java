@@ -43,7 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.hibernate.ddl-auto=create-drop",
       "spring.jpa.properties.hibernate.default_schema=public",
       "orders.recovery.enabled=false",
-      "orders.clients.read-timeout-ms=300",
+      "orders.clients.read-timeout-ms=1000",
       "springdoc.api-docs.enabled=true"
     })
 @Testcontainers
@@ -232,7 +232,7 @@ class OrderApiIntegrationTest {
   @Test
   void timedOutDeliveryCommitIsConfirmedByRecoveryUsingOriginalSnapshotsAndActor()
       throws Exception {
-    fault("delivery.create", Map.of("delay_after_ms", 1500));
+    fault("delivery.create", Map.of("delay_after_ms", 3000));
     UUID key = UUID.randomUUID();
     var pending = create(key, body(), alice);
     assertStatus(pending, 202);
@@ -263,7 +263,7 @@ class OrderApiIntegrationTest {
 
   @Test
   void a404AfterAnUncertainDeliveryMustNotFailTheOrder() throws Exception {
-    fault("delivery.create", Map.of("delay_before_ms", 1500));
+    fault("delivery.create", Map.of("delay_before_ms", 3000));
     var response = create(UUID.randomUUID(), body(), alice);
     assertStatus(response, 202);
     UUID id = id(response);
@@ -333,7 +333,7 @@ class OrderApiIntegrationTest {
 
   private void assertUncertainDeductionStopsWithoutRetry(String delay, long immediateStock)
       throws Exception {
-    fault("stock.deduct", Map.of(delay, 1500));
+    fault("stock.deduct", Map.of(delay, 3000));
     UUID key = UUID.randomUUID();
     var response = create(key, body(), alice);
     assertStatus(response, 503);
