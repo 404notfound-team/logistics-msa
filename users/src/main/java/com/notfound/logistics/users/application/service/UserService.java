@@ -50,7 +50,7 @@ public class UserService {
       String companyName = request.companyName().trim();
       List<CompanyLookupClient.CompanyLookupResponse> matches;
       try {
-        matches = companyLookupClient.findByName(companyName);
+        matches = companyLookupClient.findByName(companyName).data();
       } catch (FeignException exception) {
         throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
@@ -65,7 +65,7 @@ public class UserService {
       String hubName = request.hubName().trim();
       List<HubLookupClient.HubLookupResponse> matches;
       try {
-        matches = hubLookupClient.findByName(hubName);
+        matches = hubLookupClient.findByName(hubName).data();
       } catch (FeignException exception) {
         throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
