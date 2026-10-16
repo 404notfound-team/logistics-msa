@@ -212,20 +212,21 @@ class OrderApiIntegrationTest {
     assertStatus(replay, 200);
     assertThat(json(replay).at("/data/status").asText()).isEqualTo("FAILED");
     assertInventory(2, 0, 0);
-    assertThat(STUB.state().path("operations")).isEmpty();
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
   }
 
   @Test
-  void definiteDeliveryFailureRestoresExactlyTheDeductedQuantity() throws Exception {
+  void definiteDeliveryFailureDoesNotRestoreOrRepeatDeduction() throws Exception {
     fault("delivery.create", Map.of("status", 404, "code", "HUB_ROUTE_NOT_FOUND"));
     UUID key = UUID.randomUUID();
     var failure = create(key, body(), alice);
     assertStatus(failure, 502);
     assertThat(json(failure).path("code").asText()).isEqualTo("DELIVERY_CREATION_FAILED");
-    assertInventory(1000, 0, 0);
-    assertThat(STUB.state().at("/operations/0/state").asText()).isEqualTo("RESTORED");
+    assertInventory(997, 0, 0);
+    assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
+        .isEqualTo("FAILED");
     assertStatus(create(key, body(), alice), 200);
-    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
   }
 
   @Test
@@ -261,7 +262,7 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void a404AfterAnUncertainDeliveryMustNotTriggerCompensation() throws Exception {
+  void a404AfterAnUncertainDeliveryMustNotFailTheOrder() throws Exception {
     fault("delivery.create", Map.of("delay_before_ms", 1500));
     var response = create(UUID.randomUUID(), body(), alice);
     assertStatus(response, 202);
@@ -278,20 +279,75 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void recoveryKeepsCompensationIntentWhenRestoreAcknowledgementTimesOut() throws Exception {
-    fault("delivery.create", Map.of("status", 404, "code", "HUB_ROUTE_NOT_FOUND"));
-    fault("stock.restore", Map.of("delay_after_ms", 1500));
+  void deductionTimeoutAfterCommitNeverRepeatsDeduction() throws Exception {
+    assertUncertainDeductionStopsWithoutRetry("delay_after_ms", 997);
+  }
+
+  @Test
+  void deductionTimeoutBeforeCommitNeverRepeatsDeduction() throws Exception {
+    assertUncertainDeductionStopsWithoutRetry("delay_before_ms", 1000);
+  }
+
+  @Test
+  void malformedDeductionAcknowledgementsFailWithoutDeliveryOrRetry() throws Exception {
+    var missingQuantity =
+        Map.of(
+            "data",
+            Map.of(
+                "id", "00000000-0000-0000-0000-000000000003",
+                "hub_id", "00000000-0000-0000-0000-000000000002",
+                "product_id", LocalOrderStub.PRODUCT));
+    int attempts = 0;
+    for (Object response : java.util.Arrays.asList(null, Map.of(), missingQuantity)) {
+      var options = new HashMap<String, Object>();
+      options.put("response", response);
+      fault("stock.deduct", options);
+      UUID key = UUID.randomUUID();
+      var failed = create(key, body(), alice);
+      assertStatus(failed, 503);
+      assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
+          .isEqualTo("FAILED");
+      assertStatus(create(key, body(), alice), 200);
+      service.recover();
+      attempts++;
+      assertInventory(1000 - 3L * attempts, 0, 0);
+      assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(attempts);
+    }
+  }
+
+  @Test
+  void interruptedStockPhaseIsNotAutomaticallyDeductedAgain() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update(
+        "UPDATE p_orders SET status='PROCESSING', recovery_action='CREATE', last_error='STOCK_RESULT_UNKNOWN', delivery_id=null WHERE id=?",
+        id);
+    service.recover();
+    service.recover();
+    var failed = repository.findById(id).orElseThrow();
+    assertThat(failed.getStatus().name()).isEqualTo("FAILED");
+    assertThat(failed.getLastError()).isEqualTo("UPSTREAM_UNAVAILABLE");
+    assertThat(failed.getRecoveryAction()).isNull();
+    assertInventory(997, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+  }
+
+  private void assertUncertainDeductionStopsWithoutRetry(String delay, long immediateStock)
+      throws Exception {
+    fault("stock.deduct", Map.of(delay, 1500));
     UUID key = UUID.randomUUID();
     var response = create(key, body(), alice);
-    assertStatus(response, 202);
-    UUID id = id(response);
-    assertThat(repository.findById(id).orElseThrow().getLastError())
-        .isEqualTo("DELIVERY_CREATION_FAILED");
-    service.recover();
-    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("FAILED");
-    assertInventory(1000, 0, 0);
-    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
+    assertStatus(response, 503);
+    assertThat(json(response).path("code").asText()).isEqualTo("UPSTREAM_UNAVAILABLE");
+    var failed = repository.findReservedKey("alice", key).orElseThrow();
+    assertThat(failed.getStatus().name()).isEqualTo("FAILED");
+    assertInventory(immediateStock, 0, 0);
     assertStatus(create(key, body(), alice), 200);
+    service.recover();
+    STUB.awaitIdle();
+    service.recover();
+    assertInventory(997, 0, 0);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertThat(STUB.state().has("operations")).isFalse();
   }
 
   @Test

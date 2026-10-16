@@ -37,13 +37,13 @@ class OrderTest {
   }
 
   @Test
-  void uncertainRestorationPreservesKnownCompensationIntent() {
+  void recoveryPreservesUncertainDeliveryPhase() {
     Order order = order(BigDecimal.ONE, 1);
-    order.recordAttempt("DELIVERY_CREATION_FAILED");
+    order.recordAttempt("DELIVERY_RESULT_UNKNOWN");
     order.requireRecovery("UPSTREAM_UNAVAILABLE");
     assertThat(order.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
     assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
-    assertThat(order.getLastError()).isEqualTo("DELIVERY_CREATION_FAILED");
+    assertThat(order.getLastError()).isEqualTo("DELIVERY_RESULT_UNKNOWN");
   }
 
   private Order order(BigDecimal price, long quantity) {

@@ -14,8 +14,7 @@ import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Deduction;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Delivery;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.DeliveryRequest;
-import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Restoration;
-import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.StockOperation;
+import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Stock;
 import com.notfound.logistics.orders.infrastructure.client.RemoteFailure;
 import com.notfound.logistics.orders.infrastructure.client.StockClient;
 import com.notfound.logistics.orders.infrastructure.notification.SlackNotifier;
@@ -35,7 +34,6 @@ import org.springframework.stereotype.Service;
 public class OrderService {
   private static final String STOCK_UNKNOWN = "STOCK_RESULT_UNKNOWN";
   private static final String DELIVERY_UNKNOWN = "DELIVERY_RESULT_UNKNOWN";
-  private static final String DELIVERY_FAILED = "DELIVERY_CREATION_FAILED";
   private static final Set<String> DELIVERY_STATES =
       Set.of(
           "WAITING",
@@ -144,36 +142,36 @@ public class OrderService {
 
   private OrderOperationResult processCreate(UUID id) {
     Order order = load(id);
+    transactions.change(id, value -> value.recordAttempt(STOCK_UNKNOWN));
     try {
-      StockOperation stock = stockOperation(id);
-      if (DELIVERY_FAILED.equals(order.getLastError())) return compensate(order, stock);
-      if (stock != null && "RESTORED".equals(stock.state()))
-        return recovery(id, "INCONSISTENT_RESULT");
-      if (stock == null && DELIVERY_UNKNOWN.equals(order.getLastError()))
-        return recovery(id, "INCONSISTENT_RESULT");
-      if (stock == null) {
-        boolean uncertain =
-            STOCK_UNKNOWN.equals(order.getLastError())
-                || DELIVERY_UNKNOWN.equals(order.getLastError());
-        transactions.change(id, value -> value.recordAttempt(STOCK_UNKNOWN));
-        try {
-          stock =
-              stocks
-                  .deduct(
-                      new Deduction(
-                          id, order.getDepartureHubId(), order.getProductId(), order.getQuantity()))
-                  .data();
-        } catch (RemoteFailure failure) {
-          if (!uncertain && failure.status() == 409 && failure.code().equals("INSUFFICIENT_STOCK"))
-            return fail(id, OrderErrorCode.INSUFFICIENT_STOCK);
-          if (!uncertain && failure.status() == 404 && failure.code().equals("STOCK_NOT_FOUND"))
-            return fail(id, OrderErrorCode.STOCK_NOT_FOUND);
-          return recovery(id, STOCK_UNKNOWN);
-        }
-      }
-      if (!validStock(order, stock, "DEDUCTED")) return recovery(id, "INCONSISTENT_RESULT");
-      boolean uncertainDelivery = DELIVERY_UNKNOWN.equals(order.getLastError());
-      if (!uncertainDelivery) transactions.change(id, value -> value.recordAttempt(null));
+      var response =
+          stocks.deduct(
+              new Deduction(
+                  id, order.getDepartureHubId(), order.getProductId(), order.getQuantity()));
+      Stock stock = response == null ? null : response.data();
+      if (stock == null
+          || stock.id() == null
+          || !Objects.equals(stock.hubId(), order.getDepartureHubId())
+          || !Objects.equals(stock.productId(), order.getProductId())
+          || stock.quantity() == null
+          || stock.quantity() < 0) return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+    } catch (RemoteFailure failure) {
+      if (failure.status() == 409 && failure.code().equals("INSUFFICIENT_STOCK"))
+        return fail(id, OrderErrorCode.INSUFFICIENT_STOCK);
+      if (failure.status() == 404 && failure.code().equals("STOCK_NOT_FOUND"))
+        return fail(id, OrderErrorCode.STOCK_NOT_FOUND);
+      return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+    } catch (FeignException exception) {
+      // Without a stock operation record, an uncertain deduction must never be retried.
+      return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+    }
+    transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
+    return processDeliveryCreation(id, false);
+  }
+
+  private OrderOperationResult processDeliveryCreation(UUID id, boolean uncertainDelivery) {
+    Order order = load(id);
+    try {
       Delivery delivery = delivery(id);
       if (delivery == null) {
         transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
@@ -191,8 +189,7 @@ public class OrderService {
         } catch (RemoteFailure failure) {
           // A later rejection/404 cannot prove that an earlier timed-out call did not commit.
           if (!uncertainDelivery && definiteDeliveryRejection(failure)) {
-            transactions.change(id, value -> value.recordAttempt(DELIVERY_FAILED));
-            return compensate(load(id), stock);
+            return fail(id, OrderErrorCode.DELIVERY_CREATION_FAILED);
           }
           return recovery(id, DELIVERY_UNKNOWN);
         }
@@ -207,22 +204,6 @@ public class OrderService {
     } catch (RemoteFailure | FeignException exception) {
       return recovery(id, "UPSTREAM_UNAVAILABLE");
     }
-  }
-
-  private OrderOperationResult compensate(Order order, StockOperation stock) {
-    Delivery existing = delivery(order.getId());
-    if (existing != null
-        && (!validDelivery(order, existing) || !"CANCELLED".equals(existing.status())))
-      return recovery(order.getId(), "INCONSISTENT_RESULT");
-    if (stock == null) return recovery(order.getId(), "STOCK_RESULT_UNKNOWN");
-    if (!validStock(order, stock, "RESTORED")) {
-      if (!validStock(order, stock, "DEDUCTED"))
-        return recovery(order.getId(), "INCONSISTENT_RESULT");
-      stock = stocks.restore(new Restoration(order.getId())).data();
-    }
-    if (!validStock(order, stock, "RESTORED"))
-      return recovery(order.getId(), "INCONSISTENT_RESULT");
-    return fail(order.getId(), OrderErrorCode.DELIVERY_CREATION_FAILED);
   }
 
   public void recover() {
@@ -241,7 +222,9 @@ public class OrderService {
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
               if (transactions.resume(id, current.getRecoveryAction(), username)) {
-                processCreate(id);
+                if (DELIVERY_UNKNOWN.equals(current.getLastError()))
+                  processDeliveryCreation(id, true);
+                else fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
               }
               return null;
             });
@@ -262,15 +245,6 @@ public class OrderService {
     return repository.findById(id).orElseThrow(() -> business(OrderErrorCode.ORDER_NOT_FOUND));
   }
 
-  private StockOperation stockOperation(UUID id) {
-    try {
-      return stocks.operation(id).data();
-    } catch (RemoteFailure failure) {
-      if (failure.status() == 404) return null;
-      throw failure;
-    }
-  }
-
   private Delivery delivery(UUID id) {
     try {
       return deliveries.byOrder(id).data();
@@ -278,14 +252,6 @@ public class OrderService {
       if (failure.status() == 404) return null;
       throw failure;
     }
-  }
-
-  private boolean validStock(Order order, StockOperation stock, String state) {
-    return stock != null
-        && Objects.equals(stock.orderId(), order.getId())
-        && stock.stockId() != null
-        && stock.quantity() == order.getQuantity()
-        && state.equals(stock.state());
   }
 
   private boolean validDelivery(Order order, Delivery delivery) {
