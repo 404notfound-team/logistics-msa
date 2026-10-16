@@ -2,6 +2,7 @@ package com.notfound.logistics.company.domain.repository;
 
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.model.Product;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -14,6 +15,9 @@ public interface CompanyRepository {
   Optional<Company> findById(UUID id);
 
   Page<Company> search(CompanySearchCondition condition, Pageable pageable);
+
+  /** 이름이 정확히 같은 업체를 모두 찾는다. 삭제된 업체는 제외한다. */
+  List<Company> findAllByName(String name);
 
   /**
    * 업체의 상품을 페이지로 조회한다. 상품은 Company Aggregate의 내부 엔티티이므로 변경은 Company를 통해서 하고, 페이지 조회만 이 읽기 전용 조회로

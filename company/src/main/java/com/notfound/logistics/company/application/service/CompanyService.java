@@ -8,6 +8,7 @@ import com.notfound.logistics.company.domain.repository.CompanyRepository;
 import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import com.notfound.logistics.company.domain.repository.ProductSearchCondition;
 import java.time.Clock;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.AuditorAware;
@@ -50,6 +51,12 @@ public class CompanyService {
   public Page<Company> searchCompanies(String name, UUID hubId, Pageable pageable) {
     // 목록과 전체 개수는 같은 검색·삭제 제외 조건으로 조회된다.
     return companyRepository.search(new CompanySearchCondition(name, hubId), pageable);
+  }
+
+  /** 이름이 정확히 같은 업체를 찾는다(users 회원가입의 소속 업체 확인용). 같은 이름이 여럿이면 모두 돌려준다. */
+  @Transactional(readOnly = true)
+  public List<Company> findCompaniesByName(String name) {
+    return companyRepository.findAllByName(name);
   }
 
   /** null인 값은 변경하지 않는다. 변경 내용은 트랜잭션 종료 시 저장된다. */

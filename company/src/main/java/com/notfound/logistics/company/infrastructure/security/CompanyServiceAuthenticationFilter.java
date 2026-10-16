@@ -48,7 +48,7 @@ final class CompanyServiceAuthenticationFilter extends OncePerRequestFilter {
       HttpServletRequest request, HttpServletResponse response, FilterChain chain)
       throws ServletException, IOException {
     try {
-      String supplied = singleHeader(request, "X-Service-Token");
+      String supplied = singleHeader(request, "X-Service-Token", true);
       // 비어 있는 토큰은 설정되지 않은 서비스이므로 어떤 값과도 일치시키지 않는다.
       String service =
           tokens.entrySet().stream()
@@ -61,14 +61,21 @@ final class CompanyServiceAuthenticationFilter extends OncePerRequestFilter {
               .map(Map.Entry::getKey)
               .findFirst()
               .orElseThrow(() -> new BadCredentialsException("Invalid service credentials"));
-      String actor = singleHeader(request, "X-Actor-Username");
-      if (actor.length() > 100) {
+      // 로그인 전인 회원가입의 업체명 조회는 원 요청자가 없으므로 X-Actor-Username을 생략할 수 있다(공통 계약).
+      boolean signupLookup =
+          "USERS".equals(service)
+              && "GET".equals(request.getMethod())
+              && "/internal/companies".equals(request.getRequestURI());
+      String actor = singleHeader(request, "X-Actor-Username", !signupLookup);
+      if (actor != null && actor.length() > 100) {
         throw new BadCredentialsException("Invalid audit actor");
       }
       var context = SecurityContextHolder.createEmptyContext();
       context.setAuthentication(
           UsernamePasswordAuthenticationToken.authenticated(
-              actor, null, List.of(new SimpleGrantedAuthority("SERVICE_" + service))));
+              actor == null ? "" : actor,
+              null,
+              List.of(new SimpleGrantedAuthority("SERVICE_" + service))));
       SecurityContextHolder.setContext(context);
     } catch (BadCredentialsException exception) {
       SecurityContextHolder.clearContext();
@@ -83,8 +90,11 @@ final class CompanyServiceAuthenticationFilter extends OncePerRequestFilter {
   }
 
   // 같은 헤더가 여러 번 오면 어느 값을 믿을지 정할 수 없으므로 거부한다.
-  private static String singleHeader(HttpServletRequest request, String name) {
+  private static String singleHeader(HttpServletRequest request, String name, boolean required) {
     var values = Collections.list(request.getHeaders(name));
+    if (values.isEmpty() && !required) {
+      return null;
+    }
     if (values.size() != 1 || values.getFirst().isBlank()) {
       throw new BadCredentialsException("Missing or ambiguous service credentials");
     }

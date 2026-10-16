@@ -17,6 +17,7 @@ import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
@@ -106,6 +107,14 @@ class CompanyServiceTest {
         .isInstanceOf(CompanyException.class)
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+  }
+
+  @Test
+  void findCompaniesByNameReturnsExactMatchesFromRepository() {
+    Company company = Company.of("테스트 물류업체", HUB_ID, "주소", MANAGER_ID);
+    given(companyRepository.findAllByName("테스트 물류업체")).willReturn(List.of(company));
+
+    assertThat(companyService.findCompaniesByName("테스트 물류업체")).containsExactly(company);
   }
 
   @Test

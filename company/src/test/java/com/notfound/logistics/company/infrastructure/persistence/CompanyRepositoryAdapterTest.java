@@ -137,6 +137,23 @@ class CompanyRepositoryAdapterTest {
   }
 
   @Test
+  void findAllByNameMatchesExactNameOnlyAndExcludesDeleted() {
+    Company first = persist("한빛 물류", HUB_ID);
+    Company second = persist("한빛 물류", OTHER_HUB_ID);
+    persist("한빛 물류센터", HUB_ID);
+    Company deleted = persist("한빛 물류", HUB_ID);
+    deleted.markDeleted("test-user", Instant.parse("2026-10-16T00:00:00Z"));
+    entityManager.flush();
+    entityManager.clear();
+
+    // 부분 일치("한빛 물류센터")와 삭제된 업체는 제외하고, 같은 이름은 모두 돌려준다.
+    assertThat(repository.findAllByName("한빛 물류"))
+        .extracting(Company::getId)
+        .containsExactlyInAnyOrder(first.getId(), second.getId());
+    assertThat(repository.findAllByName("한빛")).isEmpty();
+  }
+
+  @Test
   void searchBeyondIntOffsetReturnsEmptyPageWithTotal() {
     persist("업체 A", HUB_ID);
     persist("업체 B", HUB_ID);
