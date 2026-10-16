@@ -15,4 +15,5 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    implementation 'org.springframework.security:spring-security-core'
 }
