@@ -16,7 +16,7 @@ public record DeliveryResponse(
     @Schema(description = "목적지 허브 ID") UUID destinationHubId,
     @Schema(description = "배송지 주소") String address,
     @Schema(description = "수령인") String recipientName,
-    @Schema(description = "업체 배송 담당 사용자 ID. 배정 전에는 null", nullable = true) UUID deliveryManagerId,
+    @Schema(description = "업체 배송 담당 사용자 ID. 배정 전에는 null", nullable = true) UUID assigneeId,
     @Schema(description = "이동 구간(sequence 오름차순)") List<DeliveryRouteResponse> routes,
     @Schema(description = "생성 시각(UTC)") Instant createdAt,
     @Schema(description = "수정 시각(UTC)") Instant updatedAt) {
@@ -29,7 +29,7 @@ public record DeliveryResponse(
         result.destinationHubId(),
         result.address(),
         result.recipientName(),
-        result.deliveryManagerId(),
+        result.assigneeId(),
         result.routes().stream().map(DeliveryRouteResponse::from).toList(),
         result.createdAt(),
         result.updatedAt());

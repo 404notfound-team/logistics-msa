@@ -16,7 +16,7 @@ public record DeliveryResult(
     UUID destinationHubId,
     String address,
     String recipientName,
-    UUID deliveryManagerId,
+    UUID assigneeId,
     List<DeliveryRouteResult> routes,
     Instant createdAt,
     Instant updatedAt) {
@@ -29,7 +29,7 @@ public record DeliveryResult(
         delivery.getDestinationHubId(),
         delivery.getAddress(),
         delivery.getRecipientName(),
-        delivery.getDeliveryManagerId(),
+        delivery.getAssigneeId(),
         routes.stream().map(DeliveryRouteResult::from).toList(),
         delivery.getCreatedAt(),
         delivery.getUpdatedAt());

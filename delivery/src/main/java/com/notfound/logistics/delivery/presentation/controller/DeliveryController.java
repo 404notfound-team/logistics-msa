@@ -52,8 +52,8 @@ class DeliveryController {
           @Size(max = 100)
           String recipientName,
       @Parameter(description = "업체 배송 담당 사용자 ID")
-          @RequestParam(name = "delivery_manager_id", required = false)
-          UUID deliveryManagerId,
+          @RequestParam(name = "assignee_id", required = false)
+          UUID assigneeId,
       @Parameter(description = "0부터 시작하는 페이지 번호") @RequestParam(defaultValue = "0") @Min(0)
           int page,
       @Parameter(description = "페이지 크기(1~100)") @RequestParam(defaultValue = "20") @Min(1) @Max(100)
@@ -63,13 +63,7 @@ class DeliveryController {
           String sort) {
     DeliverySearchCondition condition =
         new DeliverySearchCondition(
-            orderId,
-            status,
-            departureHubId,
-            destinationHubId,
-            address,
-            recipientName,
-            deliveryManagerId);
+            orderId, status, departureHubId, destinationHubId, address, recipientName, assigneeId);
     Page<DeliveryResult> result =
         deliveryQueryService.search(
             condition, PageRequest.of(page, size, DeliverySort.parse(sort)));
