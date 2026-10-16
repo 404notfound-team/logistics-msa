@@ -70,6 +70,7 @@ services:
     environment:
       <<: *app-env
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:?Set GATEWAY_SERVICE_TOKEN in .env}
     depends_on:
       eureka:
         condition: service_healthy
@@ -85,6 +86,8 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/users_db?currentSchema=users
       DB_PASSWORD: ${USERS_DB_PASSWORD:?Set USERS_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:?Set GATEWAY_SERVICE_TOKEN in .env}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
     depends_on:
       postgres:
         condition: service_healthy
