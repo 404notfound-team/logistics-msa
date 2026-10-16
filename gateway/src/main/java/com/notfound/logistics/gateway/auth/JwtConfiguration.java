@@ -1,4 +1,4 @@
-package com.notfound.logistics.gateway;
+package com.notfound.logistics.gateway.auth;
 
 import javax.crypto.SecretKey;
 import org.springframework.beans.factory.annotation.Value;
