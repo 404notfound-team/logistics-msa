@@ -120,6 +120,8 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
       DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:-}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,6 +139,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/orders_db?currentSchema=orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:-}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:-}
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     depends_on:

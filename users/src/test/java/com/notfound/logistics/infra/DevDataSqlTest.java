@@ -37,16 +37,28 @@ class DevDataSqlTest {
               MountableFile.forHostPath(ROOT.resolve("infra/postgres/01-init.sh").toString(), 0755),
               "/docker-entrypoint-initdb.d/01-init.sh")
           .withCopyFileToContainer(
-              MountableFile.forHostPath(ROOT.resolve("infra/dev-data/companies.sql").toString()),
-              "/dev-data/companies.sql");
+              MountableFile.forHostPath(
+                  ROOT.resolve("company/src/main/resources/db/seed/local-companies.sql")
+                      .toString()),
+              "/dev-data/companies.sql")
+          .withCopyFileToContainer(
+              MountableFile.forHostPath(
+                  ROOT.resolve("infra/dev-data/clear-companies.sql").toString()),
+              "/dev-data/clear-companies.sql");
 
   @BeforeEach
   void prepareCompanyTable() throws Exception {
     execute(
-        "DROP TABLE IF EXISTS company.p_companies;"
+        "DROP TABLE IF EXISTS company.p_products; DROP TABLE IF EXISTS company.p_companies;"
             + " CREATE TABLE company.p_companies ("
             + "company_id uuid PRIMARY KEY, name varchar(100) NOT NULL, hub_id uuid NOT NULL,"
             + " address varchar(255) NOT NULL, manager_user_id uuid NOT NULL,"
+            + " created_at timestamptz NOT NULL, created_by varchar(100) NOT NULL,"
+            + " updated_at timestamptz NOT NULL, updated_by varchar(100) NOT NULL,"
+            + " deleted_at timestamptz, deleted_by varchar(100));"
+            + " CREATE TABLE company.p_products (product_id uuid PRIMARY KEY,"
+            + " company_id uuid NOT NULL REFERENCES company.p_companies, name varchar(100) NOT NULL,"
+            + " description varchar(1000), price bigint NOT NULL,"
             + " created_at timestamptz NOT NULL, created_by varchar(100) NOT NULL,"
             + " updated_at timestamptz NOT NULL, updated_by varchar(100) NOT NULL,"
             + " deleted_at timestamptz, deleted_by varchar(100))");
@@ -59,6 +71,7 @@ class DevDataSqlTest {
     assertSuccess(seed(true, OTHER_MANAGER_ID));
 
     assertThat(query("SELECT count(*) FROM company.p_companies")).isEqualTo("34");
+    assertThat(query("SELECT count(*) FROM company.p_products")).isEqualTo("102");
     assertThat(query("SELECT count(DISTINCT hub_id) FROM company.p_companies")).isEqualTo("17");
     assertThat(
             query(
@@ -142,29 +155,62 @@ class DevDataSqlTest {
 
   @Test
   void missingDomainTableFailsWithoutCreatingIt() throws Exception {
-    execute("DROP TABLE company.p_companies");
+    execute("DROP TABLE company.p_products; DROP TABLE company.p_companies");
 
     ExecResult result = seed(true, MANAGER_ID);
 
     assertThat(result.getExitCode()).isNotZero();
-    assertThat(result.getStderr()).contains("start company with the local profile first");
+    assertThat(result.getStderr()).contains("does not exist");
     assertThat(query("SELECT to_regclass('company.p_companies') IS NULL")).isEqualTo("t");
+  }
+
+  @Test
+  void foreignProductRollsBackTheWholeCleanup() throws Exception {
+    assertSuccess(seed(true, MANAGER_ID));
+    execute(
+        "INSERT INTO company.p_products (product_id, company_id, name, price, created_at, created_by, updated_at, updated_by)"
+            + " VALUES ('"
+            + NORMAL_ID
+            + "', '"
+            + FIRST_ID
+            + "', 'human product', 1, now(), 'human', now(), 'human')");
+    assertThat(seed(false, "").getExitCode()).isNotZero();
+    assertThat(query("SELECT count(*) FROM company.p_companies")).isEqualTo("34");
+    assertThat(query("SELECT count(*) FROM company.p_products")).isEqualTo("103");
+  }
+
+  @Test
+  void repeatPreservesLogicalDeletionAndDoesNotRecreateItsProducts() throws Exception {
+    assertSuccess(seed(true, MANAGER_ID));
+    execute(
+        "DELETE FROM company.p_products WHERE company_id = '"
+            + FIRST_ID
+            + "';"
+            + " UPDATE company.p_companies SET deleted_at = now(), deleted_by = 'human' WHERE company_id = '"
+            + FIRST_ID
+            + "'");
+    assertSuccess(seed(true, MANAGER_ID));
+    assertThat(query("SELECT count(*) FROM company.p_products")).isEqualTo("99");
+    assertThat(
+            query(
+                "SELECT deleted_by FROM company.p_companies WHERE company_id = '" + FIRST_ID + "'"))
+        .isEqualTo("human");
   }
 
   private static ExecResult seed(boolean apply, String managerId) throws Exception {
     return DATABASE.execInContainer(
         "env",
         "PGPASSWORD=company-test-only",
+        "PGOPTIONS=-c logistics.dev_manager_user_id=" + (apply ? managerId : MANAGER_ID),
         "psql",
         "-X",
         "--host=127.0.0.1",
         "--username=company_app",
         "--dbname=company_db",
-        "--single-transaction",
         "--set=ON_ERROR_STOP=1",
         "--set=apply=" + apply,
         "--set=manager_user_id=" + managerId,
-        "--file=/dev-data/companies.sql");
+        "--file=/dev-data/" + (apply ? "companies.sql" : "clear-companies.sql"));
   }
 
   private static void insertCompany(String id, String actor) throws Exception {

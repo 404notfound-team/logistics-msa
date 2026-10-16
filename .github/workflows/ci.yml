@@ -85,6 +85,8 @@ jobs:
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Verify service boundaries and tracing
         run: python3 scripts/smoke.py
+      - name: Verify linked development scenarios
+        run: python3 scripts/check-dev-data.py
       - name: Show service status on failure
         if: failure() && steps.configure-env.outcome == 'success'
         run: |
