@@ -24,5 +24,8 @@ tasks.named('test') {
     inputs.file(rootProject.file('infra/postgres/01-init.sh'))
         .withPropertyName('postgresInitializationScript')
         .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file('infra/dev-data/companies.sql'))
+        .withPropertyName('companyDevDataSql')
+        .withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
 }
