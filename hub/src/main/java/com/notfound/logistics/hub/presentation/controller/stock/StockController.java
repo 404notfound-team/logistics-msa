@@ -5,6 +5,7 @@ import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.hub.application.dto.stock.StockResult;
 import com.notfound.logistics.hub.application.service.stock.StockCommandService;
 import com.notfound.logistics.hub.application.service.stock.StockQueryService;
+import com.notfound.logistics.hub.presentation.dto.stock.StockAddRequest;
 import com.notfound.logistics.hub.presentation.dto.stock.StockCreateRequest;
 import com.notfound.logistics.hub.presentation.dto.stock.StockResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -81,5 +82,17 @@ public class StockController {
       @PathVariable UUID hubId, @PathVariable UUID productId) {
 
     return new ApiResponse<>(StockResponse.from(stockQueryService.getStock(hubId, productId)));
+  }
+
+  @Operation(summary = "재고 추가", description = "입고된 상품의 수량을 기존 재고에 추가합니다.")
+  @PostMapping("/hubs/{hubId}/products/{productId}/stocks/add")
+  public ApiResponse<StockResponse> addStock(
+      @PathVariable UUID hubId,
+      @PathVariable UUID productId,
+      @Valid @RequestBody StockAddRequest request) {
+
+    StockResult result = stockCommandService.add(hubId, productId, request.quantity());
+
+    return new ApiResponse<>(StockResponse.from(result));
   }
 }

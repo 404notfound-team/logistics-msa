@@ -41,4 +41,19 @@ public class StockCommandService {
 
     return StockResult.from(stockRepository.saveAndFlush(stock));
   }
+
+  @Transactional
+  public StockResult add(UUID hubId, UUID productId, long quantity) {
+
+    // TODO(Users/Gateway): MASTER 권한 확인
+
+    Stock stock =
+        stockRepository
+            .findLockedByHubIdAndProductId(hubId, productId)
+            .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
+
+    stock.add(quantity);
+
+    return StockResult.from(stock);
+  }
 }
