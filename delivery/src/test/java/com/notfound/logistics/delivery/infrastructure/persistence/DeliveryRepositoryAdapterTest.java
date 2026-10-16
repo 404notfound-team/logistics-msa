@@ -34,8 +34,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
           + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__rename_p_deliveries_delivery_manager_id.sql"
+          + "classpath:db/migration/V2__create_p_delivery_routes.sql"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DeliveryRepositoryAdapter.class)
@@ -239,7 +238,7 @@ class DeliveryRepositoryAdapterTest {
         """
         INSERT INTO p_deliveries (
             delivery_id, order_id, status, departure_hub_id, destination_hub_id, address,
-            recipient_name, assignee_id, created_at, created_by, updated_at, updated_by)
+            recipient_name, delivery_manager_id, created_at, created_by, updated_at, updated_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'tester', ?, 'tester')
         """,
         id,
