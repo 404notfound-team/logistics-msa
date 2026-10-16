@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -16,6 +17,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class UserSecurityConfiguration {
   @Bean
   AuthenticationEntryPoint userAuthenticationEntryPoint(ObjectMapper objectMapper) {
@@ -23,8 +25,7 @@ public class UserSecurityConfiguration {
       response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       objectMapper.writeValue(
-          response.getOutputStream(),
-          ApiErrorResponse.of(CommonErrorCode.UNAUTHORIZED, null));
+          response.getOutputStream(), ApiErrorResponse.of(CommonErrorCode.UNAUTHORIZED, null));
     };
   }
 
@@ -39,7 +40,13 @@ public class UserSecurityConfiguration {
                 authorize
                     .requestMatchers("/api/users/signup", "/api/users/signin")
                     .permitAll()
-                    .requestMatchers("/actuator/**", "/v3/api-docs/**", "/swagger-ui/**")
+                    .requestMatchers(
+                        "/actuator/**",
+                        "/v3/api-docs",
+                        "/v3/api-docs/**",
+                        "/v3/api-docs.yaml",
+                        "/swagger-ui.html",
+                        "/swagger-ui/**")
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/internal/infra/ping")
                     .permitAll()
