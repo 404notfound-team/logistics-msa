@@ -84,8 +84,7 @@ public class Delivery extends AuditEntity {
   /**
    * 업체 배송 담당자를 배정한다. 이미 배정돼 있으면 새 담당자로 바꾼다.
    *
-   * <p>배정 규칙: 허브 대기중(HUB_WAITING)인 배송만 배정·재배정할 수 있다. 허브 이동이 시작된 뒤에는 담당자를 바꿀 수 없으며
-   * ASSIGNMENT_NOT_ALLOWED다.
+   * <p>허브 대기중(HUB_WAITING)인 배송만 배정·재배정. 허브 이동이 시작된 뒤에는 담당자를 바꿀 수 없으며 ASSIGNMENT_NOT_ALLOWED다.
    */
   public void assign(UUID assigneeId) {
     Objects.requireNonNull(assigneeId, "assigneeId");
