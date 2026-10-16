@@ -77,4 +77,13 @@ final class ErrorExamples {
         "field_errors": []
       }
       """;
+  static final String HUB_NOT_FOUND_EXAMPLE =
+      """
+      {
+        "code": "HUB_NOT_FOUND",
+        "message": "허브를 찾을 수 없습니다.",
+        "trace_id": null,
+        "field_errors": []
+      }
+      """;
 }

@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CompanyService {
   private final CompanyRepository companyRepository;
   private final AuditorAware<String> auditorAware;
+  private final HubVerifier hubVerifier;
   private final Clock clock;
 
   @Transactional
@@ -30,9 +31,7 @@ public class CompanyService {
     checkManages(requester, managerUserId);
     // TODO(users): manager_user_id가 실제 사용자인지 users 서비스로 확인할지 팀과 결정한다.
     //  - 확인한다면 users 내부 API(Feign) 호출
-    // TODO(hub): hub 서비스 내부 API(Feign)로 hub_id가 실제 존재하는 허브인지 확인한다.
-    //  - 경로·응답 형식은 hub 담당자와 합의 (예: GET /internal/hubs/{hubId})
-    //  - 없는 허브면 CompanyError.HUB_NOT_FOUND, hub 서비스 장애면 503
+    hubVerifier.verifyExists(hubId);
 
     Company company = Company.of(name, hubId, address, managerUserId);
     companyRepository.save(company);
@@ -65,7 +64,7 @@ public class CompanyService {
       company.changeAddress(address);
     }
     if (hubId != null) {
-      // TODO(hub): 변경할 허브가 실제 존재하는지 hub 서비스로 확인한다. 없으면 CompanyError.HUB_NOT_FOUND.
+      hubVerifier.verifyExists(hubId);
       company.moveToHub(hubId);
     }
     if (managerUserId != null) {

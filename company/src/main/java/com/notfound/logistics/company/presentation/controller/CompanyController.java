@@ -74,7 +74,18 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "허브를 찾을 수 없음 (HUB_NOT_FOUND)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.HUB_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "허브 서비스를 확인할 수 없음 (SERVICE_UNAVAILABLE)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<CompanyResponse>> createCompany(
@@ -191,7 +202,11 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "허브 서비스를 확인할 수 없음 (SERVICE_UNAVAILABLE)",
+        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
   })
   @PatchMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(

@@ -8,6 +8,11 @@ company:
     internal:
       # 내부 API를 호출하는 서비스의 X-Service-Token. 비어 있으면 그 서비스의 호출을 401로 거부한다.
       orders-token: "${ORDERS_SERVICE_TOKEN:}"
+  clients:
+    # 비어 있으면 Eureka에서 hub를 찾는다.
+    hub-url: "${COMPANY_HUB_URL:}"
+    # hub 내부 API를 호출할 때 보내는 company의 X-Service-Token.
+    service-token: "${COMPANY_SERVICE_TOKEN:}"
 springdoc:
   api-docs:
     enabled: false
