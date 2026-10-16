@@ -96,6 +96,14 @@ public class CompanyService {
     return findCompany(companyId).getProduct(productId);
   }
 
+  /** 업체 ID 없이 상품을 조회한다(orders 내부 API용). 없거나 삭제된 상품은 PRODUCT_NOT_FOUND다. */
+  @Transactional(readOnly = true)
+  public Product findProductById(UUID productId) {
+    return companyRepository
+        .findProductById(productId)
+        .orElseThrow(() -> new CompanyException(CompanyError.PRODUCT_NOT_FOUND));
+  }
+
   @Transactional(readOnly = true)
   public Page<Product> searchProducts(UUID companyId, String name, Pageable pageable) {
     // 없는 업체·삭제된 업체의 상품 목록은 COMPANY_NOT_FOUND로 응답한다.

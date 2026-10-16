@@ -244,6 +244,22 @@ class CompanyRepositoryAdapterTest {
   }
 
   @Test
+  void findProductByIdFindsProductAcrossCompaniesAndExcludesDeleted() {
+    Company company = persist("업체", HUB_ID);
+    Product kept = company.addProduct("유지 상품", null, 1000L);
+    Product deleted = company.addProduct("삭제 상품", null, 1000L);
+    entityManager.flush();
+    company.deleteProduct(deleted.getId(), "test-user", Instant.parse("2026-10-16T00:00:00Z"));
+    entityManager.flush();
+    entityManager.clear();
+
+    Product found = repository.findProductById(kept.getId()).orElseThrow();
+    assertThat(found.getName()).isEqualTo("유지 상품");
+    assertThat(found.getCompany().getId()).isEqualTo(company.getId());
+    assertThat(repository.findProductById(deleted.getId())).isEmpty();
+  }
+
+  @Test
   void searchProductsBeyondIntOffsetReturnsEmptyPageWithTotal() {
     Company company = persist("업체", HUB_ID);
     company.addProduct("상품", null, 1000L);

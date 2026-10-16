@@ -20,4 +20,7 @@ public interface CompanyRepository {
    * 한다. 업체 존재 여부는 호출하는 쪽에서 먼저 확인한다.
    */
   Page<Product> searchProducts(ProductSearchCondition condition, Pageable pageable);
+
+  /** 업체 ID 없이 상품 ID만으로 읽기 전용 조회한다. 다른 서비스의 내부 조회용이며, 상품 변경은 Company를 통해서 한다. */
+  Optional<Product> findProductById(UUID productId);
 }
