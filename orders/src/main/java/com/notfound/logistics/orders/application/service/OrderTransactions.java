@@ -35,9 +35,25 @@ public class OrderTransactions {
   }
 
   @Transactional
+  public boolean beginCancellation(UUID id, String actor) {
+    return repository.beginCancellation(
+            id,
+            OrderStatus.CONFIRMED,
+            OrderStatus.CANCELLING,
+            RecoveryAction.CANCEL,
+            actor,
+            Instant.now())
+        == 1;
+  }
+
+  @Transactional
   public boolean resume(UUID id, RecoveryAction action, String actor) {
     return repository.resume(
-            id, OrderStatus.RECOVERY_REQUIRED, OrderStatus.PROCESSING, actor, Instant.now())
+            id,
+            OrderStatus.RECOVERY_REQUIRED,
+            action == RecoveryAction.CREATE ? OrderStatus.PROCESSING : OrderStatus.CANCELLING,
+            actor,
+            Instant.now())
         == 1;
   }
 }

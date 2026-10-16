@@ -5,10 +5,12 @@ import com.notfound.logistics.orders.application.dto.CreateOrderCommand;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult.Outcome;
 import com.notfound.logistics.orders.application.dto.OrderResult;
+import com.notfound.logistics.orders.application.service.ActiveOrderProcessing.Operation;
 import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
+import com.notfound.logistics.orders.domain.model.RecoveryAction;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
 import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
@@ -62,7 +64,7 @@ public class OrderService {
     var reserved = repository.findReservedKey(username, command.idempotencyKey());
     if (reserved.isPresent()) return replay(reserved.get(), command);
     Order order = newOrder(command);
-    active.begin(order.getId());
+    active.begin(order.getId(), Operation.CREATE);
     try {
       try {
         transactions.insert(order);
@@ -212,6 +214,83 @@ public class OrderService {
     }
   }
 
+  public OrderOperationResult cancel(UUID id, String username, boolean master) {
+    Order order = accessible(id, username, master);
+    if (order.getStatus() == OrderStatus.CANCELLED) return operation(order, Outcome.RETURNED, null);
+    if (order.getStatus() == OrderStatus.FAILED)
+      throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    if (inProgress(order) && order.getRecoveryAction() != RecoveryAction.CANCEL)
+      throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    Operation running = active.begin(id, Operation.CANCEL);
+    while (running == Operation.RECOVER) {
+      if (active.whileRunning(
+          id,
+          Operation.RECOVER,
+          () -> {
+            if (load(id).getStatus() == OrderStatus.CONFIRMED)
+              transactions.beginCancellation(id, username);
+          })) break;
+      running = active.begin(id, Operation.CANCEL);
+    }
+    if (running != null) {
+      Order current = load(id);
+      if (current.getStatus() == OrderStatus.CANCELLED)
+        return operation(current, Outcome.RETURNED, null);
+      if (running == Operation.CANCEL || current.getRecoveryAction() == RecoveryAction.CANCEL)
+        return operation(current, Outcome.IN_PROGRESS, null);
+      throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    }
+    try {
+      if (inProgress(order)) {
+        Order current = load(id);
+        if (current.getStatus() == OrderStatus.CANCELLED)
+          return operation(current, Outcome.RETURNED, null);
+        if (current.getRecoveryAction() == RecoveryAction.CANCEL)
+          return operation(current, Outcome.IN_PROGRESS, null);
+        throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+      }
+      if (!transactions.beginCancellation(id, username)) {
+        Order current = load(id);
+        if (current.getStatus() == OrderStatus.CANCELLED)
+          return operation(current, Outcome.RETURNED, null);
+        if (current.getRecoveryAction() == RecoveryAction.CANCEL)
+          return operation(current, Outcome.IN_PROGRESS, null);
+        throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+      }
+      return processCancel(id);
+    } finally {
+      active.end(id);
+    }
+  }
+
+  private OrderOperationResult processCancel(UUID id) {
+    Order order = load(id);
+    try {
+      Delivery delivery = delivery(id);
+      if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
+      if ("WAITING".equals(delivery.status())) {
+        try {
+          delivery = deliveries.cancel(delivery.deliveryId()).data();
+        } catch (RemoteFailure failure) {
+          if (failure.status() != 409 || !failure.code().equals("DELIVERY_ALREADY_STARTED"))
+            return recovery(id, "DELIVERY_CANCELLATION_UNKNOWN");
+          delivery = delivery(id);
+        }
+      }
+      if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
+      if (!"CANCELLED".equals(delivery.status())) {
+        if ("WAITING".equals(delivery.status()))
+          return recovery(id, "DELIVERY_CANCELLATION_UNKNOWN");
+        transactions.change(id, Order::rejectCancellation);
+        return operation(load(id), Outcome.REJECTED, OrderErrorCode.ORDER_STATE_CONFLICT);
+      }
+      transactions.change(id, Order::cancel);
+      return operation(load(id), Outcome.RETURNED, null);
+    } catch (RemoteFailure | FeignException exception) {
+      return recovery(id, "UPSTREAM_UNAVAILABLE");
+    }
+  }
+
   public OrderResult get(UUID id, String username, boolean master) {
     return OrderResult.from(accessible(id, username, master));
   }
@@ -277,22 +356,27 @@ public class OrderService {
   public void recover() {
     for (Order candidate :
         repository.findTop50ByStatusInOrderByUpdatedAtAsc(
-            List.of(OrderStatus.PROCESSING, OrderStatus.RECOVERY_REQUIRED))) {
+            List.of(
+                OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED))) {
       UUID id = candidate.getId();
-      if (!active.begin(id)) continue;
+      if (active.begin(id, Operation.RECOVER) != null) continue;
       try {
-        String username = candidate.getCreatedBy();
+        Order current = load(id);
+        RecoveryAction action = current.getRecoveryAction();
+        if (action == null) continue;
+        String username =
+            action == RecoveryAction.CREATE ? current.getCreatedBy() : current.getUpdatedBy();
         auditor.runAsPersistedUser(
             username,
             () -> {
-              Order current = load(id);
-              if (current.getRecoveryAction() == null) return;
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
-              if (transactions.resume(id, current.getRecoveryAction(), username)) {
-                if (DELIVERY_UNKNOWN.equals(current.getLastError()))
-                  processDeliveryCreation(id, true);
-                else fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+              if (transactions.resume(id, action, username)) {
+                if (action == RecoveryAction.CREATE) {
+                  if (DELIVERY_UNKNOWN.equals(current.getLastError()))
+                    processDeliveryCreation(id, true);
+                  else fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+                } else processCancel(id);
               }
             });
       } catch (RuntimeException exception) {
@@ -355,7 +439,7 @@ public class OrderService {
   }
 
   private boolean inProgress(Order order) {
-    return Set.of(OrderStatus.PROCESSING, OrderStatus.RECOVERY_REQUIRED)
+    return Set.of(OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED)
         .contains(order.getStatus());
   }
 

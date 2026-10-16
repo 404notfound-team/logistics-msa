@@ -2,6 +2,7 @@ package com.notfound.logistics.orders.domain.repository;
 
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
+import com.notfound.logistics.orders.domain.model.RecoveryAction;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
@@ -17,8 +18,6 @@ import org.springframework.data.repository.query.Param;
 
 public interface OrderRepository
     extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
-  Optional<Order> findByCreatedByAndIdempotencyKey(String createdBy, UUID idempotencyKey);
-
   // Native lookup deliberately retains reserved keys, including soft-deleted orders.
   @Query(
       value = "select * from p_orders where created_by = :actor and idempotency_key = :key",
@@ -28,6 +27,18 @@ public interface OrderRepository
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select o from Order o where o.id = :id")
   Optional<Order> lockById(@Param("id") UUID id);
+
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query(
+      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, "
+          + "o.updatedBy = :actor, o.updatedAt = :now where o.id = :id and o.status = :expected and o.deletedAt is null")
+  int beginCancellation(
+      @Param("id") UUID id,
+      @Param("expected") OrderStatus expected,
+      @Param("next") OrderStatus next,
+      @Param("action") RecoveryAction action,
+      @Param("actor") String actor,
+      @Param("now") Instant now);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(

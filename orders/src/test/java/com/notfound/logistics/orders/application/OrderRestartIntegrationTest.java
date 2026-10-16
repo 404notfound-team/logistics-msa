@@ -15,6 +15,8 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 import org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext;
@@ -108,6 +110,43 @@ class OrderRestartIntegrationTest {
         assertThat(stub.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
         assertThat(stub.state().path("deliveries")).hasSize(1);
         assertThat(stub.state().path("notifications")).hasSize(1);
+        // While a request owns a CONFIRMED -> CANCELLING transition, automatic recovery must skip
+        // it.
+        stub.control(
+            Map.of(
+                "action",
+                "fault",
+                "operation",
+                "delivery.cancel",
+                "remaining",
+                1,
+                "delay_after_ms",
+                150));
+        var cancel =
+            HttpRequest.newBuilder(
+                    URI.create(
+                        "http://127.0.0.1:"
+                            + restarted.getWebServer().getPort()
+                            + "/api/orders/"
+                            + id
+                            + "/cancel"))
+                .timeout(Duration.ofSeconds(10))
+                .header("Authorization", "Bearer " + jwt)
+                .POST(HttpRequest.BodyPublishers.noBody())
+                .build();
+        var cancelled =
+            CompletableFuture.supplyAsync(
+                    () -> {
+                      try {
+                        return http.send(cancel, HttpResponse.BodyHandlers.ofString());
+                      } catch (Exception exception) {
+                        throw new IllegalStateException(exception);
+                      }
+                    })
+                .get(10, TimeUnit.SECONDS);
+        assertThat(cancelled.statusCode()).as(cancelled.body()).isEqualTo(200);
+        assertThat(stub.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+        assertThat(stub.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
       }
     }
   }

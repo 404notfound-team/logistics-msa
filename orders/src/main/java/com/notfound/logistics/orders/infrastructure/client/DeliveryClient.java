@@ -21,4 +21,7 @@ public interface DeliveryClient {
 
   @PostMapping("/internal/deliveries")
   ApiResponse<Delivery> create(@RequestBody DeliveryRequest request);
+
+  @PostMapping("/internal/deliveries/{id}/cancel")
+  ApiResponse<Delivery> cancel(@PathVariable("id") UUID id);
 }
