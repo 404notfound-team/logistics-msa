@@ -127,6 +127,32 @@ class OrderApiIntegrationTest {
   }
 
   @Test
+  void verifiedPrincipalControlsAuditAndInternalRequestsDespiteForgedIdentityHeaders()
+      throws Exception {
+    var request =
+        HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + "/api/orders"))
+            .timeout(Duration.ofSeconds(15))
+            .header("Content-Type", "application/json")
+            .header("Authorization", "Bearer " + alice)
+            .header("Idempotency-Key", UUID.randomUUID().toString())
+            .header("X-Actor-Username", "admin")
+            .header("X-User-Role", "MASTER")
+            .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body())))
+            .build();
+    try (var client = HttpClient.newHttpClient()) {
+      var response = client.send(request, HttpResponse.BodyHandlers.ofString());
+      assertStatus(response, 201);
+      var saved = repository.findById(id(response)).orElseThrow();
+      assertThat(saved.getCreatedBy()).isEqualTo("alice");
+      assertThat(saved.getUpdatedBy()).isEqualTo("alice");
+    }
+    var sent = STUB.state().path("actors");
+    assertThat(sent.path("company.get").asText()).isEqualTo("alice");
+    assertThat(sent.path("stock.deduct").asText()).isEqualTo("alice");
+    assertThat(sent.path("delivery.create").asText()).isEqualTo("alice");
+  }
+
+  @Test
   void validatesBodyHeaderTypesAndLengthsBeforeSideEffects() throws Exception {
     for (Object quantity : List.of(0, -1, 1.5, "9223372036854775808")) {
       var body = body();
@@ -363,6 +389,8 @@ class OrderApiIntegrationTest {
     assertThat(docs.at("/paths/~1api~1orders/post/responses").has("201")).isTrue();
     assertThat(docs.at("/components/securitySchemes/bearerAuth/scheme").asText())
         .isEqualTo("bearer");
+    assertThat(docs.at("/paths/~1api~1orders/post/parameters").findValuesAsText("name"))
+        .containsExactly("Idempotency-Key");
     assertThat(docs.path("paths").toString()).doesNotContain("/internal/");
     assertThat(
             jdbc.queryForObject(

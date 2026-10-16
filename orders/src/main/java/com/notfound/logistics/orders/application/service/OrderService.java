@@ -9,6 +9,7 @@ import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
+import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
 import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
 import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Deduction;
@@ -18,7 +19,6 @@ import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Stoc
 import com.notfound.logistics.orders.infrastructure.client.RemoteFailure;
 import com.notfound.logistics.orders.infrastructure.client.StockClient;
 import com.notfound.logistics.orders.infrastructure.notification.SlackNotifier;
-import com.notfound.logistics.orders.infrastructure.security.OrderActors;
 import feign.FeignException;
 import java.math.RoundingMode;
 import java.util.List;
@@ -45,15 +45,14 @@ public class OrderService {
   private final OrderRepository repository;
   private final OrderTransactions transactions;
   private final ActiveOrderProcessing active;
-  private final OrderActors actors;
+  private final OrdersAuditorAware auditor;
   private final CompanyClient companies;
   private final StockClient stocks;
   private final DeliveryClient deliveries;
   private final SlackNotifier notifications;
 
-  public OrderOperationResult create(CreateOrderCommand command) {
-    var actor = actors.require();
-    var reserved = repository.findReservedKey(actor.username(), command.idempotencyKey());
+  public OrderOperationResult create(CreateOrderCommand command, String username) {
+    var reserved = repository.findReservedKey(username, command.idempotencyKey());
     if (reserved.isPresent()) return replay(reserved.get(), command);
     Order order = newOrder(command);
     active.begin(order.getId());
@@ -61,7 +60,7 @@ public class OrderService {
       try {
         transactions.insert(order);
       } catch (DataIntegrityViolationException exception) {
-        var winner = repository.findReservedKey(actor.username(), command.idempotencyKey());
+        var winner = repository.findReservedKey(username, command.idempotencyKey());
         if (winner.isPresent()) return replay(winner.get(), command);
         throw exception;
       }
@@ -214,11 +213,11 @@ public class OrderService {
       if (!active.begin(id)) continue;
       try {
         String username = candidate.getCreatedBy();
-        actors.asPersistedActor(
+        auditor.runAsPersistedUser(
             username,
             () -> {
               Order current = load(id);
-              if (current.getRecoveryAction() == null) return null;
+              if (current.getRecoveryAction() == null) return;
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
               if (transactions.resume(id, current.getRecoveryAction(), username)) {
@@ -226,7 +225,6 @@ public class OrderService {
                   processDeliveryCreation(id, true);
                 else fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
               }
-              return null;
             });
       } catch (RuntimeException exception) {
         // A database interruption leaves persisted intent for the next bounded pass.
