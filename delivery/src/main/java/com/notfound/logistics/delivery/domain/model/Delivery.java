@@ -1,6 +1,8 @@
 package com.notfound.logistics.delivery.domain.model;
 
 import com.notfound.logistics.common.audit.AuditEntity;
+import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
+import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -79,9 +81,18 @@ public class Delivery extends AuditEntity {
     this.status = Objects.requireNonNull(status, "status");
   }
 
-  /** 업체 배송 담당자를 배정한다. 이미 배정돼 있으면 새 담당자로 바꾼다. */
+  /**
+   * 업체 배송 담당자를 배정한다. 이미 배정돼 있으면 새 담당자로 바꾼다.
+   *
+   * <p>배정 규칙: 허브 대기중(HUB_WAITING)인 배송만 배정·재배정할 수 있다. 허브 이동이 시작된 뒤에는 담당자를 바꿀 수 없으며
+   * ASSIGNMENT_NOT_ALLOWED다.
+   */
   public void assign(UUID assigneeId) {
-    this.assigneeId = Objects.requireNonNull(assigneeId, "assigneeId");
+    Objects.requireNonNull(assigneeId, "assigneeId");
+    if (status != DeliveryStatus.HUB_WAITING) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.ASSIGNMENT_NOT_ALLOWED);
+    }
+    this.assigneeId = assigneeId;
   }
 
   private static String requireText(String value, String name) {

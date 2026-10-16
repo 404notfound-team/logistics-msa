@@ -18,6 +18,7 @@ record DeliveryApiErrorCode(DeliveryErrorCode errorCode) implements ApiErrorCode
   public int httpStatus() {
     return switch (errorCode) {
       case DELIVERY_NOT_FOUND -> 404;
+      case ASSIGNMENT_NOT_ALLOWED -> 409;
     };
   }
 }
