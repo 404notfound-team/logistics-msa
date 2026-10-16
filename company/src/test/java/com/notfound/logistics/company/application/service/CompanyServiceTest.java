@@ -222,6 +222,25 @@ class CompanyServiceTest {
   }
 
   @Test
+  void findProductByIdReturnsProductWithoutCompanyId() {
+    Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
+    Product product = company.addProduct("무선 키보드", null, 35000L);
+    given(companyRepository.findProductById(PRODUCT_ID)).willReturn(Optional.of(product));
+
+    assertThat(companyService.findProductById(PRODUCT_ID)).isSameAs(product);
+  }
+
+  @Test
+  void findMissingProductByIdThrowsProductNotFound() {
+    given(companyRepository.findProductById(PRODUCT_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> companyService.findProductById(PRODUCT_ID))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.PRODUCT_NOT_FOUND);
+  }
+
+  @Test
   void updateProductChangesOnlyProvidedFields() {
     Company company = companyWithProduct();
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));

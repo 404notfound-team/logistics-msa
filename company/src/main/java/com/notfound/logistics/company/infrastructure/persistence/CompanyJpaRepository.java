@@ -2,6 +2,7 @@ package com.notfound.logistics.company.infrastructure.persistence;
 
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.model.Product;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -30,4 +31,7 @@ interface CompanyJpaRepository
       "SELECT COUNT(p) FROM Product p WHERE p.company.id = :companyId"
           + " AND LOWER(p.name) LIKE :pattern ESCAPE '\\'")
   long countProductsByName(@Param("companyId") UUID companyId, @Param("pattern") String pattern);
+
+  @Query("SELECT p FROM Product p WHERE p.id = :productId")
+  Optional<Product> findProductById(@Param("productId") UUID productId);
 }
