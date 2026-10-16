@@ -46,11 +46,11 @@ public class OrderService {
   private static final String DELIVERY_UNKNOWN = "DELIVERY_RESULT_UNKNOWN";
   private static final Set<String> DELIVERY_STATES =
       Set.of(
-          "WAITING",
-          "HUB_TRANSIT",
+          "HUB_WAITING",
+          "HUB_MOVING",
           "DESTINATION_HUB_ARRIVED",
-          "COMPANY_TRANSIT",
-          "COMPLETED",
+          "COMPANY_MOVING",
+          "DELIVERED",
           "CANCELLED");
   private final OrderRepository repository;
   private final OrderTransactions transactions;
@@ -270,7 +270,7 @@ public class OrderService {
     try {
       Delivery delivery = delivery(id);
       if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
-      if ("WAITING".equals(delivery.status())) {
+      if ("HUB_WAITING".equals(delivery.status())) {
         try {
           delivery = deliveries.cancel(delivery.deliveryId()).data();
         } catch (RemoteFailure failure) {
@@ -281,7 +281,7 @@ public class OrderService {
       }
       if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
       if (!"CANCELLED".equals(delivery.status())) {
-        if ("WAITING".equals(delivery.status()))
+        if ("HUB_WAITING".equals(delivery.status()))
           return recovery(id, "DELIVERY_CANCELLATION_UNKNOWN");
         transactions.change(id, Order::rejectCancellation);
         return operation(load(id), Outcome.REJECTED, OrderErrorCode.ORDER_STATE_CONFLICT);
@@ -400,7 +400,7 @@ public class OrderService {
           Delivery remote = delivery(id);
           if (order.getStatus() == OrderStatus.CONFIRMED
               && remote != null
-              && (!validDelivery(order, remote) || !"COMPLETED".equals(remote.status())))
+              && (!validDelivery(order, remote) || !"DELIVERED".equals(remote.status())))
             throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
           deliveries.delete(order.getDeliveryId());
         } catch (RemoteFailure failure) {

@@ -32,6 +32,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
@@ -112,6 +114,7 @@ class OrderApiIntegrationTest {
     assertStatus(first, 201);
     UUID id = id(first);
     assertThat(json(first).at("/data/status").asText()).isEqualTo("CONFIRMED");
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("HUB_WAITING");
     assertThat(first.headers().firstValue("Location")).contains("/api/orders/" + id);
     STUB.control(Map.of("action", "product", "name", "변경된 상품", "price", "20000.00"));
     STUB.control(
@@ -481,19 +484,32 @@ class OrderApiIntegrationTest {
     assertThat(STUB.state().path("restorations")).hasSize(1);
   }
 
-  @Test
-  void cancellationAfterDepartureIsRejectedAndDeletionDoesNotRestoreStock() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"HUB_MOVING", "DESTINATION_HUB_ARRIVED", "COMPANY_MOVING"})
+  void cancellationAfterDepartureIsRejectedAndDeletionDoesNotRestoreStock(String status)
+      throws Exception {
     UUID id = id(create(UUID.randomUUID(), body(), alice));
-    STUB.control(
-        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_TRANSIT"));
+    STUB.control(Map.of("action", "delivery_status", "order_id", id.toString(), "status", status));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
     assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
     STUB.control(
-        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "COMPLETED"));
+        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "DELIVERED"));
     assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
     assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
     assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
+  }
+
+  @Test
+  void deliveredOrderCannotBeCancelledAndCanBeDeleted() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    STUB.control(
+        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "DELIVERED"));
+
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
   }
 
   @Test
@@ -511,8 +527,7 @@ class OrderApiIntegrationTest {
               () -> assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1));
       assertThat(STUB.state().path("inflight").asInt()).isPositive();
       assertThat(
-              STUB.status(
-                  "PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_TRANSIT")))
+              STUB.status("PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_MOVING")))
           .isEqualTo(200);
       assertStatus(cancellation.get(5, TimeUnit.SECONDS), 202);
     }
@@ -520,7 +535,7 @@ class OrderApiIntegrationTest {
     service.recover();
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
-    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("HUB_TRANSIT");
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("HUB_MOVING");
     assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
     assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
   }
@@ -542,8 +557,7 @@ class OrderApiIntegrationTest {
                       .isEqualTo("CANCELLED"));
       assertThat(STUB.state().path("inflight").asInt()).isPositive();
       assertThat(
-              STUB.status(
-                  "PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_TRANSIT")))
+              STUB.status("PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_MOVING")))
           .isEqualTo(409);
       assertStatus(cancellation.get(5, TimeUnit.SECONDS), 202);
     }
@@ -561,7 +575,7 @@ class OrderApiIntegrationTest {
     fault("delivery.cancel", Map.of("delay_before_ms", 3000));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
     assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
-    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("WAITING");
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("HUB_WAITING");
     service.recover();
     STUB.awaitIdle();
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
@@ -995,7 +1009,7 @@ class OrderApiIntegrationTest {
         .isEqualTo("RECOVERY_REQUIRED");
     if (departed)
       STUB.control(
-          Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_TRANSIT"));
+          Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_MOVING"));
     var staleRead = new CountDownLatch(1);
     var proceed = new CountDownLatch(1);
     doAnswer(
