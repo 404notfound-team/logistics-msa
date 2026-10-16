@@ -1,10 +1,17 @@
 package com.notfound.logistics.orders.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.orders.OrdersApplication;
+import com.notfound.logistics.orders.application.service.ActiveOrderProcessing;
+import com.notfound.logistics.orders.application.service.ActiveOrderProcessing.Operation;
 import com.notfound.logistics.orders.application.service.OrderService;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import com.notfound.logistics.orders.support.LocalOrderStub;
@@ -18,8 +25,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +39,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -57,7 +67,8 @@ class OrderApiIntegrationTest {
   static final LocalOrderStub STUB = new LocalOrderStub();
   @LocalServerPort int port;
   @Autowired ObjectMapper mapper;
-  @Autowired OrderRepository repository;
+  @MockitoSpyBean OrderRepository repository;
+  @MockitoSpyBean ActiveOrderProcessing active;
   @Autowired OrderService service;
   @Autowired JdbcTemplate jdbc;
   String alice;
@@ -188,6 +199,7 @@ class OrderApiIntegrationTest {
     assertStatus(create(UUID.randomUUID(), body(), expired), 401);
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     assertStatus(request("GET", "/api/orders/" + id, null, bob, null), 403);
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, bob, null), 403);
     assertStatus(request("GET", "/api/orders/" + id, null, admin, null), 200);
     assertInventory(997, 1, 1);
   }
@@ -376,6 +388,100 @@ class OrderApiIntegrationTest {
   }
 
   @Test
+  void cancellationCompletesOnlyAfterDeliveryCancellation() throws Exception {
+    UUID key = UUID.randomUUID();
+    UUID id = id(create(key, body(), alice));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    assertInventory(997, 1, 1);
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("CANCELLED");
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  void cancellationAfterDepartureIsRejectedWithoutRestoringStock() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    STUB.control(
+        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_TRANSIT"));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
+  }
+
+  @Test
+  void departureWinningConcurrentCancellationNeverRestoresStock() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    String deliveryId = STUB.state().at("/deliveries/0/delivery_id").asText();
+    fault("delivery.cancel", Map.of("delay_before_ms", 3000));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var cancellation =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+      await()
+          .atMost(Duration.ofSeconds(3))
+          .untilAsserted(
+              () -> assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1));
+      assertThat(STUB.state().path("inflight").asInt()).isPositive();
+      assertThat(
+              STUB.status(
+                  "PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_TRANSIT")))
+          .isEqualTo(200);
+      assertStatus(cancellation.get(5, TimeUnit.SECONDS), 202);
+    }
+    STUB.awaitIdle();
+    service.recover();
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("HUB_TRANSIT");
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
+  }
+
+  @Test
+  void cancellationWinningConcurrentDepartureCompletesWithoutChangingStock() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    String deliveryId = STUB.state().at("/deliveries/0/delivery_id").asText();
+    fault("delivery.cancel", Map.of("delay_after_ms", 3000));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var cancellation =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+      await()
+          .atMost(Duration.ofSeconds(3))
+          .untilAsserted(
+              () ->
+                  assertThat(STUB.state().at("/deliveries/0/status").asText())
+                      .isEqualTo("CANCELLED"));
+      assertThat(STUB.state().path("inflight").asInt()).isPositive();
+      assertThat(
+              STUB.status(
+                  "PATCH", "/api/deliveries/" + deliveryId, Map.of("status", "HUB_TRANSIT")))
+          .isEqualTo(409);
+      assertStatus(cancellation.get(5, TimeUnit.SECONDS), 202);
+    }
+    STUB.awaitIdle();
+    service.recover();
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  void cancellationTimeoutRemainsPendingUntilAcknowledgedCancellation() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault("delivery.cancel", Map.of("delay_before_ms", 3000));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("WAITING");
+    service.recover();
+    STUB.awaitIdle();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertInventory(997, 1, 1);
+  }
+
+  @Test
   void searchAppliesTheSameOwnerFiltersToContentAndCountsAndValidatesPaging() throws Exception {
     create(UUID.randomUUID(), body(), alice);
     create(UUID.randomUUID(), body(), alice);
@@ -448,7 +554,8 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void validatesReferenceExistenceAndSupplierOwnership() throws Exception {
+  void validatesReferenceExistenceSupplierOwnershipAndRejectsCancelBeforeConfirmation()
+      throws Exception {
     var invalid = body();
     invalid.put("supplier_company_id", UUID.randomUUID().toString());
     assertStatus(create(UUID.randomUUID(), invalid, alice), 404);
@@ -461,6 +568,10 @@ class OrderApiIntegrationTest {
     invalid.put("supplier_company_id", LocalOrderStub.RECEIVER);
     assertStatus(create(UUID.randomUUID(), invalid, alice), 409);
     assertThat(repository.count()).isZero();
+    fault("delivery.create", Map.of("delay_after_ms", 3000));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
   }
 
   @Test
@@ -484,6 +595,287 @@ class OrderApiIntegrationTest {
         "UPDATE p_orders SET deleted_at=current_timestamp, deleted_by='admin' WHERE id=?", id);
     assertStatus(request("GET", "/api/orders/" + id, null, alice, null), 404);
     assertStatus(request("GET", "/api/orders/" + id, null, admin, null), 404);
+  }
+
+  @Test
+  void overlappingCancellationBeforeTransitionReturnsAccepted() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    var owned = new CountDownLatch(1);
+    var proceed = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              Object running = invocation.callRealMethod();
+              if (running == null) {
+                owned.countDown();
+                assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+              }
+              return running;
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.CANCEL));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var first =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+      try {
+        assertThat(owned.await(5, TimeUnit.SECONDS)).isTrue();
+        assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+      } finally {
+        proceed.countDown();
+      }
+      assertStatus(first.get(10, TimeUnit.SECONDS), 200);
+    }
+    assertInventory(997, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  void overlappingCancellationAfterTerminalCommitReturnsSuccess() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    var owned = new CountDownLatch(1);
+    var staleRead = new CountDownLatch(1);
+    var proceed = new CountDownLatch(1);
+    var terminal = new CountDownLatch(1);
+    var release = new CountDownLatch(1);
+    var attempts = new AtomicInteger();
+    doAnswer(
+            invocation -> {
+              if (attempts.incrementAndGet() == 1) {
+                Object running = invocation.callRealMethod();
+                owned.countDown();
+                assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+                return running;
+              }
+              staleRead.countDown();
+              assertThat(terminal.await(5, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.CANCEL));
+    doAnswer(
+            invocation -> {
+              terminal.countDown();
+              assertThat(release.await(5, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(active)
+        .end(id);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var first =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+      try {
+        assertThat(owned.await(5, TimeUnit.SECONDS)).isTrue();
+        var second =
+            executor.submit(
+                () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+        assertThat(staleRead.await(5, TimeUnit.SECONDS)).isTrue();
+        proceed.countDown();
+        assertStatus(second.get(10, TimeUnit.SECONDS), 200);
+      } finally {
+        proceed.countDown();
+        release.countDown();
+      }
+      assertStatus(first.get(10, TimeUnit.SECONDS), 200);
+    }
+    assertInventory(997, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  void cancellationAfterRecoveryCompletedAndReleasedReturnsSuccess() throws Exception {
+    assertCancellationAfterRecoveryReleased(false);
+  }
+
+  @Test
+  void cancellationAfterDepartureRecoveryReleasedReturnsConflict() throws Exception {
+    assertCancellationAfterRecoveryReleased(true);
+  }
+
+  @Test
+  void cancellationDuringStaleRecoveryClaimIsPersistedAndCompleted() throws Exception {
+    assertCancellationWhileRecoveryOwnsConfirmedOrder(true);
+  }
+
+  @Test
+  void cancellationBeforeCreationRecoveryReleasesIsPersistedAndCompleted() throws Exception {
+    assertCancellationWhileRecoveryOwnsConfirmedOrder(false);
+  }
+
+  @Test
+  void cancellationRespectsReplacementOwnerAfterRecoveryReleases() throws Exception {
+    assertCancellationAfterRecoveryOwnerChanges(true);
+  }
+
+  @Test
+  void cancellationClaimsIdleOrderAfterRecoveryReleases() throws Exception {
+    assertCancellationAfterRecoveryOwnerChanges(false);
+  }
+
+  @Test
+  void staleCreationCandidatePreservesCurrentCancellationActor() throws Exception {
+    fault("delivery.create", Map.of("delay_after_ms", 3000));
+    var created = create(UUID.randomUUID(), body(), alice);
+    assertStatus(created, 202);
+    UUID id = id(created);
+    var stale = repository.findById(id).orElseThrow();
+    STUB.awaitIdle();
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    fault("delivery.cancel", Map.of("delay_after_ms", 3000));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, admin, null), 202);
+    STUB.awaitIdle();
+    doReturn(List.of(stale))
+        .when(repository)
+        .findTop50ByStatusInOrderByUpdatedAtAsc(anyCollection());
+    service.recover();
+    var cancelled = repository.findById(id).orElseThrow();
+    assertThat(cancelled.getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(cancelled.getUpdatedBy()).isEqualTo("admin");
+    assertThat(STUB.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+  }
+
+  private void assertCancellationAfterRecoveryOwnerChanges(boolean replacementOwner)
+      throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertThat(active.begin(id, Operation.RECOVER)).isNull();
+    doAnswer(
+            invocation -> {
+              var running = (Operation) invocation.callRealMethod();
+              if (running == Operation.RECOVER) {
+                active.end(id);
+                if (replacementOwner) assertThat(active.begin(id, Operation.DELETE)).isNull();
+              }
+              return running;
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.CANCEL));
+    try {
+      assertStatus(
+          request("POST", "/api/orders/" + id + "/cancel", null, admin, null),
+          replacementOwner ? 409 : 200);
+      var order = repository.findById(id).orElseThrow();
+      assertThat(order.getStatus().name()).isEqualTo(replacementOwner ? "CONFIRMED" : "CANCELLED");
+      assertThat(order.getRecoveryAction()).isNull();
+      assertThat(order.getUpdatedBy()).isEqualTo(replacementOwner ? "alice" : "admin");
+      assertThat(STUB.state().at("/counts/delivery.cancel").asInt())
+          .isEqualTo(replacementOwner ? 0 : 1);
+      assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+      assertInventory(997, 1, 1);
+    } finally {
+      if (replacementOwner) active.end(id);
+    }
+  }
+
+  private void assertCancellationWhileRecoveryOwnsConfirmedOrder(boolean staleCandidate)
+      throws Exception {
+    fault("delivery.create", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    var created = create(UUID.randomUUID(), body(), alice);
+    assertStatus(created, 202);
+    UUID id = id(created);
+    var candidate = repository.findById(id).orElseThrow();
+    if (staleCandidate) {
+      service.recover();
+      doReturn(List.of(candidate))
+          .when(repository)
+          .findTop50ByStatusInOrderByUpdatedAtAsc(anyCollection());
+    }
+    var paused = new CountDownLatch(1);
+    var proceed = new CountDownLatch(1);
+    if (staleCandidate) {
+      doAnswer(
+              invocation -> {
+                Object running = invocation.callRealMethod();
+                if (running == null) {
+                  paused.countDown();
+                  assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+                }
+                return running;
+              })
+          .when(active)
+          .begin(eq(id), eq(Operation.RECOVER));
+    } else {
+      doAnswer(
+              invocation -> {
+                paused.countDown();
+                assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+                return invocation.callRealMethod();
+              })
+          .when(active)
+          .end(id);
+    }
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var recovery = executor.submit(service::recover);
+      try {
+        assertThat(paused.await(5, TimeUnit.SECONDS)).isTrue();
+        assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+        var accepted = request("POST", "/api/orders/" + id + "/cancel", null, admin, null);
+        assertStatus(accepted, 202);
+        assertThat(json(accepted).at("/data/status").asText()).isEqualTo("CANCELLING");
+        assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+        var pending = repository.findById(id).orElseThrow();
+        assertThat(pending.getRecoveryAction().name()).isEqualTo("CANCEL");
+        assertThat(pending.getUpdatedBy()).isEqualTo("admin");
+        assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isZero();
+        assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
+      } finally {
+        proceed.countDown();
+      }
+      recovery.get(10, TimeUnit.SECONDS);
+    }
+    service.recover();
+    var cancelled = repository.findById(id).orElseThrow();
+    assertThat(cancelled.getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(cancelled.getRecoveryAction()).isNull();
+    assertThat(cancelled.getUpdatedBy()).isEqualTo("admin");
+    assertThat(STUB.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
+    assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+  }
+
+  private void assertCancellationAfterRecoveryReleased(boolean departed) throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault("delivery.cancel", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name())
+        .isEqualTo("RECOVERY_REQUIRED");
+    if (departed)
+      STUB.control(
+          Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_TRANSIT"));
+    var staleRead = new CountDownLatch(1);
+    var proceed = new CountDownLatch(1);
+    doAnswer(
+            invocation -> {
+              staleRead.countDown();
+              assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+              return invocation.callRealMethod();
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.CANCEL));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var cancellation =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, alice, null));
+      try {
+        assertThat(staleRead.await(5, TimeUnit.SECONDS)).isTrue();
+        service.recover();
+        assertThat(repository.findById(id).orElseThrow().getStatus().name())
+            .isEqualTo(departed ? "CONFIRMED" : "CANCELLED");
+        int deliveryLookups = STUB.state().at("/counts/delivery.get").asInt();
+        proceed.countDown();
+        assertStatus(cancellation.get(10, TimeUnit.SECONDS), departed ? 409 : 200);
+        assertThat(STUB.state().at("/counts/delivery.get").asInt()).isEqualTo(deliveryLookups);
+      } finally {
+        proceed.countDown();
+      }
+    }
+    assertInventory(997, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(departed ? 1 : 2);
   }
 
   private Map<String, Object> body() {

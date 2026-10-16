@@ -1,6 +1,6 @@
 # 주문 서비스
 
-주문 생성·자동 복구와 상세·목록·검색을 구현합니다.
+주문 생성·조회·취소와 자동 복구를 구현합니다.
 다른 서비스의 미구현 내부 API는 별도 로컬 HTTP Stub으로 검증합니다.
 
 ```text
@@ -29,6 +29,7 @@ JWT는 users 구현과 같은 HS256, issuer `logistics-users`, subject `username
 | `POST /api/orders` | 로그인 사용자. `Idempotency-Key` UUID 필수. 최초 확정 201, 종료된 동일 요청 200, 처리·복구 중 202 |
 | `GET /api/orders/{id}` | MASTER 또는 작성자. 주문 당시 상품·가격·허브·배송 입력 반환 |
 | `GET /api/orders` | MASTER 전체 / USER 본인. 상품·상태·생성 기간·페이지·정렬 검색 |
+| `POST /api/orders/{id}/cancel` | MASTER 또는 작성자. 취소 완료 200, 취소 처리·복구 중 202, 취소 불가 409 |
 
 JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiErrorResponse`를 사용합니다.
 목록은 현재 공통 `PageResponse`의 `content`, `page`, `size`, `total_elements`, `total_pages`를 반환합니다.
@@ -40,7 +41,8 @@ JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiEr
 
 ```text
 생성: PROCESSING → CONFIRMED / FAILED / RECOVERY_REQUIRED
-복구: RECOVERY_REQUIRED → 저장된 CREATE 흐름 재개
+취소: CONFIRMED → CANCELLING → CANCELLED / CONFIRMED / RECOVERY_REQUIRED
+복구: RECOVERY_REQUIRED → 저장된 CREATE/CANCEL 흐름 재개
 ```
 
 - 최초 상품명·단가·허브·배송 입력을 고정합니다. 생성 입력의 주소·수령인·요청사항은 앞뒤 공백을 제거하고 빈 요청사항은 null로 정규화합니다.
@@ -49,6 +51,7 @@ JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiEr
 - 차감은 신규 주문에서 한 번만 호출합니다. 응답 유실·5xx·잘못된 응답 또는 차감 단계의 앱 중단은 FAILED로 종료하며 자동 재차감하지 않습니다. FAILED는 재고 미차감을 보장하지 않습니다. 동일 키는 기존 주문을 반환하고 새 키도 안전한 재시도 수단이 아닙니다.
 - 차감 성공을 저장한 뒤에는 배송만 복구합니다. 타임아웃·5xx 이후의 조회 404로 이전 생성 실패를 확정하지 않으며, 저장한 입력으로 멱등 배송 요청·결과 확인을 이어갑니다.
 - 배송 생성 실패가 확정되면 502와 FAILED로 끝냅니다. 재고 차감 결과 불명은 503과 FAILED로 끝냅니다.
+- 취소는 배송 CANCELLED 확인으로 완료합니다. 재고 작업 이력 조회·복원 호출은 하지 않습니다.
 - 실패·취소 후 차감 재고는 남습니다. 복원 조정은 향후 메시징 연동에서 구현하고 실제 수량 변경은 허브가 담당합니다. 메시징은 현재 미구현이며, 차감 결과 불명은 별도 확인이 필요합니다.
 - 5초마다 최대 50건을 확인합니다. 진행 중인 처리는 건너뛰며, 조건부 상태 갱신으로 복구를 시작합니다. 로컬 Compose의 **orders 단일 인스턴스**를 전제로 합니다.
 - `last_error`에는 정해진 결과 불명·실패 코드만 저장합니다. 응답·비밀값·외부 예외 메시지는 저장하지 않습니다.
@@ -129,4 +132,4 @@ Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:180
 
 테스트는 임시 HTTP Stub과 독립 PostgreSQL 18을 사용하고 종료 시 제거합니다.
 정상·중복·동시 요청, 입력·권한·검색, 배송 실패 시 재고 유지, 차감 응답 유실 시 재차감 금지, 배송 결과의 재확인,
-앱 재기동 후 자동 복구와 최초 상품·허브·감사 주체 보존을 검증합니다.
+취소·출발 경합의 양쪽 결과, 취소 재시도, 앱 재기동 후 자동 복구와 최초 상품·허브·감사 주체 보존을 검증합니다.

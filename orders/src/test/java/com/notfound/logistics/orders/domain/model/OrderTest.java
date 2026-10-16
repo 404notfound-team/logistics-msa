@@ -25,6 +25,7 @@ class OrderTest {
     Order order = order(BigDecimal.ZERO, 1);
     assertThat(order.getStatus()).isEqualTo(OrderStatus.PROCESSING);
     assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
+    assertThatThrownBy(order::cancel).isInstanceOf(OrderBusinessException.class);
     assertThatThrownBy(() -> order.confirm(null)).isInstanceOf(OrderBusinessException.class);
     UUID delivery = UUID.randomUUID();
     order.confirm(delivery);

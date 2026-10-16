@@ -188,6 +188,16 @@ public class Order extends AuditEntity {
     if (lastError == null) lastError = code;
   }
 
+  public void cancel() {
+    require(OrderStatus.CANCELLING);
+    finish(OrderStatus.CANCELLED);
+  }
+
+  public void rejectCancellation() {
+    require(OrderStatus.CANCELLING);
+    finish(OrderStatus.CONFIRMED);
+  }
+
   private void finish(OrderStatus next) {
     status = next;
     recoveryAction = null;

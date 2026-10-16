@@ -32,7 +32,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Tag(name = "Order", description = "주문 생성·조회")
+@Tag(name = "Order", description = "주문 생성·조회·취소")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/orders")
@@ -112,6 +112,13 @@ public class OrderController {
             result.page(),
             result.size(),
             result.totalElements()));
+  }
+
+  @Operation(summary = "주문 취소", description = "배송 취소 완료를 확인한 뒤 주문을 취소합니다.")
+  @PostMapping("/{id}/cancel")
+  public ResponseEntity<ApiResponse<OrderResponse>> cancel(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal, @PathVariable UUID id) {
+    return operation(service.cancel(id, principal.getSubject(), isMaster(principal)));
   }
 
   private ResponseEntity<ApiResponse<OrderResponse>> operation(OrderOperationResult result) {
