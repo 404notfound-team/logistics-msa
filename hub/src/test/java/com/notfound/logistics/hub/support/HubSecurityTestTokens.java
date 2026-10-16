@@ -3,7 +3,6 @@ package com.notfound.logistics.hub.support;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.UUID;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -22,9 +21,7 @@ public final class HubSecurityTestTokens {
   public static JwtClaimsSet.Builder claims(String username, String role) {
     return JwtClaimsSet.builder()
         .issuer("logistics-users")
-        .subject(userId(username).toString())
-        .claim("username", username)
-        .claim("is_delivery_staff", false)
+        .subject(username)
         .issuedAt(Instant.now())
         .expiresAt(Instant.now().plusSeconds(300))
         .claim("role", role);
@@ -32,10 +29,6 @@ public final class HubSecurityTestTokens {
 
   public static String token(String username, String role) {
     return sign(claims(username, role).build(), SECRET);
-  }
-
-  public static UUID userId(String username) {
-    return UUID.nameUUIDFromBytes(username.getBytes(StandardCharsets.UTF_8));
   }
 
   public static String sign(JwtClaimsSet claims, String secret) {

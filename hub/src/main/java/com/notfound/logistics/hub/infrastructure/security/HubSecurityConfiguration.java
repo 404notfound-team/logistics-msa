@@ -7,7 +7,6 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.UUID;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
@@ -19,15 +18,12 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
-import org.springframework.security.oauth2.jwt.MappedJwtClaimSetConverter;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
@@ -154,46 +150,21 @@ public class HubSecurityConfiguration {
         NimbusJwtDecoder.withSecretKey(new SecretKeySpec(bytes, "HmacSHA256"))
             .macAlgorithm(MacAlgorithm.HS256)
             .build();
-    var claimsConverter = MappedJwtClaimSetConverter.withDefaults(Map.of());
-    decoder.setClaimSetConverter(
-        claims -> {
-          // 기본 변환기가 누락된 iat를 추론하기 전에 원본 토큰의 필수값을 확인한다.
-          if (claims.get("iat") == null)
-            throw new BadJwtException("JWT issued-at claim is required");
-          return claimsConverter.convert(claims);
-        });
     decoder.setJwtValidator(
         new DelegatingOAuth2TokenValidator<>(
-            jwt ->
-                "JWT".equals(jwt.getHeaders().get("typ"))
-                    ? OAuth2TokenValidatorResult.success()
-                    : OAuth2TokenValidatorResult.failure(
-                        new OAuth2Error("invalid_token", "JWT type is required", null)),
             new JwtTimestampValidator(Duration.ZERO),
             new JwtIssuerValidator("logistics-users"),
             new JwtClaimValidator<Instant>("exp", Objects::nonNull),
-            new JwtClaimValidator<Instant>("iat", Objects::nonNull),
-            new JwtClaimValidator<Object>("sub", HubSecurityConfiguration::isUserId),
             new JwtClaimValidator<Object>(
-                "username",
+                "sub",
                 value ->
                     value instanceof String username
                         && !username.isBlank()
                         && username.length() <= 100),
-            new JwtClaimValidator<Object>("is_delivery_staff", value -> value instanceof Boolean),
             new JwtClaimValidator<Object>(
                 "role",
                 value -> value instanceof String role && Set.of("USER", "MASTER").contains(role))));
     return decoder;
-  }
-
-  private static boolean isUserId(Object value) {
-    if (!(value instanceof String id)) return false;
-    try {
-      return UUID.fromString(id).toString().equalsIgnoreCase(id);
-    } catch (IllegalArgumentException exception) {
-      return false;
-    }
   }
 
   private HttpSecurity stateless(HttpSecurity http) throws Exception {

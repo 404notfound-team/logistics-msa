@@ -122,8 +122,7 @@ class HubSecurityIntegrationTest {
                     .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
                     .header("X-User-Role", "MASTER"))
             .andExpect(status().isOk())
-            .andExpect(
-                jsonPath("$.user_id").value(HubSecurityTestTokens.userId("alice").toString()))
+            .andExpect(jsonPath("$.user_id").value("alice"))
             .andExpect(jsonPath("$.audit").value("alice"))
             .andExpect(jsonPath("$.authorities[0]").value("ROLE_USER"))
             .andExpect(header().doesNotExist("Set-Cookie"))
@@ -194,72 +193,65 @@ class HubSecurityIntegrationTest {
 
   static Stream<String> invalidTokens() {
     var claims = HubSecurityTestTokens.claims("alice", "USER");
-    return Stream.concat(
-        Stream.of(
-            "invalid",
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER").build(),
-                "another-test-only-signing-key-32-bytes"),
-            HubSecurityTestTokens.sign(
-                claims.issuer("another-service").build(), HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .issuedAt(Instant.now().minusSeconds(120))
-                    .expiresAt(Instant.now().minusSeconds(60))
-                    .build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .notBefore(Instant.now().plusSeconds(60))
-                    .build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("exp"))
-                    .build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("sub"))
-                    .build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.token(" ", "USER"),
-            HubSecurityTestTokens.token("x".repeat(101), "USER"),
-            HubSecurityTestTokens.token("alice", "ADMIN"),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("role"))
-                    .build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER").claim("role", 1).build(),
-                HubSecurityTestTokens.SECRET),
-            HubSecurityTestTokens.sign(
-                HubSecurityTestTokens.claims("alice", "USER").build(),
-                HubSecurityTestTokens.SECRET,
-                JwsHeader.with(MacAlgorithm.HS256).build())),
-        Stream.of(
-                HubSecurityTestTokens.claims("alice", "USER").subject("alice").build(),
-                HubSecurityTestTokens.claims("alice", "USER").subject("1-1-1-1-1").build(),
-                HubSecurityTestTokens.claims("alice", "USER").subject("not-a-uuid").build(),
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("username"))
-                    .build(),
-                HubSecurityTestTokens.claims("alice", "USER").claim("username", 1).build(),
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("is_delivery_staff"))
-                    .build(),
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claim("is_delivery_staff", "false")
-                    .build(),
-                HubSecurityTestTokens.claims("alice", "USER").claim("is_delivery_staff", 0).build(),
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claim("role", List.of("USER"))
-                    .build(),
-                HubSecurityTestTokens.claims("alice", "USER")
-                    .claims(values -> values.remove("iat"))
-                    .build())
-            .map(invalid -> HubSecurityTestTokens.sign(invalid, HubSecurityTestTokens.SECRET)));
+    return Stream.of(
+        "invalid",
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER").build(),
+            "another-test-only-signing-key-32-bytes"),
+        HubSecurityTestTokens.sign(
+            claims.issuer("another-service").build(), HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER")
+                .issuedAt(Instant.now().minusSeconds(120))
+                .expiresAt(Instant.now().minusSeconds(60))
+                .build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER")
+                .notBefore(Instant.now().plusSeconds(60))
+                .build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER")
+                .claims(values -> values.remove("exp"))
+                .build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER")
+                .claims(values -> values.remove("sub"))
+                .build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.token("", "USER"),
+        HubSecurityTestTokens.token(" ", "USER"),
+        HubSecurityTestTokens.token("x".repeat(101), "USER"),
+        HubSecurityTestTokens.token("alice", "ADMIN"),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER")
+                .claims(values -> values.remove("role"))
+                .build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER").claim("role", 1).build(),
+            HubSecurityTestTokens.SECRET),
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("alice", "USER").claim("role", List.of("USER")).build(),
+            HubSecurityTestTokens.SECRET));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"minimal", "without-iat", "without-typ"})
+  void ordersJwtContractDoesNotRequireAdditionalHubClaims(String variant) throws Exception {
+    var claims = HubSecurityTestTokens.claims("alice", "USER");
+    if (variant.equals("without-iat")) claims.claims(values -> values.remove("iat"));
+    var header = JwsHeader.with(MacAlgorithm.HS256);
+    if (!variant.equals("without-typ")) header.type("JWT");
+    String token =
+        HubSecurityTestTokens.sign(claims.build(), HubSecurityTestTokens.SECRET, header.build());
+    mvc.perform(get("/api/hubs/security-fixture").header("Authorization", "Bearer " + token))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.user_id").value("alice"))
+        .andExpect(jsonPath("$.audit").value("alice"))
+        .andExpect(jsonPath("$.authorities[0]").value("ROLE_USER"));
   }
 
   @ParameterizedTest
@@ -299,7 +291,7 @@ class HubSecurityIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"users,401", "company,403", "delivery,403", "orders,201"})
+  @CsvSource({"users,401", "company,403", "delivery,403", "orders,200"})
   void onlyOrdersCanDeductAndMustProvideAnActor(String caller, int expected) throws Exception {
     String token =
         switch (caller) {
@@ -318,7 +310,7 @@ class HubSecurityIntegrationTest {
             .content(deductionBody());
     if (!caller.equals("users")) request.header("X-Actor-Username", "alice");
     mvc.perform(request).andExpect(status().is(expected));
-    if (expected != 201) verifyNoInteractions(commands);
+    if (expected != 200) verifyNoInteractions(commands);
   }
 
   @ParameterizedTest
@@ -420,22 +412,21 @@ class HubSecurityIntegrationTest {
     } else if (bearer.equals("invalid")) {
       request.header("Authorization", "Bearer invalid");
     }
-    mvc.perform(request).andExpect(status().isCreated());
+    mvc.perform(request).andExpect(status().isOk());
   }
 
   @Test
-  void uuidSubjectAndDeliveryStaffFlagDoNotGrantMasterPermissions() throws Exception {
-    String subject = "4c7c4c0f-94fb-40d2-b467-5ccaecc9de3e";
+  void additionalClaimsDoNotOverrideSubjectOrGrantMasterPermissions() throws Exception {
     String token =
         HubSecurityTestTokens.sign(
             HubSecurityTestTokens.claims("alice", "USER")
-                .subject(subject)
+                .claim("username", "admin")
                 .claim("is_delivery_staff", true)
                 .build(),
             HubSecurityTestTokens.SECRET);
     mvc.perform(get("/api/hubs/security-fixture").header("Authorization", "Bearer " + token))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.user_id").value(subject))
+        .andExpect(jsonPath("$.user_id").value("alice"))
         .andExpect(jsonPath("$.audit").value("alice"));
     mvc.perform(post("/api/stocks").header("Authorization", "Bearer " + token))
         .andExpect(status().isForbidden());

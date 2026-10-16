@@ -323,7 +323,7 @@ class StockControllerTest {
   }
 
   @Test
-  void deductStockReturnsCreated() throws Exception {
+  void deductStockReturnsCurrentStockInOrdersResponseFormat() throws Exception {
     UUID orderId = UUID.randomUUID();
 
     when(command.deduct(hubId, productId, 10))
@@ -344,11 +344,14 @@ class StockControllerTest {
             authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-        .andExpect(jsonPath("$.data.stock_id").value(stockId.toString()))
-        .andExpect(jsonPath("$.data.quantity").value(10))
-        .andExpect(jsonPath("$.data.state").value("DEDUCTED"));
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(stockId.toString()))
+        .andExpect(jsonPath("$.data.hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.product_id").value(productId.toString()))
+        .andExpect(jsonPath("$.data.quantity").value(90))
+        .andExpect(jsonPath("$.data.order_id").doesNotExist())
+        .andExpect(jsonPath("$.data.stock_id").doesNotExist())
+        .andExpect(jsonPath("$.data.state").doesNotExist());
 
     verify(command).deduct(hubId, productId, 10);
   }
@@ -539,8 +542,8 @@ class StockControllerTest {
             authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(deductionBody(orderId, String.valueOf(Long.MAX_VALUE))))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.data.quantity").value(Long.MAX_VALUE));
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.quantity").value(0));
 
     verify(command).deduct(hubId, productId, Long.MAX_VALUE);
   }

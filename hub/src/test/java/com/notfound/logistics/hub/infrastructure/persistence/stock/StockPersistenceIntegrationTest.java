@@ -101,10 +101,10 @@ class StockPersistenceIntegrationTest {
     var userToken = HubSecurityTestTokens.token("customer", "USER");
     var creatorToken = HubSecurityTestTokens.token("creator", "MASTER");
     var managerToken = HubSecurityTestTokens.token("manager", "MASTER");
-    var missingUsernameToken =
+    var missingSubjectToken =
         HubSecurityTestTokens.sign(
             HubSecurityTestTokens.claims("creator", "MASTER")
-                .claims(values -> values.remove("username"))
+                .claims(values -> values.remove("sub"))
                 .build(),
             HubSecurityTestTokens.SECRET);
     SecurityContextHolder.clearContext();
@@ -112,7 +112,7 @@ class StockPersistenceIntegrationTest {
         .andExpect(status().isUnauthorized());
     mvc.perform(
             post("/api/stocks")
-                .header("Authorization", "Bearer " + missingUsernameToken)
+                .header("Authorization", "Bearer " + missingSubjectToken)
                 .header("X-Actor-Username", "forged")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(creation))
@@ -135,8 +135,6 @@ class StockPersistenceIntegrationTest {
     UUID stockId = query.getStock(hubId, product).id();
     var created = jdbc.queryForMap("SELECT * FROM hub.p_stocks WHERE id = ?", stockId);
     assertThat(created.get("created_by")).isEqualTo("creator");
-    assertThat(created.get("created_by"))
-        .isNotEqualTo(HubSecurityTestTokens.userId("creator").toString());
     assertThat(created.get("updated_by")).isEqualTo("creator");
     mvc.perform(
             post(addition)
@@ -189,7 +187,7 @@ class StockPersistenceIntegrationTest {
                 .header("X-Actor-Username", "customer")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(deduction))
-        .andExpect(status().isCreated());
+        .andExpect(status().isOk());
     var deducted = jdbc.queryForMap("SELECT * FROM hub.p_stocks WHERE id = ?", stockId);
     assertThat(deducted.get("quantity")).isEqualTo(95L);
     assertThat(deducted.get("created_by")).isEqualTo("creator");
@@ -635,11 +633,12 @@ class StockPersistenceIntegrationTest {
             authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-        .andExpect(jsonPath("$.data.stock_id").value(created.id().toString()))
-        .andExpect(jsonPath("$.data.quantity").value(30))
-        .andExpect(jsonPath("$.data.state").value("DEDUCTED"));
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(created.id().toString()))
+        .andExpect(jsonPath("$.data.hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.product_id").value(productId.toString()))
+        .andExpect(jsonPath("$.data.quantity").value(70))
+        .andExpect(jsonPath("$.data.state").doesNotExist());
 
     Long quantity =
         jdbc.queryForObject(
