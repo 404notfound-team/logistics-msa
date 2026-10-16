@@ -1,5 +1,14 @@
 server:
   port: 8080
+hub:
+  jwt:
+    secret: ${JWT_SECRET:}
+  security:
+    internal:
+      orders-token: ${ORDERS_SERVICE_TOKEN:}
+      users-token: ${USERS_SERVICE_TOKEN:}
+      company-token: ${COMPANY_SERVICE_TOKEN:}
+      delivery-token: ${DELIVERY_SERVICE_TOKEN:}
 springdoc:
   api-docs:
     enabled: false

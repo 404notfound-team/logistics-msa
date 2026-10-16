@@ -1,0 +1,206 @@
+package com.notfound.logistics.hub.infrastructure.security;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.BadJwtException;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
+import org.springframework.security.oauth2.jwt.MappedJwtClaimSetConverter;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
+
+@Configuration(proxyBeanMethods = false)
+@ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
+public class HubSecurityConfiguration {
+  @Bean
+  HubSecurityErrorHandler hubSecurityErrorHandler(ObjectMapper mapper) {
+    return new HubSecurityErrorHandler(mapper);
+  }
+
+  @Bean
+  @Order(1)
+  SecurityFilterChain hubInternalSecurityFilterChain(
+      HttpSecurity http,
+      HubSecurityErrorHandler errors,
+      @Value("${hub.security.internal.orders-token:}") String orders,
+      @Value("${hub.security.internal.users-token:}") String users,
+      @Value("${hub.security.internal.company-token:}") String company,
+      @Value("${hub.security.internal.delivery-token:}") String delivery)
+      throws Exception {
+    var filter =
+        new HubServiceAuthenticationFilter(
+            Map.of("ORDERS", orders, "USERS", users, "COMPANY", company, "DELIVERY", delivery),
+            errors);
+    return stateless(http)
+        .securityMatcher(
+            "/internal/hubs",
+            "/internal/hubs/**",
+            "/internal/hub-routes",
+            "/internal/hub-routes/**",
+            "/internal/stocks",
+            "/internal/stocks/**")
+        .addFilterBefore(filter, AnonymousAuthenticationFilter.class)
+        .exceptionHandling(
+            handler -> handler.authenticationEntryPoint(errors).accessDeniedHandler(errors))
+        .authorizeHttpRequests(
+            requests ->
+                requests
+                    .requestMatchers(HttpMethod.GET, "/internal/hubs")
+                    .hasAuthority("SERVICE_USERS")
+                    .requestMatchers(HttpMethod.GET, "/internal/hubs/*/stocks/*")
+                    .hasAuthority("SERVICE_ORDERS")
+                    .requestMatchers(HttpMethod.GET, "/internal/hubs/*")
+                    .hasAnyAuthority("SERVICE_USERS", "SERVICE_COMPANY")
+                    .requestMatchers(HttpMethod.GET, "/internal/hub-routes")
+                    .hasAuthority("SERVICE_DELIVERY")
+                    .requestMatchers(HttpMethod.POST, "/internal/stocks/deductions")
+                    .hasAuthority("SERVICE_ORDERS")
+                    .anyRequest()
+                    .denyAll())
+        .build();
+  }
+
+  @Bean
+  @Order(2)
+  SecurityFilterChain hubExternalSecurityFilterChain(
+      HttpSecurity http, JwtDecoder hubJwtDecoder, HubSecurityErrorHandler errors)
+      throws Exception {
+    var authorities = new JwtGrantedAuthoritiesConverter();
+    authorities.setAuthoritiesClaimName("role");
+    authorities.setAuthorityPrefix("ROLE_");
+    var authentication = new JwtAuthenticationConverter();
+    authentication.setJwtGrantedAuthoritiesConverter(authorities);
+    return stateless(http)
+        .securityMatcher("/api/**")
+        .exceptionHandling(
+            handler -> handler.authenticationEntryPoint(errors).accessDeniedHandler(errors))
+        .authorizeHttpRequests(
+            requests ->
+                requests
+                    .requestMatchers(
+                        HttpMethod.POST, "/api/stocks", "/api/hubs/*/products/*/stocks/add")
+                    .hasRole("MASTER")
+                    .anyRequest()
+                    .authenticated())
+        .oauth2ResourceServer(
+            resource ->
+                resource
+                    .authenticationEntryPoint(errors)
+                    .jwt(
+                        jwt ->
+                            jwt.decoder(hubJwtDecoder).jwtAuthenticationConverter(authentication)))
+        .build();
+  }
+
+  @Bean
+  @Order(3)
+  SecurityFilterChain hubInfrastructureSecurityFilterChain(
+      HttpSecurity http, HubSecurityErrorHandler errors) throws Exception {
+    return stateless(http)
+        .exceptionHandling(
+            handler -> handler.authenticationEntryPoint(errors).accessDeniedHandler(errors))
+        .authorizeHttpRequests(
+            requests ->
+                requests
+                    .requestMatchers(
+                        HttpMethod.GET,
+                        "/actuator/health",
+                        "/actuator/health/**",
+                        "/v3/api-docs",
+                        "/v3/api-docs/**",
+                        "/internal/infra/ping")
+                    .permitAll()
+                    .anyRequest()
+                    .denyAll())
+        .build();
+  }
+
+  @Bean
+  JwtDecoder hubJwtDecoder(@Value("${hub.jwt.secret:}") String secret) {
+    if (secret.isBlank()) {
+      return token -> {
+        throw new BadJwtException("JWT authentication is not configured");
+      };
+    }
+    byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (bytes.length < 32)
+      throw new IllegalStateException("JWT_SECRET requires at least 32 UTF-8 bytes");
+    var decoder =
+        NimbusJwtDecoder.withSecretKey(new SecretKeySpec(bytes, "HmacSHA256"))
+            .macAlgorithm(MacAlgorithm.HS256)
+            .build();
+    var claimsConverter = MappedJwtClaimSetConverter.withDefaults(Map.of());
+    decoder.setClaimSetConverter(
+        claims -> {
+          // 기본 변환기가 누락된 iat를 추론하기 전에 원본 토큰의 필수값을 확인한다.
+          if (claims.get("iat") == null)
+            throw new BadJwtException("JWT issued-at claim is required");
+          return claimsConverter.convert(claims);
+        });
+    decoder.setJwtValidator(
+        new DelegatingOAuth2TokenValidator<>(
+            jwt ->
+                "JWT".equals(jwt.getHeaders().get("typ"))
+                    ? OAuth2TokenValidatorResult.success()
+                    : OAuth2TokenValidatorResult.failure(
+                        new OAuth2Error("invalid_token", "JWT type is required", null)),
+            new JwtTimestampValidator(Duration.ZERO),
+            new JwtIssuerValidator("logistics-users"),
+            new JwtClaimValidator<Instant>("exp", Objects::nonNull),
+            new JwtClaimValidator<Instant>("iat", Objects::nonNull),
+            new JwtClaimValidator<Object>("sub", HubSecurityConfiguration::isUserId),
+            new JwtClaimValidator<Object>(
+                "username",
+                value ->
+                    value instanceof String username
+                        && !username.isBlank()
+                        && username.length() <= 100),
+            new JwtClaimValidator<Object>("is_delivery_staff", value -> value instanceof Boolean),
+            new JwtClaimValidator<Object>(
+                "role",
+                value -> value instanceof String role && Set.of("USER", "MASTER").contains(role))));
+    return decoder;
+  }
+
+  private static boolean isUserId(Object value) {
+    if (!(value instanceof String id)) return false;
+    try {
+      return UUID.fromString(id).toString().equalsIgnoreCase(id);
+    } catch (IllegalArgumentException exception) {
+      return false;
+    }
+  }
+
+  private HttpSecurity stateless(HttpSecurity http) throws Exception {
+    return http.csrf(AbstractHttpConfigurer::disable)
+        .logout(AbstractHttpConfigurer::disable)
+        .requestCache(AbstractHttpConfigurer::disable)
+        .sessionManagement(
+            session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+  }
+}

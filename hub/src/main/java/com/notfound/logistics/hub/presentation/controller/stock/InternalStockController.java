@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/internal/hubs/{hubId}/stocks")
-// TODO(Users/Gateway): 서비스 간 인증 구현 후 허용된 주문 서비스만 내부 조회를 호출하도록 검증한다.
 public class InternalStockController {
   private final StockQueryService query;
 
