@@ -99,6 +99,31 @@ class DeliveryQueryServiceTest {
         .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
   }
 
+  @Test
+  void searchRoutesReturnsTheRoutesOfAnExistingDeliveryInSequenceOrder() {
+    UUID deliveryId = UUID.randomUUID();
+    Delivery delivery = delivery(deliveryId);
+    DeliveryRoute first = route(delivery, 1);
+    DeliveryRoute second = route(delivery, 2);
+    given(deliveryRepository.findById(deliveryId)).willReturn(Optional.of(delivery));
+    given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of(first, second));
+
+    assertThat(service.searchRoutes(deliveryId))
+        .containsExactly(DeliveryRouteResult.from(first), DeliveryRouteResult.from(second));
+  }
+
+  @Test
+  void searchRoutesOfAnUnknownDeliveryFailsWithDeliveryNotFoundWithoutReadingRoutes() {
+    UUID deliveryId = UUID.randomUUID();
+    given(deliveryRepository.findById(deliveryId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.searchRoutes(deliveryId))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
+    then(deliveryRepository).should(never()).findRoutesByDeliveryId(any());
+  }
+
   private static Delivery delivery(UUID id) {
     Delivery delivery = mock(Delivery.class);
     given(delivery.getId()).willReturn(id);
