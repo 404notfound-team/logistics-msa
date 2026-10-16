@@ -121,6 +121,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
       DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:-}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:-}
       ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:-}
     depends_on:
       postgres:

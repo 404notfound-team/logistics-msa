@@ -21,7 +21,7 @@ from pathlib import Path
 
 path = Path('.env')
 text = path.read_text()
-for key in ['JWT_SECRET', 'ORDERS_SERVICE_TOKEN']:
+for key in ['JWT_SECRET', 'GATEWAY_SERVICE_TOKEN', 'USERS_SERVICE_TOKEN', 'ORDERS_SERVICE_TOKEN']:
     pattern = re.compile(r'^' + key + r'=(.*)$', re.MULTILINE)
     match = pattern.search(text)
     if match and match.group(1).strip() not in ['', '""', "''"]:
