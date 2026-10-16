@@ -1,5 +1,8 @@
 server:
   port: 8080
+gateway:
+  # Users 내부 API 호출 시 X-Service-Token으로 보내는 Gateway 서비스 인증값입니다.
+  service-token: ${GATEWAY_SERVICE_TOKEN}
 springdoc:
   api-docs:
     enabled: false
