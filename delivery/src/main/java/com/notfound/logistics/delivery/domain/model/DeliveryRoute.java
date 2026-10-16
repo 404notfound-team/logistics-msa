@@ -15,13 +15,17 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.SQLRestriction;
 
-/** 배송의 허브 간 이동 구간. 소속 배송을 @ManyToOne으로 참조하되 물리 FK는 만들지 않는다. 같은 배송 안에서 순서(sequence)는 중복될 수 없다. */
+/**
+ * 배송의 허브 간 이동 구간. 소속 배송을 @ManyToOne으로 참조하되 물리 FK는 만들지 않는다. 같은 배송 안에서 순서(sequence)는 중복될 수 없다. 순서는 1
+ * 이상, 예상 거리·시간은 0 이상이다.
+ */
 @Entity
 @Table(
     name = "p_delivery_routes",
@@ -89,12 +93,37 @@ public class DeliveryRoute extends AuditEntity {
       @Nullable UUID assigneeId) {
     this.id = id;
     this.delivery = delivery;
-    this.sequence = sequence;
+    this.sequence = requireAtLeastOne(sequence, "sequence");
     this.arrivalHubId = arrivalHubId;
     this.departureHubId = departureHubId;
-    this.expectedDistanceKm = expectedDistanceKm;
-    this.expectedDurationSeconds = expectedDurationSeconds;
+    this.expectedDistanceKm = requireNonNegative(expectedDistanceKm, "expectedDistanceKm");
+    this.expectedDurationSeconds =
+        requireNonNegative(expectedDurationSeconds, "expectedDurationSeconds");
     this.status = status;
     this.assigneeId = assigneeId;
+  }
+
+  private static Integer requireAtLeastOne(Integer value, String name) {
+    Objects.requireNonNull(value, name);
+    if (value < 1) {
+      throw new IllegalArgumentException(name + " must be at least 1");
+    }
+    return value;
+  }
+
+  private static BigDecimal requireNonNegative(BigDecimal value, String name) {
+    Objects.requireNonNull(value, name);
+    if (value.signum() < 0) {
+      throw new IllegalArgumentException(name + " must not be negative");
+    }
+    return value;
+  }
+
+  private static Long requireNonNegative(Long value, String name) {
+    Objects.requireNonNull(value, name);
+    if (value < 0) {
+      throw new IllegalArgumentException(name + " must not be negative");
+    }
+    return value;
   }
 }
