@@ -155,13 +155,22 @@ public class JwtAuthenticationFilter implements GlobalFilter {
       return false;
     }
 
-    return (HttpMethod.POST.equals(method) && "/api/users".equals(path))
-        || (HttpMethod.PATCH.equals(method) && isResourcePath(path, "/api/users/"))
-        || (HttpMethod.DELETE.equals(method)
-            && isResourcePath(path, "/api/users/")
-            && !"/api/users/me".equals(path))
+    return isMasterOnlyUserEndpoint(method, path)
         || (HttpMethod.POST.equals(method) && "/api/stocks".equals(path))
         || (HttpMethod.DELETE.equals(method) && isResourcePath(path, "/api/orders/"));
+  }
+
+  /** 사용자 목록·생성과 개별 사용자 조회·수정·삭제는 MASTER 전용입니다. 본인 조회·탈퇴(/api/users/me)는 제외합니다. */
+  private boolean isMasterOnlyUserEndpoint(HttpMethod method, String path) {
+    if ("/api/users".equals(path)) {
+      return HttpMethod.GET.equals(method) || HttpMethod.POST.equals(method);
+    }
+    if (isResourcePath(path, "/api/users/") && !"/api/users/me".equals(path)) {
+      return HttpMethod.GET.equals(method)
+          || HttpMethod.PATCH.equals(method)
+          || HttpMethod.DELETE.equals(method);
+    }
+    return false;
   }
 
   private boolean isResourcePath(String path, String prefix) {

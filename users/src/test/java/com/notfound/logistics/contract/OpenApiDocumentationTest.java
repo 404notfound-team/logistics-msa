@@ -45,7 +45,7 @@ import org.springframework.web.bind.annotation.RestController;
 @AutoConfigureMockMvc
 @Import(OpenApiDocumentationTest.ContractController.class)
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-@WithMockUser
+@WithMockUser(roles = "MASTER") // 픽스처 경로 GET /api/users/openapi-test가 MASTER 전용 규칙에 걸립니다.
 class OpenApiDocumentationTest {
   @MockitoBean private UserService userService;
 

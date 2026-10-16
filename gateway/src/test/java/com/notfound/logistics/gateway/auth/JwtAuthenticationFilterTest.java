@@ -161,6 +161,40 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
+  void forbidsUserFromListingOrReadingOtherUsers() {
+    var list = run(authorized("/api/users", validToken("USER")), usersResponds(user(true, "USER")));
+    var detail =
+        run(
+            authorized("/api/users/" + UUID.randomUUID(), validToken("USER")),
+            usersResponds(user(true, "USER")));
+
+    assertThat(list.status()).isEqualTo(HttpStatus.FORBIDDEN);
+    assertThat(detail.status()).isEqualTo(HttpStatus.FORBIDDEN);
+  }
+
+  @Test
+  void letsUserReadAndWithdrawThemselves() {
+    var read =
+        run(authorized("/api/users/me", validToken("USER")), usersResponds(user(true, "USER")));
+    var withdraw =
+        run(
+            MockServerHttpRequest.delete("/api/users/me")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + validToken("USER")),
+            usersResponds(user(true, "USER")));
+
+    assertThat(read.forwarded()).isNotNull();
+    assertThat(withdraw.forwarded()).isNotNull();
+  }
+
+  @Test
+  void letsMasterListUsers() {
+    var result =
+        run(authorized("/api/users", validToken("MASTER")), usersResponds(user(true, "MASTER")));
+
+    assertThat(result.forwarded()).isNotNull();
+  }
+
+  @Test
   void reportsServiceUnavailableWhenUsersFails() {
     var result =
         run(

@@ -39,7 +39,7 @@ import reactor.netty.http.server.HttpServer;
 class OpenApiGatewayTest {
   private static final Map<String, String> PUBLIC_PATHS =
       Map.of(
-          "users", "/api/users/openapi-test",
+          "users", "/api/users/me",
           "company", "/api/companies/openapi-test",
           "hub", "/api/hubs/openapi-test",
           "orders", "/api/orders/openapi-test",
