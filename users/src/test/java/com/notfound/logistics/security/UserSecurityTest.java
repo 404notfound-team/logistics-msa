@@ -1,25 +1,40 @@
 package com.notfound.logistics.security;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
 import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
 import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
+import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -131,6 +146,140 @@ class UserSecurityTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.name").value("user01"))
         .andExpect(jsonPath("$.authorities").value("ROLE_MASTER"));
+  }
+
+  @Test
+  void regularUserCannotListOrReadOtherUsers() throws Exception {
+    mvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(
+            get("/api/users/" + UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void regularUserCannotManageUsers() throws Exception {
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            delete("/api/users/" + UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void userReadsThemselvesByJwtUserId() throws Exception {
+    given(userService.getUser(USER_ID)).willReturn(userResponse());
+
+    mvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.username").value("user01"))
+        .andExpect(jsonPath("$.data.hub_id").exists())
+        .andExpect(jsonPath("$.data.password_hash").doesNotExist());
+  }
+
+  @Test
+  void userWithdrawsWithJwtUserIdAndSubject() throws Exception {
+    mvc.perform(delete("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isNoContent());
+
+    verify(userService).withdraw(USER_ID, "user01");
+  }
+
+  @Test
+  void masterCreatesUserWithLocation() throws Exception {
+    given(userService.createUser(any(UserCreateRequestDto.class))).willReturn(userResponse());
+
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"username":"user02","name":"사용자","password":"Passw0rd!","role":"USER",
+                    "slack_id":"slack","hub_id":"%s"}
+                    """
+                        .formatted(UUID.randomUUID())))
+        .andExpect(status().isCreated())
+        .andExpect(header().string(HttpHeaders.LOCATION, "/api/users/" + USER_ID));
+  }
+
+  @Test
+  void masterCreateRejectsBothAffiliations() throws Exception {
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"username":"user02","name":"사용자","password":"Passw0rd!","role":"USER",
+                    "slack_id":"slack","hub_id":"%s","company_id":"%s"}
+                    """
+                        .formatted(UUID.randomUUID(), UUID.randomUUID())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field_errors[0].field").value("$"));
+  }
+
+  @Test
+  void masterListsWithDefaultSortAndPkTieBreaker() throws Exception {
+    given(userService.getUsers(any(), any())).willReturn(new PageResponse<>(List.of(), 0, 20, 0));
+
+    mvc.perform(
+            get("/api/users")
+                .param("role", "USER")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total_elements").value(0));
+
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    verify(userService).getUsers(any(), pageable.capture());
+    assertThat(pageable.getValue().getSort())
+        .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by("id")));
+  }
+
+  @Test
+  void masterListRejectsUnknownSortAndOversizedPage() throws Exception {
+    mvc.perform(
+            get("/api/users")
+                .param("sort", "password_hash,asc")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_SORT"));
+    mvc.perform(
+            get("/api/users")
+                .param("size", "101")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void masterDeletesUserAsJwtSubject() throws Exception {
+    UUID target = UUID.randomUUID();
+
+    mvc.perform(delete("/api/users/" + target).header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isNoContent());
+
+    verify(userService).deleteUser(eq(target), eq("user01"));
+  }
+
+  private UserResponseDto userResponse() {
+    return new UserResponseDto(
+        USER_ID,
+        "user01",
+        "사용자",
+        UserRoleEnum.USER,
+        "slack",
+        null,
+        UUID.randomUUID(),
+        false,
+        Instant.now(),
+        Instant.now());
   }
 
   private String bearer(String role) {

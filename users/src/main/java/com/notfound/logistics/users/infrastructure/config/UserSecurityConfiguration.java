@@ -93,6 +93,19 @@ public class UserSecurityConfiguration {
                 authorize
                     .requestMatchers("/api/users/signup", "/api/users/signin")
                     .permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/users/me")
+                    .authenticated()
+                    .requestMatchers(HttpMethod.DELETE, "/api/users/me")
+                    .authenticated()
+                    // 사용자 목록·관리는 MASTER 전용입니다. Gateway도 같은 경로를 막지만 우회 호출에 대비해 다시 검사합니다.
+                    .requestMatchers(HttpMethod.GET, "/api/users", "/api/users/*")
+                    .hasRole("MASTER")
+                    .requestMatchers(HttpMethod.POST, "/api/users")
+                    .hasRole("MASTER")
+                    .requestMatchers(HttpMethod.PATCH, "/api/users/*")
+                    .hasRole("MASTER")
+                    .requestMatchers(HttpMethod.DELETE, "/api/users/*")
+                    .hasRole("MASTER")
                     .requestMatchers(
                         "/actuator/**",
                         "/v3/api-docs",
