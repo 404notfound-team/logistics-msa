@@ -12,6 +12,15 @@ users:
   jwt:
     secret: ${JWT_SECRET}
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+  internal-auth:
+    # Users가 다른 서비스의 내부 API를 호출할 때 보내는 X-Service-Token 값입니다.
+    service-token: ${USERS_SERVICE_TOKEN}
+    # Users 내부 API를 호출할 수 있는 서비스와 허용 API입니다.
+    clients:
+      gateway:
+        token: ${GATEWAY_SERVICE_TOKEN}
+        allowed:
+          - GET /internal/users/*/authorization
 spring:
   application:
     name: users
