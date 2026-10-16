@@ -56,6 +56,7 @@ class DeliveryRepositoryAdapterTest {
   private UUID first;
   private UUID second;
   private UUID third;
+  private UUID deleted;
 
   @DynamicPropertySource
   static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -71,8 +72,7 @@ class DeliveryRepositoryAdapterTest {
     second =
         insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", MANAGER_B, DeliveryStatus.HUB_MOVING, 2);
     third = insert(HUB_B, HUB_C, "대전광역시 서구 둔산로 100", "Hong", null, DeliveryStatus.DELIVERED, 3);
-    UUID deleted =
-        insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", MANAGER_A, DeliveryStatus.HUB_WAITING, 4);
+    deleted = insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", MANAGER_A, DeliveryStatus.HUB_WAITING, 4);
     jdbc.update(
         "UPDATE p_deliveries SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_id = ?",
         Timestamp.from(BASE.plusSeconds(5)),
@@ -138,6 +138,20 @@ class DeliveryRepositoryAdapterTest {
     assertThat(page.getContent()).isEmpty();
     assertThat(page.getTotalElements()).isEqualTo(3);
     assertThat(page.getNumber()).isEqualTo(Integer.MAX_VALUE);
+  }
+
+  @Test
+  void findByIdReturnsAnActiveDeliveryButNotADeletedOrUnknownOne() {
+    assertThat(repository.findById(second))
+        .get()
+        .satisfies(
+            delivery -> {
+              assertThat(delivery.getId()).isEqualTo(second);
+              assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
+              assertThat(delivery.getRecipientName()).isEqualTo("홍길동");
+            });
+    assertThat(repository.findById(deleted)).isEmpty();
+    assertThat(repository.findById(UUID.randomUUID())).isEmpty();
   }
 
   private List<UUID> ids(DeliverySearchCondition condition) {

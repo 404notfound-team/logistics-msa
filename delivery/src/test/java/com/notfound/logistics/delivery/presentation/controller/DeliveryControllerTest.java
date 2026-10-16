@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
+import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
+import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import java.time.Instant;
@@ -20,9 +22,11 @@ import java.util.List;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.Page;
@@ -34,6 +38,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @Slf4j
+@ExtendWith(MockitoExtension.class)
 @WebMvcTest(DeliveryController.class)
 class DeliveryControllerTest {
   private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -158,6 +163,63 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
     then(deliveryQueryService).should(never()).search(any(), any());
+  }
+
+  @Test
+  void searchDetailReturnsTheDeliveryInSnakeCase() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryQueryService.searchDetail(deliveryId))
+        .willReturn(
+            new DeliveryResult(
+                deliveryId,
+                ORDER_ID,
+                DeliveryStatus.HUB_MOVING,
+                DEPARTURE_HUB_ID,
+                DESTINATION_HUB_ID,
+                "서울특별시 송파구 송파대로 55",
+                "홍길동",
+                null,
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z")));
+
+    mockMvc
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
+        .andExpect(jsonPath("$.data.order_id").value(ORDER_ID.toString()))
+        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"))
+        .andExpect(jsonPath("$.data.departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
+        .andExpect(jsonPath("$.data.destination_hub_id").value(DESTINATION_HUB_ID.toString()))
+        .andExpect(jsonPath("$.data.address").value("서울특별시 송파구 송파대로 55"))
+        .andExpect(jsonPath("$.data.recipient_name").value("홍길동"))
+        .andExpect(jsonPath("$.data.delivery_manager_id").isEmpty())
+        .andExpect(jsonPath("$.data.created_at").value("2026-01-01T00:00:00Z"))
+        .andExpect(jsonPath("$.data.updated_at").value("2026-01-02T00:00:00Z"));
+  }
+
+  @Test
+  void unknownDeliveryIsNotFoundInTheCommonErrorFormat() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
+    given(deliveryQueryService.searchDetail(deliveryId))
+        .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+    mockMvc
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("배송을 찾을 수 없습니다."))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void malformedDeliveryIdIsRejectedWithTheCommonErrorFormat() throws Exception {
+    mockMvc
+        .perform(get("/api/deliveries/{delivery_id}", "not-a-uuid"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("delivery_id"))
+        .andExpect(jsonPath("$.field_errors.length()").value(1));
+    then(deliveryQueryService).should(never()).searchDetail(any());
   }
 
   @ParameterizedTest
