@@ -129,7 +129,9 @@ class OpenApiGatewayTest {
       String header = encodeBase64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
       String payload =
           encodeBase64Url(
-              "{\"sub\":\"gateway-test-user\",\"role\":\"USER\",\"iat\":"
+              "{\"iss\":\"logistics-users\",\"sub\":\"11111111-1111-1111-1111-111111111111\","
+                  + "\"role\":\"USER\","
+                  + "\"is_delivery_staff\":false,\"iat\":"
                   + now
                   + ",\"exp\":"
                   + (now + 300)
@@ -177,6 +179,15 @@ class OpenApiGatewayTest {
                     "servers":[{"url":"/"}],"paths":{"%s":{"get":{"responses":{"200":{"description":"OK"}}}}}}
                     """
                                 .formatted(service, publicPath);
+                      } else if ("users".equals(service)
+                          && request
+                              .uri()
+                              .equals(
+                                  "/internal/users/11111111-1111-1111-1111-111111111111/authorization")) {
+                        body =
+                            "{\"data\":{\"user_id\":\"11111111-1111-1111-1111-111111111111\","
+                                + "\"active\":true,\"role\":\"USER\","
+                                + "\"is_delivery_staff\":false}}";
                       } else if (request.uri().equals(publicPath)) {
                         body = "{\"service\":\"" + service + "\"}";
                       } else {

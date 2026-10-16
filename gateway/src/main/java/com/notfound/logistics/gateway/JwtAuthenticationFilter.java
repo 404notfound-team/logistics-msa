@@ -1,11 +1,15 @@
 package com.notfound.logistics.gateway;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.UUID;
+import org.springframework.cloud.client.loadbalancer.LoadBalanced;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -18,6 +22,9 @@ import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.stereotype.Component;
+import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
@@ -26,10 +33,15 @@ import reactor.core.publisher.Mono;
 public class JwtAuthenticationFilter implements GlobalFilter {
   private final JwtDecoder jwtDecoder;
   private final ObjectMapper objectMapper;
+  private final WebClient usersClient;
 
-  public JwtAuthenticationFilter(JwtDecoder jwtDecoder, ObjectMapper objectMapper) {
+  public JwtAuthenticationFilter(
+      JwtDecoder jwtDecoder,
+      ObjectMapper objectMapper,
+      @LoadBalanced WebClient.Builder webClientBuilder) {
     this.jwtDecoder = jwtDecoder;
     this.objectMapper = objectMapper;
+    this.usersClient = webClientBuilder.baseUrl("http://users").build();
   }
 
   @Override
@@ -46,14 +58,80 @@ public class JwtAuthenticationFilter implements GlobalFilter {
     }
     try {
       var jwt = jwtDecoder.decode(authorization.substring(7));
-      if (isMasterOnlyEndpoint(request.getMethod(), path)
-          && !"MASTER".equals(jwt.getClaimAsString("role"))) {
-        return forbidden(exchange.getResponse());
+      String subject = jwt.getSubject();
+      String tokenRole = jwt.getClaimAsString("role");
+      Object tokenDeliveryStaff = jwt.getClaims().get("is_delivery_staff");
+      if (subject == null
+          || tokenRole == null
+          || !(tokenDeliveryStaff instanceof Boolean)
+          || !isKnownRole(tokenRole)) {
+        return unauthorized(exchange.getResponse());
       }
-      return chain.filter(exchange);
+      UUID userId = UUID.fromString(subject);
+      return inspectCurrentUser(
+              authorization,
+              userId,
+              tokenRole,
+              (Boolean) tokenDeliveryStaff,
+              isMasterOnlyEndpoint(request.getMethod(), path))
+          .flatMap(
+              decision ->
+                  switch (decision) {
+                    case ALLOW -> chain.filter(exchange);
+                    case UNAUTHORIZED -> unauthorized(exchange.getResponse());
+                    case FORBIDDEN -> forbidden(exchange.getResponse());
+                    case SERVICE_UNAVAILABLE -> serviceUnavailable(exchange.getResponse());
+                  });
     } catch (JwtException | IllegalArgumentException exception) {
       return unauthorized(exchange.getResponse());
     }
+  }
+
+  private Mono<AuthorizationDecision> inspectCurrentUser(
+      String authorization,
+      UUID userId,
+      String tokenRole,
+      boolean tokenDeliveryStaff,
+      boolean masterOnly) {
+    return usersClient
+        .get()
+        .uri("/internal/users/{id}/authorization", userId)
+        .header(HttpHeaders.AUTHORIZATION, authorization)
+        .retrieve()
+        .bodyToMono(UserAuthorizationEnvelope.class)
+        .timeout(Duration.ofSeconds(2))
+        .map(
+            envelope -> {
+              UserAuthorizationInfo currentUser = envelope.data();
+              if (currentUser == null
+                  || !currentUser.active()
+                  || !userId.equals(currentUser.userId())
+                  || !tokenRole.equals(currentUser.role())
+                  || !Boolean.valueOf(tokenDeliveryStaff).equals(currentUser.isDeliveryStaff())
+                  || !isKnownRole(currentUser.role())) {
+                return AuthorizationDecision.UNAUTHORIZED;
+              }
+              if (masterOnly && !"MASTER".equals(currentUser.role())) {
+                return AuthorizationDecision.FORBIDDEN;
+              }
+              return AuthorizationDecision.ALLOW;
+            })
+        .onErrorResume(
+            WebClientResponseException.Unauthorized.class,
+            exception -> Mono.just(AuthorizationDecision.UNAUTHORIZED))
+        .onErrorResume(
+            WebClientResponseException.class,
+            exception -> Mono.just(AuthorizationDecision.SERVICE_UNAVAILABLE))
+        .onErrorResume(
+            WebClientRequestException.class,
+            exception -> Mono.just(AuthorizationDecision.SERVICE_UNAVAILABLE))
+        .onErrorResume(
+            Exception.class, exception -> Mono.just(AuthorizationDecision.SERVICE_UNAVAILABLE))
+        .switchIfEmpty(Mono.just(AuthorizationDecision.SERVICE_UNAVAILABLE));
+  }
+
+  private boolean isKnownRole(String role) {
+    return "MASTER".equals(role) || "USER".equals(role);
   }
 
   private boolean isPublicUserEndpoint(String path) {
@@ -91,6 +169,10 @@ public class JwtAuthenticationFilter implements GlobalFilter {
     return writeError(response, CommonErrorCode.FORBIDDEN);
   }
 
+  private Mono<Void> serviceUnavailable(ServerHttpResponse response) {
+    return writeError(response, CommonErrorCode.SERVICE_UNAVAILABLE);
+  }
+
   private Mono<Void> writeError(ServerHttpResponse response, ApiErrorCode errorCode) {
     response.setStatusCode(HttpStatusCode.valueOf(errorCode.httpStatus()));
     response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
@@ -109,5 +191,20 @@ public class JwtAuthenticationFilter implements GlobalFilter {
               .getBytes(StandardCharsets.UTF_8);
     }
     return response.writeWith(Mono.just(response.bufferFactory().wrap(body)));
+  }
+
+  private record UserAuthorizationEnvelope(UserAuthorizationInfo data) {}
+
+  private record UserAuthorizationInfo(
+      @JsonProperty("user_id") UUID userId,
+      boolean active,
+      String role,
+      @JsonProperty("is_delivery_staff") Boolean isDeliveryStaff) {}
+
+  private enum AuthorizationDecision {
+    ALLOW,
+    UNAUTHORIZED,
+    FORBIDDEN,
+    SERVICE_UNAVAILABLE
   }
 }
