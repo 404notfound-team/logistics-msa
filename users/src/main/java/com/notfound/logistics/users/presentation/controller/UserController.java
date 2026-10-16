@@ -49,6 +49,12 @@ public class UserController {
           "username", "username",
           "name", "name");
 
+  /**
+   * UUID 문자만 받도록 제한해 /signin·/signup·/me 같은 고정 경로가 {id}로 매칭되지 않게 합니다. 이 제한이 없으면 GET /signin이 405 대신
+   * UUID 변환 오류가 됩니다.
+   */
+  private static final String ID_PATH = "/{id:[0-9a-fA-F-]+}";
+
   private final UserService userService;
 
   @PostMapping("/signup")
@@ -99,18 +105,18 @@ public class UserController {
         .body(new ApiResponse<>(response));
   }
 
-  @GetMapping("/{id}")
+  @GetMapping(ID_PATH)
   public ApiResponse<UserResponseDto> getUser(@PathVariable("id") UUID id) {
     return new ApiResponse<>(userService.getUser(id));
   }
 
-  @PatchMapping("/{id}")
+  @PatchMapping(ID_PATH)
   public ApiResponse<UserResponseDto> updateUser(
       @PathVariable("id") UUID id, @Valid @RequestBody UserUpdateRequestDto request) {
     return new ApiResponse<>(userService.updateUser(id, request));
   }
 
-  @DeleteMapping("/{id}")
+  @DeleteMapping(ID_PATH)
   public ResponseEntity<Void> deleteUser(
       @PathVariable("id") UUID id, @AuthenticationPrincipal Jwt jwt) {
     userService.deleteUser(id, jwt.getSubject());

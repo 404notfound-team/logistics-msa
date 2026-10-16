@@ -21,6 +21,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
@@ -56,6 +57,14 @@ public class UserExceptionHandler {
   @ExceptionHandler(HttpMessageNotReadableException.class)
   public ResponseEntity<ApiErrorResponse> handleUnreadableRequest(
       HttpMessageNotReadableException exception) {
+    return ResponseEntity.badRequest()
+        .body(ApiErrorResponse.of(CommonErrorCode.INVALID_REQUEST, traceId()));
+  }
+
+  /** 경로 변수·쿼리 파라미터의 타입 변환 실패(UUID·enum 형식 오류 등)는 클라이언트 오류입니다. */
+  @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+  public ResponseEntity<ApiErrorResponse> handleTypeMismatch(
+      MethodArgumentTypeMismatchException exception) {
     return ResponseEntity.badRequest()
         .body(ApiErrorResponse.of(CommonErrorCode.INVALID_REQUEST, traceId()));
   }
