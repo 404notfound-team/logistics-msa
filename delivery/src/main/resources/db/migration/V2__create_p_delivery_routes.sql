@@ -16,8 +16,7 @@ CREATE TABLE p_delivery_routes (
     updated_at                timestamptz  NOT NULL,
     updated_by                varchar(100) NOT NULL,
     deleted_at                timestamptz,
-    deleted_by                varchar(100)
+    deleted_by                varchar(100),
+    -- 같은 배송 안에서 순서는 중복될 수 없다. 엔티티(@UniqueConstraint)와 같은 제약이며, 조회 인덱스도 겸한다.
+    CONSTRAINT uk_p_delivery_routes_delivery_id_sequence UNIQUE (delivery_id, sequence)
 );
-
--- 배송 상세 조회는 delivery_id로 구간을 순서대로 읽는다.
-CREATE UNIQUE INDEX uk_p_delivery_routes_delivery_id_sequence ON p_delivery_routes (delivery_id, sequence) WHERE deleted_at IS NULL;
