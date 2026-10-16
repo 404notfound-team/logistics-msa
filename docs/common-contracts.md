@@ -54,7 +54,7 @@
 | 헤더 | 규칙 |
 | --- | --- |
 | `X-Service-Token` | 호출 서비스의 인증값입니다. 서비스별 값을 실행 환경(`<SERVICE>_SERVICE_TOKEN`)에 설정하며 코드·저장소에 커밋하지 않습니다. 서비스마다 서로 다른 값을 사용합니다. |
-| `X-Actor-Username` | 원 요청자의 username입니다. 감사 필드의 작업자 기준과 같으며, 외부 요청에서는 JWT의 `username`(`Authentication#getName()`)을 사용합니다. |
+| `X-Actor-Username` | 원 요청자의 username입니다. 감사 필드의 작업자 기준과 같으며, 외부 요청에서는 JWT의 `sub`(`Authentication#getName()`)을 사용합니다. |
 
 - 수신 서비스는 `X-Service-Token`으로 호출 서비스를 식별하고, 그 서비스에 허용한 API인지 확인합니다. 토큰이 없거나 틀리면 401, 허용하지 않은 API면 403입니다.
 - 원 요청자가 있는 호출은 `X-Actor-Username`을 보냅니다. 로그인 전 회원가입의 업체·허브 조회처럼 원 요청자가 없는 호출은 생략할 수 있습니다.

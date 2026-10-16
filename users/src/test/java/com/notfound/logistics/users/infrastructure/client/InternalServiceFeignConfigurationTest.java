@@ -42,8 +42,8 @@ class InternalServiceFeignConfigurationTest {
     Jwt jwt =
         Jwt.withTokenValue("token")
             .header("alg", "HS256")
-            .subject("11111111-1111-1111-1111-111111111111")
-            .claim("username", "master01")
+            .subject("master01")
+            .claim("user_id", "11111111-1111-1111-1111-111111111111")
             .issuedAt(Instant.now())
             .expiresAt(Instant.now().plusSeconds(60))
             .build();

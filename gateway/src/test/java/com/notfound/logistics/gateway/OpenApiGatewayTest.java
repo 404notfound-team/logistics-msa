@@ -130,8 +130,8 @@ class OpenApiGatewayTest {
       String header = encodeBase64Url("{\"alg\":\"HS256\",\"typ\":\"JWT\"}");
       String payload =
           encodeBase64Url(
-              "{\"iss\":\"logistics-users\",\"sub\":\"11111111-1111-1111-1111-111111111111\","
-                  + "\"username\":\"user01\",\"role\":\"USER\","
+              "{\"iss\":\"logistics-users\",\"sub\":\"user01\","
+                  + "\"user_id\":\"11111111-1111-1111-1111-111111111111\",\"role\":\"USER\","
                   + "\"is_delivery_staff\":false,\"iat\":"
                   + now
                   + ",\"exp\":"

@@ -112,13 +112,12 @@ public class UserSecurityConfiguration {
         .build();
   }
 
-  /** 인증 주체 이름은 JWT의 username, 권한은 role 클레임의 `ROLE_<role>`입니다. */
+  /** 인증 주체 이름은 JWT의 sub(username), 권한은 role 클레임의 `ROLE_<role>`입니다. */
   private JwtAuthenticationConverter jwtAuthenticationConverter() {
     JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
     authorities.setAuthoritiesClaimName("role");
     authorities.setAuthorityPrefix("ROLE_");
     JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-    converter.setPrincipalClaimName("username");
     converter.setJwtGrantedAuthoritiesConverter(authorities);
     return converter;
   }
