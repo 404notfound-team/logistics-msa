@@ -111,6 +111,9 @@ SH
 
 ## 개발과 종료
 
+허브 기준 데이터는 `local` 프로필로 앱을 시작할 때 자동 적재합니다.
+가상 업체의 수동 적재·제거와 허브 재적재는 [개발용 샘플 데이터](infra/dev-data/README.md)를 참고하세요.
+
 로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
 Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
 `build`는 Spotless 포맷 검사, Checkstyle, Java 컴파일, JUnit 테스트와 패키징을 수행합니다.
