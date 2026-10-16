@@ -5,6 +5,7 @@ import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.repository.UserRepository;
 import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
+import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
@@ -46,31 +47,33 @@ public class UserService {
     UUID companyId = null;
     UUID hubId = null;
     if (request.companyName() != null && !request.companyName().isBlank()) {
+      String companyName = request.companyName().trim();
       List<CompanyLookupClient.CompanyLookupResponse> matches;
       try {
-        matches = companyLookupClient.findByName(request.companyName());
+        matches = companyLookupClient.findByName(companyName);
       } catch (FeignException exception) {
-        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
+        throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
       if (matches == null || matches.isEmpty()) {
-        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
+        throw new UserException(UserErrorCode.ENTITY_NOT_FOUND);
       }
       if (matches.size() > 1) {
-        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
+        throw new UserException(UserErrorCode.AFFILIATION_AMBIGUOUS);
       }
       companyId = matches.get(0).id();
     } else {
+      String hubName = request.hubName().trim();
       List<HubLookupClient.HubLookupResponse> matches;
       try {
-        matches = hubLookupClient.findByName(request.hubName());
+        matches = hubLookupClient.findByName(hubName);
       } catch (FeignException exception) {
-        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
+        throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
       if (matches == null || matches.isEmpty()) {
-        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
+        throw new UserException(UserErrorCode.ENTITY_NOT_FOUND);
       }
       if (matches.size() > 1) {
-        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
+        throw new UserException(UserErrorCode.AFFILIATION_AMBIGUOUS);
       }
       hubId = matches.get(0).id();
     }
@@ -81,13 +84,13 @@ public class UserService {
             request.name(),
             passwordEncoder.encode(request.password()),
             request.slackId(),
+            request.role(),
             companyId,
             hubId);
     try {
       User saved = userRepository.save(user);
-      return new UserRegisterResponseDto(saved.getId(), saved.getUsername());
+      return new UserRegisterResponseDto(saved.getId());
     } catch (DataIntegrityViolationException exception) {
-
       throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
     }
   }
@@ -106,10 +109,11 @@ public class UserService {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .issuer("logistics-users")
-            .subject(user.getUsername())
+            .subject(user.getId().toString())
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
             .claim("role", user.getRole().name())
+            .claim("is_delivery_staff", user.isDeliveryStaff())
             .build();
     String token =
         jwtEncoder
@@ -119,5 +123,15 @@ public class UserService {
             .getTokenValue();
     return new UserSignInResponseDto(
         token, "Bearer", Duration.between(issuedAt, expiresAt).toSeconds());
+  }
+
+  public UserAuthorizationResponseDto getAuthorization(UUID id) {
+    return userRepository
+        .findById(id)
+        .map(
+            user ->
+                new UserAuthorizationResponseDto(
+                    user.getId(), true, user.getRole(), user.isDeliveryStaff()))
+        .orElseGet(() -> new UserAuthorizationResponseDto(id, false, null, false));
   }
 }
