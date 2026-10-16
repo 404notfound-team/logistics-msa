@@ -23,6 +23,7 @@ Gateway 연동 시 원본 Bearer 토큰을 전달받아 Spring Security Resource
 컨트롤러는 `@AuthenticationPrincipal`로 검증된 JWT를 받아 필요한 사용자 정보를 서비스 인자로 전달합니다.
 JWT는 users 구현과 같은 HS256, issuer `logistics-users`, subject `username`, role `USER`/`MASTER`를 사용합니다.
 `JWT_SECRET`은 32 UTF-8 바이트 이상이어야 합니다. 미설정 시 주문 API는 401을 반환합니다.
+`ORDERS_SERVICE_TOKEN`은 16자 이상이어야 하며, 누락·공백·짧은 값이면 기동하지 않습니다.
 
 | API | 권한·결과 |
 | --- | --- |
@@ -122,11 +123,24 @@ Stub 내부 API와 제어 API는 `X-Service-Token: <ORDERS_SERVICE_TOKEN>`을 �
 
 `operation`은 `stock.deduct`, `stock.restore`, `delivery.create`, `delivery.cancel`, `delivery.delete`, `slack` 등을 받습니다.
 `delay_before_ms`는 반영 전, `delay_after_ms`는 커밋 후 응답 지연입니다. `status`·`code`로 확정 오류도 지정할 수 있습니다.
-배송 출발은 `PATCH /api/deliveries/{delivery_id}`에 `{"status":"HUB_TRANSIT"}`를 보내 시험합니다. WAITING에서만 출발하며 취소와 동시에 요청하면 먼저 반영한 전이만 성공합니다.
+배송 출발은 `PATCH /api/deliveries/{delivery_id}`에 `{"status":"HUB_MOVING"}`를 보내 시험합니다. HUB_WAITING에서만 출발하며 취소와 동시에 요청하면 먼저 반영한 전이만 성공합니다.
 기본 Feign 읽기 제한은 2초이므로 수동 타임아웃 실험에서는 지연을 3초 이상으로 설정합니다.
 `{"action":"reset"}`은 **Stub 데이터만** 초기화합니다. 기본 파일은 `orders/stubs/state.sqlite`이며 `--state`로 경로를 바꿀 수 있습니다.
 Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:18090/__stub/slack`을 사용합니다.
 실제 서비스로 전환할 때는 각 URL·서비스 인증 설정을 변경하고 동일 계약으로 다시 연동 검증합니다.
+
+## 실제 서비스 연동 범위
+
+업체·상품 조회와 Hub 재고 차감·복원은 현재 구현의 경로·응답을 사용합니다.
+Orders가 보내는 `ORDERS_SERVICE_TOKEN`과 수신 서비스에 등록한 Orders 인증값은 같아야 합니다.
+실행 전 `bash scripts/init-env.sh`로 기존 `.env`에 누락된 인증값을 추가합니다.
+
+배송 전체 상태는 Delivery의 `HUB_WAITING`, `HUB_MOVING`, `DESTINATION_HUB_ARRIVED`,
+`COMPANY_MOVING`, `DELIVERED`를 따릅니다. 경로별 상태는 주문에서 판정하지 않습니다.
+배송 내부 생성·주문별 조회·취소·삭제 API는 아직 미구현이므로 Stub으로 검증합니다.
+Stub의 취소 응답 `CANCELLED`는 기존 연동 설계안이며, 실제 배송 취소 API의 결과 확인 계약이
+확정되면 함께 맞춥니다. 주문 자체의 `CANCELLED` 상태와는 구분합니다.
+Stub JWT는 Orders 직접 호출용입니다. Gateway 경유 검증에는 실제 Users 로그인 토큰을 사용합니다.
 
 ## 검증
 
@@ -141,7 +155,7 @@ Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:180
 
 Hub의 실제 HTTP·PostgreSQL 테스트는 별도로 중복·동시 복원, 같은 키의 다른 내용 거절,
 복원 기록 저장 실패 시 수량 롤백, Hub 재시작 후 응답 재현을 확인합니다.
-Orders의 업체·배송 연동은 HTTP Stub 검증입니다. 실제 Delivery에는 현재 Orders가 요구하는 생성·취소·삭제 내부 API가 없고 상태명도 다르므로 전체 앱 간 취소 연동이 검증된 것은 아닙니다. 관련 서비스 연동 보완 PR #70은 이 변경의 선행 병합을 가정하지 않습니다.
+Orders의 업체·배송 연동은 HTTP Stub 검증입니다. 배송 상태명은 실제 Delivery에 맞췄지만, Orders가 요구하는 생성·취소·삭제 내부 API가 아직 없어 전체 앱 간 취소 연동은 미검증입니다.
 
 로컬 실행본에 적용할 때는 복원 기록을 지원하는 Hub를 먼저 갱신하고 Orders를 갱신합니다.
 Hub의 `local` 프로필은 새 `hub.p_stock_restorations` 테이블을 엔티티에서 생성합니다.

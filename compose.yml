@@ -152,7 +152,7 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/orders_db?currentSchema=orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:-}
-      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:-}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     depends_on:

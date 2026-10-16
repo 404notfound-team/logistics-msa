@@ -82,7 +82,7 @@ class State:
                     raise StubError(400, 'INVALID_REQUEST')
             self.rules[body['operation']] = dict(body)
         elif action == 'delivery_status':
-            if body['status'] not in ('WAITING', 'HUB_TRANSIT', 'DESTINATION_HUB_ARRIVED', 'COMPANY_TRANSIT', 'COMPLETED', 'CANCELLED'):
+            if body['status'] not in ('HUB_WAITING', 'HUB_MOVING', 'DESTINATION_HUB_ARRIVED', 'COMPANY_MOVING', 'DELIVERED', 'CANCELLED'):
                 raise StubError(400, 'INVALID_REQUEST')
             with self.db:
                 self.db.execute('UPDATE deliveries SET status=? WHERE order_id=?', (body['status'], body['order_id']))
@@ -158,23 +158,23 @@ class State:
                 return 200, self.delivery(row)
             with self.db:
                 self.db.execute('INSERT INTO deliveries VALUES(?,?,?,?,?,?,?,0)',
-                                (str(uuid4()), order_id, *(body[key] for key in fields), 'WAITING'))
+                                (str(uuid4()), order_id, *(body[key] for key in fields), 'HUB_WAITING'))
             return 201, self.delivery(self.row('SELECT * FROM deliveries WHERE order_id=?', (order_id,)))
         if operation in ('delivery.cancel', 'delivery.delete', 'delivery.depart'):
             row = self.row('SELECT * FROM deliveries WHERE delivery_id=?', (identifier,))
             if operation == 'delivery.depart':
                 if not row or row['deleted']: raise StubError(404, 'DELIVERY_NOT_FOUND')
-                if body.get('status') != 'HUB_TRANSIT' or row['status'] != 'WAITING':
+                if body.get('status') != 'HUB_MOVING' or row['status'] != 'HUB_WAITING':
                     raise StubError(409, 'INVALID_STATE_TRANSITION')
-                with self.db: self.db.execute("UPDATE deliveries SET status='HUB_TRANSIT' WHERE delivery_id=? AND status='WAITING'", (identifier,))
+                with self.db: self.db.execute("UPDATE deliveries SET status='HUB_MOVING' WHERE delivery_id=? AND status='HUB_WAITING'", (identifier,))
                 return 200, self.delivery(self.row('SELECT * FROM deliveries WHERE delivery_id=?', (identifier,)))
             if operation == 'delivery.delete':
                 if not row or row['deleted']: return 204, None
-                if row['status'] not in ('CANCELLED', 'COMPLETED'): raise StubError(409, 'INVALID_STATE_TRANSITION')
+                if row['status'] not in ('CANCELLED', 'DELIVERED'): raise StubError(409, 'INVALID_STATE_TRANSITION')
                 with self.db: self.db.execute('UPDATE deliveries SET deleted=1 WHERE delivery_id=?', (identifier,))
                 return 204, None
             if not row or row['deleted']: raise StubError(404, 'DELIVERY_NOT_FOUND')
-            if row['status'] not in ('WAITING', 'CANCELLED'): raise StubError(409, 'DELIVERY_ALREADY_STARTED')
+            if row['status'] not in ('HUB_WAITING', 'CANCELLED'): raise StubError(409, 'DELIVERY_ALREADY_STARTED')
             with self.db: self.db.execute("UPDATE deliveries SET status='CANCELLED' WHERE delivery_id=?", (identifier,))
             return 200, self.delivery(self.row('SELECT * FROM deliveries WHERE delivery_id=?', (identifier,)))
         if operation == 'slack':

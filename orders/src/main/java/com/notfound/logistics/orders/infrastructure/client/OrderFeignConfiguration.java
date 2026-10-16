@@ -28,7 +28,7 @@ public class OrderFeignConfiguration {
   RequestInterceptor orderRequestHeaders(
       OrdersAuditorAware auditor, @Value("${orders.clients.service-token:}") String serviceToken) {
     return template -> {
-      if (!serviceToken.isBlank()) template.header("X-Service-Token", serviceToken);
+      template.header("X-Service-Token", serviceToken);
       template.header("X-Actor-Username", auditor.getCurrentAuditor().orElseThrow());
     };
   }
