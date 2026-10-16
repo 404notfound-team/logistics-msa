@@ -10,8 +10,10 @@ import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import com.notfound.logistics.users.presentation.exception.UserErrorCode;
+import feign.FeignException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,41 +43,37 @@ public class UserService {
       throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
     }
 
-    UUID companyId = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    UUID companyId = null;
     UUID hubId = null;
-
-    //      TODO
-    //    UUID companyId = null;
-    //    UUID hubId = null;
-    //    if (request.companyName() != null && !request.companyName().isBlank()) {
-    //      List<CompanyLookupClient.CompanyLookupResponse> matches;
-    //      try {
-    //        matches = companyLookupClient.findByName(request.companyName());
-    //      } catch (FeignException exception) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
-    //      }
-    //      if (matches == null || matches.isEmpty()) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
-    //      }
-    //      if (matches.size() > 1) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
-    //      }
-    //      companyId = matches.get(0).id();
-    //    } else {
-    //      List<HubLookupClient.HubLookupResponse> matches;
-    //      try {
-    //        matches = hubLookupClient.findByName(request.hubName());
-    //      } catch (FeignException exception) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
-    //      }
-    //      if (matches == null || matches.isEmpty()) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
-    //      }
-    //      if (matches.size() > 1) {
-    //        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
-    //      }
-    //      hubId = matches.get(0).id();
-    //    }
+    if (request.companyName() != null && !request.companyName().isBlank()) {
+      List<CompanyLookupClient.CompanyLookupResponse> matches;
+      try {
+        matches = companyLookupClient.findByName(request.companyName());
+      } catch (FeignException exception) {
+        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
+      }
+      if (matches == null || matches.isEmpty()) {
+        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
+      }
+      if (matches.size() > 1) {
+        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
+      }
+      companyId = matches.get(0).id();
+    } else {
+      List<HubLookupClient.HubLookupResponse> matches;
+      try {
+        matches = hubLookupClient.findByName(request.hubName());
+      } catch (FeignException exception) {
+        throw new UserException(UserErrorCode.AFFILIATION_SERVICE_UNAVAILABLE);
+      }
+      if (matches == null || matches.isEmpty()) {
+        throw new UserException(UserErrorCode.AFFILIATION_NOT_FOUND);
+      }
+      if (matches.size() > 1) {
+        throw new UserException(UserErrorCode.AFFILIATION_NAME_AMBIGUOUS);
+      }
+      hubId = matches.get(0).id();
+    }
 
     User user =
         User.signUp(
