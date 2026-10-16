@@ -76,6 +76,10 @@ public class HubSecurityConfiguration {
                     .hasAuthority("SERVICE_DELIVERY")
                     .requestMatchers(HttpMethod.POST, "/internal/stocks/deductions")
                     .hasAuthority("SERVICE_ORDERS")
+                    .requestMatchers(HttpMethod.POST, "/internal/stocks/deductions")
+                    .hasAuthority("SERVICE_ORDERS")
+                    .requestMatchers(HttpMethod.POST, "/internal/stocks/restorations")
+                    .hasAuthority("SERVICE_ORDERS")
                     .anyRequest()
                     .denyAll())
         .build();

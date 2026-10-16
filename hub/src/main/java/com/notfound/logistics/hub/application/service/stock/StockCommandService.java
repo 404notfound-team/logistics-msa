@@ -68,4 +68,17 @@ public class StockCommandService {
 
     return StockResult.from(stock);
   }
+
+  @Transactional
+  @PreAuthorize("hasAuthority('SERVICE_ORDERS')")
+  public StockResult restore(UUID hubId, UUID productId, long quantity) {
+    Stock stock =
+        stockRepository
+            .findLockedByHubIdAndProductId(hubId, productId)
+            .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
+
+    stock.restore(quantity);
+
+    return StockResult.from(stock);
+  }
 }

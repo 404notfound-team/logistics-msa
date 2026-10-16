@@ -38,7 +38,8 @@ import org.springframework.test.web.servlet.MockMvc;
 @WebMvcTest({
   StockController.class,
   InternalStockController.class,
-  InternalStockDeductionController.class
+  InternalStockDeductionController.class,
+  InternalStockRestorationController.class
 })
 @HubSecurityTest
 class StockControllerTest {
@@ -558,5 +559,36 @@ class StockControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
 
     verifyNoInteractions(command);
+  }
+
+  @Test
+  void restoreStockReturnsCurrentQuantity() throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    when(command.restore(hubId, productId, 30))
+        .thenReturn(new StockResult(stockId, hubId, productId, 100));
+
+    String body =
+        """
+      {
+        "order_id": "%s",
+        "hub_id": "%s",
+        "product_id": "%s",
+        "quantity": 30
+      }
+      """
+            .formatted(orderId, hubId, productId);
+
+    mvc.perform(
+            authenticatedPost("/internal/stocks/restorations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(stockId.toString()))
+        .andExpect(jsonPath("$.data.hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.product_id").value(productId.toString()))
+        .andExpect(jsonPath("$.data.quantity").value(100));
+
+    verify(command).restore(hubId, productId, 30);
   }
 }
