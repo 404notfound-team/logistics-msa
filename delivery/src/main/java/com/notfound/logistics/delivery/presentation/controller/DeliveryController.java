@@ -69,9 +69,6 @@ class DeliveryController {
             condition, PageRequest.of(page, size, DeliverySort.parse(sort)));
 
     // TODO: 권한 검사하기
-    /*
-
-    */
     return new ApiResponse<>(
         new PageResponse<>(
             result.map(DeliveryResponse::from).getContent(),
@@ -85,9 +82,6 @@ class DeliveryController {
   ApiResponse<DeliveryResponse> searchDetail(
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
     // TODO: 권한 검사하기
-    /*
-
-    */
     return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
   }
 }
