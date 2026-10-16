@@ -14,7 +14,7 @@ PostgreSQL, Zipkin을 Docker Compose로 함께 실행합니다.
 | `users` | 사용자·인증·배송 담당자 속성 | `users_db` / `users` |
 | `company` | 업체·상품 | `company_db` / `company` |
 | `hub` | 허브·허브 경로·재고 | `hub_db` / `hub` |
-| `orders` | 주문·보상 처리 조정 | `orders_db` / `orders` |
+| `orders` | 주문·재고 차감·배송 요청 조정 | `orders_db` / `orders` |
 | `delivery` | 배송·배송 경로 | `delivery_db` / `delivery` |
 | `gateway` | 외부 API 진입점·서비스 라우팅 | 없음 |
 | `eureka` | 서비스 등록·탐색 | 없음 |

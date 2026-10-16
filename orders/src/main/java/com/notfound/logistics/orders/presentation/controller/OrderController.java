@@ -46,7 +46,7 @@ public class OrderController {
         description = "재고 부족 또는 멱등 키 충돌"),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "502",
-        description = "배송 실패 확정 및 재고 복원 완료")
+        description = "배송 생성 실패 확정")
   })
   @PostMapping
   public ResponseEntity<ApiResponse<OrderResponse>> create(

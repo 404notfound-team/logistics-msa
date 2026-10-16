@@ -184,7 +184,7 @@ public class Order extends AuditEntity {
     if (status != OrderStatus.PROCESSING && status != OrderStatus.CANCELLING)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
     status = OrderStatus.RECOVERY_REQUIRED;
-    // Keep known compensation intent or uncertain external requests across restarts.
+    // Keep the uncertain delivery phase across restarts.
     if (lastError == null) lastError = code;
   }
 
