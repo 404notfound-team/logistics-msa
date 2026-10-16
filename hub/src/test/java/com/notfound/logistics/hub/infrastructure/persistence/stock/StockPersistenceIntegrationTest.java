@@ -11,6 +11,7 @@ import com.notfound.logistics.hub.HubApplication;
 import com.notfound.logistics.hub.application.service.stock.StockCommandService;
 import com.notfound.logistics.hub.application.service.stock.StockQueryService;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
+import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
 import jakarta.persistence.EntityManager;
@@ -19,8 +20,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -338,5 +341,278 @@ class StockPersistenceIntegrationTest {
             .isEqualTo(query.getStocks(hub, item, 0, 100).getTotalElements());
       }
     }
+  }
+
+  @Test
+  void deductPersistsUpdatedQuantity() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 100);
+    var result = command.deduct(hubId, productId, 30);
+
+    assertThat(result.id()).isEqualTo(created.id());
+    assertThat(result.quantity()).isEqualTo(70);
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(70L);
+    assertThat(query.getStock(hubId, productId).quantity()).isEqualTo(70);
+  }
+
+  @Test
+  void deductExactQuantityLeavesZero() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 10);
+
+    var result = command.deduct(hubId, productId, 10);
+
+    assertThat(result.quantity()).isZero();
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isZero();
+  }
+
+  @Test
+  void insufficientDeductionDoesNotModifyDatabase() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 10);
+
+    assertThatThrownBy(() -> command.deduct(hubId, productId, 20))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.INSUFFICIENT_STOCK);
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(10L);
+  }
+
+  @Test
+  void deletedStockCannotBeDeducted() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 100);
+
+    jdbc.update(
+        """
+      UPDATE hub.p_stocks
+      SET deleted_at = NOW(),
+          deleted_by = 'stock-tester'
+      WHERE id = ?
+      """,
+        created.id());
+
+    assertThatThrownBy(() -> command.deduct(hubId, productId, 10))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(100L);
+  }
+
+  @Test
+  void deductionUpdatesAuditFields() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 100);
+
+    var before =
+        jdbc.queryForMap(
+            """
+        SELECT created_at, created_by, updated_at
+        FROM hub.p_stocks
+        WHERE id = ?
+        """,
+            created.id());
+
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            new UsernamePasswordAuthenticationToken("deduction-actor", null, List.of()));
+
+    command.deduct(hubId, productId, 10);
+
+    var after =
+        jdbc.queryForMap(
+            """
+        SELECT quantity, created_at, created_by, updated_at, updated_by
+        FROM hub.p_stocks
+        WHERE id = ?
+        """,
+            created.id());
+
+    assertThat(after.get("quantity")).isEqualTo(90L);
+    assertThat(after.get("created_by")).isEqualTo("stock-tester");
+    assertThat(after.get("created_at")).isEqualTo(before.get("created_at"));
+    assertThat(after.get("updated_by")).isEqualTo("deduction-actor");
+
+    assertThat((Timestamp) after.get("updated_at"))
+        .isAfterOrEqualTo((Timestamp) before.get("updated_at"));
+  }
+
+  @Test
+  void deductHttpRequestUpdatesDatabase() throws Exception {
+    UUID orderId = UUID.randomUUID();
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 100);
+
+    String body =
+        """
+      {
+        "order_id": "%s",
+        "hub_id": "%s",
+        "product_id": "%s",
+        "quantity": 30
+      }
+      """
+            .formatted(orderId, hubId, productId);
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
+        .andExpect(jsonPath("$.data.stock_id").value(created.id().toString()))
+        .andExpect(jsonPath("$.data.quantity").value(30))
+        .andExpect(jsonPath("$.data.state").value("DEDUCTED"));
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(70L);
+  }
+
+  @Test
+  void concurrentDeductionsAllowOnlyOneWhenInsufficient() throws Exception {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 10);
+
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    try (var executor = Executors.newFixedThreadPool(2)) {
+
+      java.util.concurrent.Callable<String> task =
+          () -> {
+            authenticate();
+
+            try {
+              ready.countDown();
+
+              if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 차감 시작 대기 시간 초과");
+              }
+
+              try {
+                command.deduct(hubId, productId, 7);
+                return "SUCCESS";
+              } catch (StockBusinessException exception) {
+                if (exception.getErrorCode() == StockErrorCode.INSUFFICIENT_STOCK) {
+                  return "INSUFFICIENT_STOCK";
+                }
+                throw exception;
+              }
+
+            } finally {
+              SecurityContextHolder.clearContext();
+            }
+          };
+
+      Future<String> first = executor.submit(task);
+      Future<String> second = executor.submit(task);
+
+      assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+
+      assertThat(List.of(first.get(20, TimeUnit.SECONDS), second.get(20, TimeUnit.SECONDS)))
+          .containsExactlyInAnyOrder("SUCCESS", "INSUFFICIENT_STOCK");
+    }
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(3L);
+  }
+
+  @Test
+  void concurrentDeductionsDoNotLoseUpdates() throws Exception {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 100);
+
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    try (var executor = Executors.newFixedThreadPool(2)) {
+
+      java.util.concurrent.Callable<Long> deduct30 =
+          () -> {
+            authenticate();
+
+            try {
+              ready.countDown();
+
+              if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 차감 시작 대기 시간 초과");
+              }
+
+              return command.deduct(hubId, productId, 30).quantity();
+
+            } finally {
+              SecurityContextHolder.clearContext();
+            }
+          };
+
+      java.util.concurrent.Callable<Long> deduct40 =
+          () -> {
+            authenticate();
+
+            try {
+              ready.countDown();
+
+              if (!start.await(10, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("동시 차감 시작 대기 시간 초과");
+              }
+
+              return command.deduct(hubId, productId, 40).quantity();
+
+            } finally {
+              SecurityContextHolder.clearContext();
+            }
+          };
+
+      Future<Long> first = executor.submit(deduct30);
+      Future<Long> second = executor.submit(deduct40);
+
+      assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+      start.countDown();
+
+      assertThat(first.get(20, TimeUnit.SECONDS)).isIn(70L, 30L);
+
+      assertThat(second.get(20, TimeUnit.SECONDS)).isIn(60L, 30L);
+    }
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(30L);
   }
 }

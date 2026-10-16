@@ -56,4 +56,16 @@ public class StockCommandService {
 
     return StockResult.from(stock);
   }
+
+  @Transactional
+  public StockResult deduct(UUID hubId, UUID productId, long quantity) {
+    Stock stock =
+        stockRepository
+            .findLockedByHubIdAndProductId(hubId, productId)
+            .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
+
+    stock.deduct(quantity);
+
+    return StockResult.from(stock);
+  }
 }

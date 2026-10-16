@@ -86,4 +86,95 @@ class StockCommandServiceTest {
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
   }
+
+  @Test
+  void deductsStockQuantity() {
+    Stock stock = Stock.create(hubId, productId, 100);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    var result = service.deduct(hubId, productId, 30);
+
+    assertThat(result.quantity()).isEqualTo(70);
+    assertThat(stock.getQuantity()).isEqualTo(70);
+  }
+
+  /** 재고 차감 (internal) */
+  @Test
+  void insufficientStockCannotBeDeducted() {
+    Stock stock = Stock.create(hubId, productId, 10);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    assertThatThrownBy(() -> service.deduct(hubId, productId, 20))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.INSUFFICIENT_STOCK);
+
+    assertThat(stock.getQuantity()).isEqualTo(10);
+  }
+
+  @Test
+  void missingStockCannotBeDeducted() {
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.deduct(hubId, productId, 10))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
+  }
+
+  @Test
+  void deductingExactAvailableStockLeavesZero() {
+    Stock stock = Stock.create(hubId, productId, 10);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    var result = service.deduct(hubId, productId, 10);
+
+    assertThat(result.quantity()).isZero();
+    assertThat(stock.getQuantity()).isZero();
+  }
+
+  @Test
+  void zeroStockCannotBeDeducted() {
+    Stock stock = Stock.create(hubId, productId, 0);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    assertThatThrownBy(() -> service.deduct(hubId, productId, 1))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.INSUFFICIENT_STOCK);
+
+    assertThat(stock.getQuantity()).isZero();
+  }
+
+  @Test
+  void invalidDeductionQuantityDoesNotChangeStock() {
+    Stock stock = Stock.create(hubId, productId, 10);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    for (long quantity : new long[] {0, -1, Long.MIN_VALUE}) {
+      assertThatThrownBy(() -> service.deduct(hubId, productId, quantity))
+          .isInstanceOf(StockBusinessException.class)
+          .extracting(e -> ((StockBusinessException) e).getErrorCode())
+          .isEqualTo(StockErrorCode.INVALID_STOCK_QUANTITY);
+    }
+
+    assertThat(stock.getQuantity()).isEqualTo(10);
+  }
+
+  @Test
+  void maximumLongQuantityCanBeDeductedExactly() {
+    Stock stock = Stock.create(hubId, productId, Long.MAX_VALUE);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    var result = service.deduct(hubId, productId, Long.MAX_VALUE);
+
+    assertThat(result.quantity()).isZero();
+    assertThat(stock.getQuantity()).isZero();
+  }
 }

@@ -34,7 +34,11 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@WebMvcTest({StockController.class, InternalStockController.class})
+@WebMvcTest({
+  StockController.class,
+  InternalStockController.class,
+  InternalStockDeductionController.class
+})
 class StockControllerTest {
   @Autowired private MockMvc mvc;
   @MockitoBean private StockCommandService command;
@@ -301,6 +305,241 @@ class StockControllerTest {
             post("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"quantity\":" + quantity + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verifyNoInteractions(command);
+  }
+
+  @Test
+  void deductStockReturnsCreated() throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    when(command.deduct(hubId, productId, 10))
+        .thenReturn(new StockResult(stockId, hubId, productId, 90));
+
+    String body =
+        """
+        {
+          "order_id": "%s",
+          "hub_id": "%s",
+          "product_id": "%s",
+          "quantity": 10
+        }
+        """
+            .formatted(orderId, hubId, productId);
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
+        .andExpect(jsonPath("$.data.stock_id").value(stockId.toString()))
+        .andExpect(jsonPath("$.data.quantity").value(10))
+        .andExpect(jsonPath("$.data.state").value("DEDUCTED"));
+
+    verify(command).deduct(hubId, productId, 10);
+  }
+
+  @Test
+  void deductStockReturnsConflictWhenInsufficient() throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    when(command.deduct(hubId, productId, 100))
+        .thenThrow(new StockBusinessException(StockErrorCode.INSUFFICIENT_STOCK));
+
+    String body =
+        """
+        {
+          "order_id": "%s",
+          "hub_id": "%s",
+          "product_id": "%s",
+          "quantity": 100
+        }
+        """
+            .formatted(orderId, hubId, productId);
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INSUFFICIENT_STOCK"));
+  }
+
+  private String deductionBody(UUID orderId, String quantity) {
+    return """
+      {
+        "order_id": "%s",
+        "hub_id": "%s",
+        "product_id": "%s",
+        "quantity": %s
+      }
+      """
+        .formatted(orderId, hubId, productId, quantity);
+  }
+
+  @Test
+  void deductStockReturnsNotFound() throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    when(command.deduct(hubId, productId, 10))
+        .thenThrow(new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deductionBody(orderId, "10")))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("STOCK_NOT_FOUND"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(
+      strings = {
+        "0",
+        "-1",
+        "-9223372036854775808",
+        "1.5",
+        "1.0",
+        "1e3",
+        "\"10\"",
+        "\"\"",
+        "true",
+        "null",
+        "[]",
+        "{}",
+        "9223372036854775808",
+        "-9223372036854775809"
+      })
+  void deductStockRejectsInvalidQuantity(String quantity) throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deductionBody(orderId, quantity)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verifyNoInteractions(command);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"order_id", "hub_id", "product_id", "quantity"})
+  void deductStockRejectsMissingRequiredField(String missingField) throws Exception {
+
+    UUID orderId = UUID.randomUUID();
+
+    String body =
+        switch (missingField) {
+          case "order_id" ->
+              """
+        {
+          "hub_id": "%s",
+          "product_id": "%s",
+          "quantity": 10
+        }
+        """
+                  .formatted(hubId, productId);
+
+          case "hub_id" ->
+              """
+        {
+          "order_id": "%s",
+          "product_id": "%s",
+          "quantity": 10
+        }
+        """
+                  .formatted(orderId, productId);
+
+          case "product_id" ->
+              """
+        {
+          "order_id": "%s",
+          "hub_id": "%s",
+          "quantity": 10
+        }
+        """
+                  .formatted(orderId, hubId);
+
+          default ->
+              """
+        {
+          "order_id": "%s",
+          "hub_id": "%s",
+          "product_id": "%s"
+        }
+        """
+                  .formatted(orderId, hubId, productId);
+        };
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verifyNoInteractions(command);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"order_id", "hub_id", "product_id"})
+  void deductStockRejectsInvalidUuid(String field) throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    String body = deductionBody(orderId, "10");
+
+    for (String invalidValue : new String[] {"null", "\"invalid-uuid\""}) {
+      String invalidBody =
+          body.replace(
+              "\""
+                  + field
+                  + "\": \""
+                  + switch (field) {
+                    case "order_id" -> orderId;
+                    case "hub_id" -> hubId;
+                    default -> productId;
+                  }
+                  + "\"",
+              "\"" + field + "\": " + invalidValue);
+
+      mvc.perform(
+              post("/internal/stocks/deductions")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(invalidBody))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+
+    verifyNoInteractions(command);
+  }
+
+  @Test
+  void deductStockAcceptsMaxLongQuantity() throws Exception {
+    UUID orderId = UUID.randomUUID();
+
+    when(command.deduct(hubId, productId, Long.MAX_VALUE))
+        .thenReturn(new StockResult(stockId, hubId, productId, 0));
+
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deductionBody(orderId, String.valueOf(Long.MAX_VALUE))))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.quantity").value(Long.MAX_VALUE));
+
+    verify(command).deduct(hubId, productId, Long.MAX_VALUE);
+  }
+
+  @Test
+  void deductStockRejectsMalformedJson() throws Exception {
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{invalid-json"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
 
