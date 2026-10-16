@@ -27,6 +27,7 @@ import org.springframework.web.reactive.function.server.ServerResponse;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
       "eureka.client.enabled=false",
       "management.tracing.enabled=false"
     })

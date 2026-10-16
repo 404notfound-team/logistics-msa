@@ -13,6 +13,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
       "eureka.client.enabled=false",
       "management.tracing.enabled=false"
     })

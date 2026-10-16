@@ -30,6 +30,7 @@ import reactor.netty.http.server.HttpServer;
     webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = {
       "JWT_SECRET=test-only-signing-key-for-gateway-module-tests-32bytes",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
       "eureka.client.enabled=false",
       "spring.cloud.service-registry.auto-registration.enabled=false",
       "management.tracing.enabled=false"
@@ -130,7 +131,7 @@ class OpenApiGatewayTest {
       String payload =
           encodeBase64Url(
               "{\"iss\":\"logistics-users\",\"sub\":\"11111111-1111-1111-1111-111111111111\","
-                  + "\"role\":\"USER\","
+                  + "\"username\":\"user01\",\"role\":\"USER\","
                   + "\"is_delivery_staff\":false,\"iat\":"
                   + now
                   + ",\"exp\":"
@@ -180,12 +181,16 @@ class OpenApiGatewayTest {
                     """
                                 .formatted(service, publicPath);
                       } else if ("users".equals(service)
+                          && "test-only-gateway-service-token"
+                              .equals(request.requestHeaders().get("X-Service-Token"))
+                          && !request.requestHeaders().contains("Authorization")
                           && request
                               .uri()
                               .equals(
                                   "/internal/users/11111111-1111-1111-1111-111111111111/authorization")) {
                         body =
                             "{\"data\":{\"user_id\":\"11111111-1111-1111-1111-111111111111\","
+                                + "\"username\":\"user01\","
                                 + "\"active\":true,\"role\":\"USER\","
                                 + "\"is_delivery_staff\":false}}";
                       } else if (request.uri().equals(publicPath)) {
