@@ -6,8 +6,10 @@ import com.notfound.logistics.hub.domain.exception.hub.HubErrorCode;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
+import com.notfound.logistics.hub.domain.model.stock.StockRestoration;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
+import com.notfound.logistics.hub.domain.repository.stock.StockRestorationRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -20,6 +22,7 @@ public class StockCommandService {
 
   private final StockRepository stockRepository;
   private final HubRepository hubRepository;
+  private final StockRestorationRepository restorations;
 
   @Transactional
   @PreAuthorize("hasRole('MASTER')")
@@ -71,13 +74,25 @@ public class StockCommandService {
 
   @Transactional
   @PreAuthorize("hasAuthority('SERVICE_ORDERS')")
-  public StockResult restore(UUID hubId, UUID productId, long quantity) {
+  public StockResult restore(UUID orderId, UUID hubId, UUID productId, long quantity) {
+    restorations.lockOrder(orderId);
+    var previous = restorations.findById(orderId);
+    if (previous.isPresent()) {
+      var receipt = previous.get();
+      receipt.requireSameRequest(hubId, productId, quantity);
+      return new StockResult(
+          receipt.getStockId(),
+          receipt.getHubId(),
+          receipt.getProductId(),
+          receipt.getRemainingQuantity());
+    }
     Stock stock =
         stockRepository
             .findLockedByHubIdAndProductId(hubId, productId)
             .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
 
     stock.restore(quantity);
+    restorations.saveAndFlush(StockRestoration.completed(orderId, stock, quantity));
 
     return StockResult.from(stock);
   }

@@ -84,5 +84,12 @@ users:
 | Users | `GET /internal/users/{id}/authorization` | Gateway | 불필요(사용자 검증 단계) | 적용 |
 | Hub | `GET /internal/hubs?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Hub 수신 검증 예정 |
 | Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Company 수신 검증 예정 |
+| Hub | `POST /internal/stocks/deductions` | Orders | 필수 | 서비스 인증 적용. `order_id`는 추적용이며 재차감 금지 |
+| Hub | `POST /internal/stocks/restorations` | Orders | 필수 | 서비스 인증 적용. 주문별 멱등 복원 |
 
 내부 API를 추가하면 이 표와 수신 서비스의 허용 API 설정을 함께 갱신합니다.
+
+재고 복원 요청은 `order_id`, `hub_id`, `product_id` UUID와 양의 bigint `quantity`를 받습니다.
+성공은 200과 `data: {id, hub_id, product_id, quantity}`이며 quantity는 최초 복원 직후 잔량입니다.
+같은 주문 키와 같은 내용은 수량을 다시 늘리지 않고 최초 응답을 반환합니다. 다른 내용은 409 `STOCK_RESTORATION_CONFLICT`, 대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.
+성공 기록과 수량의 원자성·보존 계약은 [Hub / Stock 설계](domain-design.md#hub--stock-설계-결정-사항)를 따릅니다.

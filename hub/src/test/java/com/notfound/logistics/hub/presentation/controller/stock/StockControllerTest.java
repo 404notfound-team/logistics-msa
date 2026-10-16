@@ -565,7 +565,7 @@ class StockControllerTest {
   void restoreStockReturnsCurrentQuantity() throws Exception {
     UUID orderId = UUID.randomUUID();
 
-    when(command.restore(hubId, productId, 30))
+    when(command.restore(orderId, hubId, productId, 30))
         .thenReturn(new StockResult(stockId, hubId, productId, 100));
 
     String body =
@@ -589,6 +589,6 @@ class StockControllerTest {
         .andExpect(jsonPath("$.data.product_id").value(productId.toString()))
         .andExpect(jsonPath("$.data.quantity").value(100));
 
-    verify(command).restore(hubId, productId, 30);
+    verify(command).restore(orderId, hubId, productId, 30);
   }
 }

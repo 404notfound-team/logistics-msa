@@ -6,6 +6,7 @@ public enum StockErrorCode {
   INVALID_INITIAL_STOCK("초기 재고는 0 이상이어야 합니다."),
   INSUFFICIENT_STOCK("재고가 부족합니다."),
   STOCK_ALREADY_EXISTS("해당 허브에 동일한 상품의 재고가 이미 존재합니다."),
+  STOCK_RESTORATION_CONFLICT("이미 복원한 주문의 허브·상품·수량과 일치하지 않습니다."),
   STOCK_QUANTITY_OVERFLOW("재고 수량이 허용 범위를 초과했습니다.");
 
   private final String description;

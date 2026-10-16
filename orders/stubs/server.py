@@ -52,6 +52,7 @@ class State:
           CREATE TABLE IF NOT EXISTS deliveries(delivery_id TEXT PRIMARY KEY, order_id TEXT UNIQUE, departure_hub_id TEXT,
             destination_hub_id TEXT, address TEXT, recipient_name TEXT, status TEXT, deleted INTEGER DEFAULT 0);
           CREATE TABLE IF NOT EXISTS notifications(id INTEGER PRIMARY KEY, payload TEXT);
+          CREATE TABLE IF NOT EXISTS restorations(order_id TEXT PRIMARY KEY, hub_id TEXT, product_id TEXT, quantity INTEGER, response TEXT);
         ''')
         self.seed()
 
@@ -72,7 +73,7 @@ class State:
         action = body.get('action')
         if action == 'reset':
             with self.db:
-                for table in ('deliveries', 'notifications', 'stocks', 'companies', 'products'):
+                for table in ('restorations', 'deliveries', 'notifications', 'stocks', 'companies', 'products'):
                     self.db.execute('DELETE FROM ' + table)
             self.rules.clear(); self.counts.clear(); self.actors.clear(); self.seed()
         elif action == 'fault':
@@ -122,6 +123,24 @@ class State:
                                           (quantity, stock['id'], quantity)).rowcount
                 if not changed: raise StubError(409, 'INSUFFICIENT_STOCK')
             return 200, self.row('SELECT * FROM stocks WHERE id=?', (stock['id'],))
+        if operation == 'stock.restore':
+            order_id = str(UUID(body['order_id']))
+            hub_id, product_id = (str(UUID(body[key])) for key in ('hub_id', 'product_id'))
+            quantity = body['quantity']
+            if type(quantity) is not int or not 0 < quantity <= 2**63 - 1: raise StubError(400, 'INVALID_REQUEST')
+            previous = self.row('SELECT * FROM restorations WHERE order_id=?', (order_id,))
+            if previous:
+                if (previous['hub_id'], previous['product_id'], previous['quantity']) != (hub_id, product_id, quantity):
+                    raise StubError(409, 'STOCK_RESTORATION_CONFLICT')
+                return 200, json.loads(previous['response'])
+            stock = self.row('SELECT * FROM stocks WHERE hub_id=? AND product_id=?', (hub_id, product_id))
+            if not stock: raise StubError(404, 'STOCK_NOT_FOUND')
+            if stock['quantity'] + quantity > 2**63 - 1: raise StubError(409, 'STOCK_QUANTITY_OVERFLOW')
+            with self.db:
+                self.db.execute('UPDATE stocks SET quantity=quantity+? WHERE id=?', (quantity, stock['id']))
+                result = self.row('SELECT * FROM stocks WHERE id=?', (stock['id'],))
+                self.db.execute('INSERT INTO restorations VALUES(?,?,?,?,?)', (order_id, hub_id, product_id, quantity, json.dumps(result)))
+            return 200, result
         if operation == 'delivery.get':
             row = self.row('SELECT * FROM deliveries WHERE order_id=? AND deleted=0', (identifier,))
             if not row: raise StubError(404, 'DELIVERY_NOT_FOUND')
@@ -198,13 +217,14 @@ def serve(port, filename, service_token, jwt_secret):
                     if path == '/__stub/control': self.respond(200, {'data': state.control(body)}); return
                     if path == '/__stub/state':
                         self.respond(200, {'data': {**{table: [dict(row) for row in state.db.execute('SELECT * FROM ' + table)]
-                            for table in ('stocks', 'deliveries', 'notifications')}, 'counts': state.counts, 'actors': state.actors, 'inflight': state.inflight}}); return
+                            for table in ('stocks', 'deliveries', 'notifications', 'restorations')}, 'counts': state.counts, 'actors': state.actors, 'inflight': state.inflight}}); return
                 if path.startswith('/internal/') and not self.headers.get('X-Actor-Username', '').strip():
                     raise StubError(401, 'UNAUTHORIZED')
                 operation, identifier = None, None
                 if self.command == 'GET' and path.startswith('/internal/companies/'): operation, identifier = 'company.get', path.rsplit('/', 1)[1]
                 elif self.command == 'GET' and path.startswith('/internal/products/'): operation, identifier = 'product.get', path.rsplit('/', 1)[1]
                 elif self.command == 'POST' and path == '/internal/stocks/deductions': operation = 'stock.deduct'
+                elif self.command == 'POST' and path == '/internal/stocks/restorations': operation = 'stock.restore'
                 elif self.command == 'GET' and path.startswith('/internal/deliveries/by-order/'): operation, identifier = 'delivery.get', path.rsplit('/', 1)[1]
                 elif self.command == 'POST' and path == '/internal/deliveries': operation = 'delivery.create'
                 elif self.command == 'POST' and path.startswith('/internal/deliveries/') and path.endswith('/cancel'): operation, identifier = 'delivery.cancel', path.split('/')[-2]

@@ -32,6 +32,7 @@ import org.hibernate.annotations.SQLRestriction;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends AuditEntity {
+  private static final String STOCK_RESTORATION_PENDING = "STOCK_RESTORATION_PENDING";
   @Id private UUID id;
 
   @Enumerated(EnumType.STRING)
@@ -190,7 +191,18 @@ public class Order extends AuditEntity {
 
   public void cancel() {
     require(OrderStatus.CANCELLING);
+    if (!awaitingStockRestoration())
+      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
     finish(OrderStatus.CANCELLED);
+  }
+
+  public void awaitStockRestoration() {
+    require(OrderStatus.CANCELLING);
+    lastError = STOCK_RESTORATION_PENDING;
+  }
+
+  public boolean awaitingStockRestoration() {
+    return recoveryAction == RecoveryAction.CANCEL && STOCK_RESTORATION_PENDING.equals(lastError);
   }
 
   public void rejectCancellation() {

@@ -395,7 +395,8 @@ class OrderApiIntegrationTest {
     UUID id = id(create(key, body(), alice));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("CANCELLED");
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
     assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
@@ -413,6 +414,71 @@ class OrderApiIntegrationTest {
                 .at("/data/total_elements")
                 .asLong())
         .isZero();
+  }
+
+  @Test
+  void restorationFailureKeepsCancellationPendingAndBlocksDeletionUntilRecovery() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault("stock.restore", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, admin, null), 202);
+    var pending = repository.findById(id).orElseThrow();
+    assertThat(pending.getStatus().name()).isEqualTo("RECOVERY_REQUIRED");
+    assertThat(pending.awaitingStockRestoration()).isTrue();
+    assertThat(pending.getUpdatedBy()).isEqualTo("admin");
+    assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("CANCELLED");
+    assertInventory(997, 1, 1);
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, bob, null), 403);
+    int lookups = STUB.state().at("/counts/delivery.get").asInt();
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(repository.findById(id).orElseThrow().getUpdatedBy()).isEqualTo("admin");
+    assertThat(STUB.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
+    assertThat(STUB.state().at("/counts/delivery.get").asInt()).isEqualTo(lookups);
+    assertInventory(1000, 1, 1);
+  }
+
+  @Test
+  void lostRestorationResponseAndConcurrentCancelsCannotIncreaseQuantityTwice() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault("stock.restore", Map.of("delay_after_ms", 3000));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var first =
+          executor.submit(
+              () -> request("POST", "/api/orders/" + id + "/cancel", null, admin, null));
+      await()
+          .atMost(Duration.ofSeconds(3))
+          .untilAsserted(() -> assertThat(STUB.state().path("restorations")).hasSize(1));
+      assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLING");
+      assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
+      assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+      assertStatus(first.get(5, TimeUnit.SECONDS), 202);
+    }
+    assertThat(repository.findById(id).orElseThrow().awaitingStockRestoration()).isTrue();
+    STUB.awaitIdle();
+    service.recover();
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().path("restorations")).hasSize(1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(2);
+    assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+    assertThat(STUB.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
+  }
+
+  @Test
+  void malformedRestorationAcknowledgementCannotCompleteCancellation() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault(
+        "stock.restore",
+        Map.of("response", Map.of("data", Map.of("id", UUID.randomUUID(), "quantity", 1000))));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
+    assertThat(repository.findById(id).orElseThrow().getStatus().name())
+        .isEqualTo("RECOVERY_REQUIRED");
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().path("restorations")).hasSize(1);
   }
 
   @Test
@@ -460,7 +526,7 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void cancellationWinningConcurrentDepartureCompletesWithoutChangingStock() throws Exception {
+  void cancellationWinningConcurrentDepartureRestoresStock() throws Exception {
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     String deliveryId = STUB.state().at("/deliveries/0/delivery_id").asText();
     fault("delivery.cancel", Map.of("delay_after_ms", 3000));
@@ -485,7 +551,7 @@ class OrderApiIntegrationTest {
     service.recover();
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
-    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+    assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
   }
 
@@ -499,7 +565,8 @@ class OrderApiIntegrationTest {
     service.recover();
     STUB.awaitIdle();
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
   }
 
   @Test
@@ -658,7 +725,8 @@ class OrderApiIntegrationTest {
       }
       assertStatus(first.get(10, TimeUnit.SECONDS), 200);
     }
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
   }
 
@@ -711,7 +779,8 @@ class OrderApiIntegrationTest {
       }
       assertStatus(first.get(10, TimeUnit.SECONDS), 200);
     }
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
   }
@@ -768,7 +837,8 @@ class OrderApiIntegrationTest {
     assertThat(cancelled.getUpdatedBy()).isEqualTo("admin");
     assertThat(STUB.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
   }
 
   @Test
@@ -843,7 +913,7 @@ class OrderApiIntegrationTest {
       assertThat(STUB.state().at("/counts/delivery.cancel").asInt())
           .isEqualTo(replacementOwner ? 0 : 1);
       assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-      assertInventory(997, 1, 1);
+      assertInventory(replacementOwner ? 997 : 1000, 1, 1);
     } finally {
       if (replacementOwner) active.end(id);
     }
@@ -913,7 +983,8 @@ class OrderApiIntegrationTest {
     assertThat(STUB.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
     assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-    assertInventory(997, 1, 1);
+    assertInventory(1000, 1, 1);
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
   }
 
   private void assertCancellationAfterRecoveryReleased(boolean departed) throws Exception {
@@ -952,7 +1023,7 @@ class OrderApiIntegrationTest {
         proceed.countDown();
       }
     }
-    assertInventory(997, 1, 1);
+    assertInventory(departed ? 997 : 1000, 1, 1);
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
     assertThat(STUB.state().at("/counts/delivery.cancel").asInt()).isEqualTo(departed ? 1 : 2);
   }

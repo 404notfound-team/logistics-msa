@@ -17,8 +17,12 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -81,6 +85,7 @@ class OrdersStockContractIntegrationTest {
 
   @BeforeEach
   void createStockThroughAuthenticatedExternalApi() throws Exception {
+    jdbc.update("DELETE FROM hub.p_stock_restorations");
     jdbc.update("DELETE FROM hub.p_stocks");
     product = UUID.randomUUID();
     var response =
@@ -105,6 +110,164 @@ class OrdersStockContractIntegrationTest {
     assertThat(row().get("quantity")).isEqualTo(remaining);
     assertThat(row().get("created_by")).isEqualTo("alice");
     assertThat(row().get("updated_by")).isEqualTo("alice");
+  }
+
+  @Test
+  void restorationReplaysTheCommittedReceiptWithoutChangingQuantityOrAudit() throws Exception {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    var restored = client.restore(request);
+    assertThat(restored.data()).isEqualTo(new Stock(stock, hub, product, Long.MAX_VALUE - 7));
+    var receipt =
+        jdbc.queryForMap(
+            "SELECT * FROM hub.p_stock_restorations WHERE order_id=?", request.orderId());
+    assertThat(receipt.get("created_by")).isEqualTo("alice");
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 1));
+    var before = row();
+    assertThat(client(HubSecurityTestTokens.ORDERS, "admin").restore(request)).isEqualTo(restored);
+    assertThat(row()).isEqualTo(before);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT * FROM hub.p_stock_restorations WHERE order_id=?", request.orderId()))
+        .isEqualTo(receipt);
+    // Replaying a receipt never depends on the current stock being active.
+    jdbc.update("UPDATE hub.p_stocks SET deleted_at=NOW(), deleted_by='alice' WHERE id=?", stock);
+    assertThat(client.restore(request)).isEqualTo(restored);
+  }
+
+  @Test
+  void theSameRestorationKeyRejectsAnyDifferentHubProductOrQuantity() throws Exception {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    UUID order = UUID.randomUUID();
+    client.restore(new Deduction(order, hub, product, 3));
+    var before = row();
+    for (var changed :
+        List.of(
+            new Deduction(order, hub, product, 4),
+            new Deduction(order, UUID.randomUUID(), product, 3),
+            new Deduction(order, hub, UUID.randomUUID(), 3))) {
+      var response = restore(changed, HubSecurityTestTokens.ORDERS, "alice");
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(409);
+      assertThat(mapper.readTree(response.body()).path("code").asText())
+          .isEqualTo("STOCK_RESTORATION_CONFLICT");
+    }
+    assertThat(row()).isEqualTo(before);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_restorations", Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void concurrentRestorationsOfOneOrderIncreaseStockOnlyOnce() throws Exception {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    var start = new CountDownLatch(1);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var calls = new java.util.ArrayList<java.util.concurrent.Future<HttpResponse<String>>>();
+      for (int i = 0; i < 8; i++)
+        calls.add(
+            executor.submit(
+                () -> {
+                  assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                  return restore(request, HubSecurityTestTokens.ORDERS, "alice");
+                }));
+      start.countDown();
+      for (var call : calls) assertThat(call.get(15, TimeUnit.SECONDS).statusCode()).isEqualTo(200);
+    }
+    assertThat(row().get("quantity")).isEqualTo(Long.MAX_VALUE - 7);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_restorations", Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void conflictingConcurrentRequestsOnDifferentStockRowsHaveOneWinner() throws Exception {
+    UUID otherProduct = UUID.randomUUID();
+    jdbc.update("UPDATE hub.p_stocks SET quantity=10 WHERE id=?", stock);
+    jdbc.update(
+        "INSERT INTO hub.p_stocks(id,hub_id,product_id,quantity,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,10,NOW(),'alice',NOW(),'alice')",
+        UUID.randomUUID(),
+        hub,
+        otherProduct);
+    UUID order = UUID.randomUUID();
+    var start = new CountDownLatch(1);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var first =
+          executor.submit(
+              () -> {
+                start.await();
+                return restore(
+                    new Deduction(order, hub, product, 3), HubSecurityTestTokens.ORDERS, "alice");
+              });
+      var second =
+          executor.submit(
+              () -> {
+                start.await();
+                return restore(
+                    new Deduction(order, hub, otherProduct, 4),
+                    HubSecurityTestTokens.ORDERS,
+                    "alice");
+              });
+      start.countDown();
+      assertThat(
+              List.of(
+                  first.get(15, TimeUnit.SECONDS).statusCode(),
+                  second.get(15, TimeUnit.SECONDS).statusCode()))
+          .containsExactlyInAnyOrder(200, 409);
+    }
+    var receipt =
+        jdbc.queryForMap("SELECT * FROM hub.p_stock_restorations WHERE order_id=?", order);
+    long restored = (Long) receipt.get("quantity");
+    assertThat(jdbc.queryForObject("SELECT sum(quantity) FROM hub.p_stocks", Long.class))
+        .isEqualTo(20 + restored);
+    assertThat(
+            jdbc.queryForObject("SELECT count(*) FROM hub.p_stocks WHERE quantity=10", Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void receiptWriteFailureRollsBackStockAndAllowsALaterRestoration() throws Exception {
+    jdbc.update("UPDATE hub.p_stocks SET quantity=10 WHERE id=?", stock);
+    var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    jdbc.execute(
+        "CREATE FUNCTION hub.reject_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$");
+    jdbc.execute(
+        "CREATE TRIGGER reject_receipt BEFORE INSERT ON hub.p_stock_restorations FOR EACH ROW EXECUTE FUNCTION hub.reject_receipt()");
+    var before = row();
+    try {
+      assertThat(restore(request, HubSecurityTestTokens.ORDERS, "alice").statusCode())
+          .isEqualTo(500);
+      assertThat(row()).isEqualTo(before);
+      assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_restorations", Long.class))
+          .isZero();
+    } finally {
+      jdbc.execute("DROP TRIGGER reject_receipt ON hub.p_stock_restorations");
+      jdbc.execute("DROP FUNCTION hub.reject_receipt()");
+    }
+    assertThat(restore(request, HubSecurityTestTokens.ORDERS, "alice").statusCode()).isEqualTo(200);
+    assertThat(row().get("quantity")).isEqualTo(13L);
+  }
+
+  @Test
+  void restorationRequiresOrdersServiceAuthenticationAndAuditActor() throws Exception {
+    var before = row();
+    var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    assertThat(restore(request, "", "alice").statusCode()).isEqualTo(401);
+    assertThat(restore(request, HubSecurityTestTokens.COMPANY, "alice").statusCode())
+        .isEqualTo(403);
+    assertThat(restore(request, HubSecurityTestTokens.ORDERS, "").statusCode()).isEqualTo(401);
+    assertThat(row()).isEqualTo(before);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_restorations", Long.class))
+        .isZero();
+  }
+
+  private HttpResponse<String> restore(Deduction request, String token, String actor)
+      throws Exception {
+    return post(
+        "/internal/stocks/restorations",
+        mapper.writeValueAsString(request),
+        Map.of("X-Service-Token", token, "X-Actor-Username", actor));
   }
 
   @Test
@@ -235,6 +398,9 @@ class OrdersStockContractIntegrationTest {
   interface OrdersStockClient {
     @PostMapping("/internal/stocks/deductions")
     ApiResponse<Stock> deduct(@RequestBody Deduction request);
+
+    @PostMapping("/internal/stocks/restorations")
+    ApiResponse<Stock> restore(@RequestBody Deduction request);
   }
 
   record Deduction(UUID orderId, UUID hubId, UUID productId, long quantity) {}

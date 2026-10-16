@@ -14,6 +14,8 @@ public final class OrderClientTypes {
 
   public record Deduction(UUID orderId, UUID hubId, UUID productId, long quantity) {}
 
+  public record Restoration(UUID orderId, UUID hubId, UUID productId, long quantity) {}
+
   public record Stock(UUID id, UUID hubId, UUID productId, Long quantity) {}
 
   public record DeliveryRequest(

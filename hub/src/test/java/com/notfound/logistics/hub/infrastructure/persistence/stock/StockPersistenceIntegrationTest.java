@@ -817,7 +817,7 @@ class StockPersistenceIntegrationTest {
             "SELECT quantity, updated_at, updated_by " + "FROM hub.p_stocks WHERE id = ?",
             created.id());
 
-    assertThatThrownBy(() -> command.restore(hubId, productId, 1))
+    assertThatThrownBy(() -> command.restore(UUID.randomUUID(), hubId, productId, 1))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
@@ -845,7 +845,7 @@ class StockPersistenceIntegrationTest {
       """,
         created.id());
 
-    assertThatThrownBy(() -> command.restore(hubId, productId, 10))
+    assertThatThrownBy(() -> command.restore(UUID.randomUUID(), hubId, productId, 10))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
