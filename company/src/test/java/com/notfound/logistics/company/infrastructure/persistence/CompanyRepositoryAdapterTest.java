@@ -1,8 +1,9 @@
-package com.notfound.logistics.company.domain.repository;
+package com.notfound.logistics.company.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -35,11 +36,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.properties.hibernate.hbm2ddl.create_namespaces=true"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
-@Import(CompanyRepositoryTest.AuditingTestConfig.class)
+@Import({CompanyRepositoryAdapter.class, CompanyRepositoryAdapterTest.AuditingTestConfig.class})
 @Testcontainers
 // 컨테이너가 내려가기 전에 Spring 컨텍스트를 먼저 닫아 종료 시 DB 연결 대기(30초)를 막는다.
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
-class CompanyRepositoryTest {
+class CompanyRepositoryAdapterTest {
   private static final UUID HUB_ID = UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6");
   private static final UUID MANAGER_ID = UUID.fromString("22222222-2222-2222-2222-222222222222");
   private static final UUID OTHER_HUB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
@@ -48,7 +49,7 @@ class CompanyRepositoryTest {
   @Container
   static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
 
-  @Autowired private CompanyRepository repository;
+  @Autowired private CompanyRepositoryAdapter repository;
   @Autowired private TestEntityManager entityManager;
 
   @DynamicPropertySource
@@ -86,7 +87,7 @@ class CompanyRepositoryTest {
     persist("beta logistics", HUB_ID);
     persist("Gamma Trading", HUB_ID);
 
-    Page<Company> result = repository.search("LOGIS", null, FIRST_PAGE);
+    Page<Company> result = repository.search(new CompanySearchCondition("LOGIS", null), FIRST_PAGE);
 
     assertThat(result.getContent())
         .extracting(Company::getName)
@@ -99,7 +100,8 @@ class CompanyRepositoryTest {
     persist("허브1 업체", HUB_ID);
     persist("허브2 업체", OTHER_HUB_ID);
 
-    Page<Company> result = repository.search(null, OTHER_HUB_ID, FIRST_PAGE);
+    Page<Company> result =
+        repository.search(new CompanySearchCondition(null, OTHER_HUB_ID), FIRST_PAGE);
 
     assertThat(result.getContent()).extracting(Company::getName).containsExactly("허브2 업체");
   }
@@ -110,7 +112,7 @@ class CompanyRepositoryTest {
     persist("1000 물류", HUB_ID);
 
     // %를 와일드카드로 해석하면 두 업체가 모두 나온다.
-    Page<Company> result = repository.search("100%", null, FIRST_PAGE);
+    Page<Company> result = repository.search(new CompanySearchCondition("100%", null), FIRST_PAGE);
 
     assertThat(result.getContent()).extracting(Company::getName).containsExactly("100% 물류");
   }
@@ -124,7 +126,7 @@ class CompanyRepositoryTest {
     entityManager.clear();
 
     assertThat(repository.findById(deleted.getId())).isEmpty();
-    Page<Company> result = repository.search(null, null, FIRST_PAGE);
+    Page<Company> result = repository.search(new CompanySearchCondition(null, null), FIRST_PAGE);
     assertThat(result.getContent()).extracting(Company::getId).containsExactly(kept.getId());
     // 목록과 전체 개수에 같은 삭제 제외 조건이 적용된다.
     assertThat(result.getTotalElements()).isEqualTo(1);
@@ -136,7 +138,9 @@ class CompanyRepositoryTest {
     persist("업체 B", HUB_ID);
 
     // offset(page × size)이 int 범위를 넘는 요청도 예외 없이 빈 목록과 실제 전체 개수를 반환해야 한다.
-    Page<Company> result = repository.search(null, null, PageRequest.of(Integer.MAX_VALUE, 20));
+    Page<Company> result =
+        repository.search(
+            new CompanySearchCondition(null, null), PageRequest.of(Integer.MAX_VALUE, 20));
 
     assertThat(result.getContent()).isEmpty();
     assertThat(result.getTotalElements()).isEqualTo(2);

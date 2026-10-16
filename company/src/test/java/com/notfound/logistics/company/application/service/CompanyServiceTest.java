@@ -9,6 +9,7 @@ import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
+import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -81,9 +82,10 @@ class CompanyServiceTest {
   void searchCompaniesPassesConditionsToRepository() {
     Pageable pageable = PageRequest.of(1, 10);
     Page<Company> page = Page.empty(pageable);
-    given(companyRepository.search("물류", HUB_ID, pageable)).willReturn(page);
+    given(companyRepository.search(new CompanySearchCondition("물류", HUB_ID), pageable))
+        .willReturn(page);
 
     assertThat(companyService.searchCompanies("물류", HUB_ID, pageable)).isSameAs(page);
-    verify(companyRepository).search("물류", HUB_ID, pageable);
+    verify(companyRepository).search(new CompanySearchCondition("물류", HUB_ID), pageable);
   }
 }
