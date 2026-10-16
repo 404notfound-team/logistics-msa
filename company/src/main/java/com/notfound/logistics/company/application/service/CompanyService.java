@@ -4,6 +4,7 @@ import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.domain.repository.CompanyRepository;
+import com.notfound.logistics.company.domain.repository.CompanySearchCondition;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -44,6 +45,6 @@ public class CompanyService {
   @Transactional(readOnly = true)
   public Page<Company> searchCompanies(String name, UUID hubId, Pageable pageable) {
     // 목록과 전체 개수는 같은 검색·삭제 제외 조건으로 조회된다.
-    return companyRepository.search(name, hubId, pageable);
+    return companyRepository.search(new CompanySearchCondition(name, hubId), pageable);
   }
 }
