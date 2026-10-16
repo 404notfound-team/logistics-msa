@@ -12,6 +12,7 @@ import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.support.CompanySecurityTest;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 // orders가 의존하는 내부 응답 계약(ApiResponse 래핑, id·snake_case 필드, 404 오류 코드)을 확인한다.
 @WebMvcTest(InternalCompanyController.class)
+@CompanySecurityTest
 class InternalCompanyControllerTest {
   private static final UUID COMPANY_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
   private static final UUID HUB_ID = UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6");

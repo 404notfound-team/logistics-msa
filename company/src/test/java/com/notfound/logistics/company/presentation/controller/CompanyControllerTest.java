@@ -22,6 +22,7 @@ import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
+import com.notfound.logistics.company.support.CompanySecurityTest;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 // HTTP 계약(상태 코드, Location, snake_case JSON, 오류 형식)만 확인한다. 저장 로직은 CompanyServiceTest에서 확인한다.
 @WebMvcTest(CompanyController.class)
+@CompanySecurityTest
 class CompanyControllerTest {
   private static final UUID COMPANY_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
   private static final UUID HUB_ID = UUID.fromString("3fa85f64-5717-4562-b3fc-2c963f66afa6");
