@@ -26,11 +26,13 @@ public class DeliveryCommandService {
         deliveryRepository
             .findById(deliveryId)
             .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
-    if (status != null) {
-      delivery.changeStatus(status);
-    }
+    // 배정 가능 여부는 요청 전의 현재 상태로 판단해야 하므로 상태보다 먼저 배정한다.
+    // (예: HUB_WAITING인 배송에 담당자 배정과 HUB_MOVING 변경을 함께 요청하면 허용한다)
     if (assigneeId != null) {
       delivery.assign(assigneeId);
+    }
+    if (status != null) {
+      delivery.changeStatus(status);
     }
     return DeliveryResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(deliveryId));
   }
