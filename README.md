@@ -40,7 +40,7 @@ docker compose up -d --build --wait --wait-timeout 300
 python3 scripts/smoke.py
 ```
 
-`init-env.sh`는 로컬 전용 비밀번호를 생성하며 기존 `.env`를 덮어쓰지 않습니다.
+`init-env.sh`는 로컬 전용 비밀번호와 시험 인증 키를 생성합니다. 기존 DB 비밀번호와 지정한 키는 보존하고, 없거나 비어 있는 시험 인증 키만 채웁니다.
 직접 설정하려면 `.env.example`을 `.env`로 복사하고 빈 비밀번호를 모두 채웁니다.
 포트가 이미 사용 중이면 `.env`의 포트를 변경하고 점검 스크립트에도
 `--gateway-url`, `--eureka-url`, `--zipkin-url`을 전달하세요.
@@ -111,8 +111,8 @@ SH
 
 ## 개발과 종료
 
-허브 기준 데이터는 `local` 프로필로 앱을 시작할 때 자동 적재합니다.
-가상 업체의 수동 적재·제거와 허브 재적재는 [개발용 샘플 데이터](infra/dev-data/README.md)를 참고하세요.
+`local` 프로필로 시작하면 허브·경로와 연결된 업체·상품·재고·주문·배송 샘플을 자동 적재합니다.
+상태별 확인법, 시험 JWT, 재실행·검증 범위는 [개발용 샘플 데이터](infra/dev-data/README.md)를 참고하세요.
 
 로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
 Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
