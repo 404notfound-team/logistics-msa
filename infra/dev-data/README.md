@@ -10,8 +10,8 @@ python3 scripts/smoke.py
 python3 scripts/check-dev-data.py
 ```
 
-`init-env.sh`는 기존 DB 비밀번호를 보존하고, 없거나 비어 있는 개발용 `JWT_SECRET`·`ORDERS_SERVICE_TOKEN`만 생성합니다.
-이미 사용 중인 키도 보존합니다. 기존 `.env`에도 한 번 실행한 뒤 앱을 다시 시작하세요.
+`init-env.sh`는 기존 DB 비밀번호를 보존하고, 없거나 비어 있는 개발용 `JWT_SECRET`·`GATEWAY_SERVICE_TOKEN`·`USERS_SERVICE_TOKEN`·`ORDERS_SERVICE_TOKEN`만 생성합니다.
+이미 사용 중인 키도 보존합니다. 서비스별 값은 서로 다르게 만들고, 같은 이름의 값은 호출자·수신 서비스에 함께 전달합니다. 기존 `.env`에도 한 번 실행한 뒤 앱을 다시 시작하세요.
 키와 토큰은 로컬 테스트 전용이며 로그나 Git에 남기지 않습니다.
 
 ## 기본으로 준비되는 시나리오
