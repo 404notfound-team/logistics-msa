@@ -30,32 +30,25 @@ class HubAuditorAwareTest {
   }
 
   @Test
-  void jwtSubjectIdentifiesUserWhileSeparateClaimIdentifiesAuditActor() {
-    String userId = "4c7c4c0f-94fb-40d2-b467-5ccaecc9de3e";
+  void jwtSubjectIsAuditUsernameEvenWhenSeparateClaimDisagrees() {
     var jwt =
         Jwt.withTokenValue("test-only-token")
             .header("alg", "HS256")
-            .subject(userId)
-            .claim("username", "alice")
+            .subject("alice")
+            .claim("username", "forged-admin")
             .build();
     var authentication = new JwtAuthenticationToken(jwt, List.of());
     SecurityContextHolder.getContext().setAuthentication(authentication);
-    assertThat(authentication.getName()).isEqualTo(userId);
+    assertThat(authentication.getName()).isEqualTo("alice");
     assertThat(new HubAuditorAware().getCurrentAuditor()).contains("alice");
   }
 
   @Test
-  void missingJwtUsernameNeverFallsBackToUuidSubject() {
-    var jwt =
-        Jwt.withTokenValue("test-only-token")
-            .header("alg", "HS256")
-            .subject("4c7c4c0f-94fb-40d2-b467-5ccaecc9de3e")
-            .build();
+  void jwtSubjectDoesNotRequireSeparateUsernameClaim() {
+    var jwt = Jwt.withTokenValue("test-only-token").header("alg", "HS256").subject("alice").build();
     SecurityContextHolder.getContext()
         .setAuthentication(new JwtAuthenticationToken(jwt, List.of()));
-    assertThatThrownBy(() -> new HubAuditorAware().getCurrentAuditor())
-        .isInstanceOf(IllegalStateException.class)
-        .hasMessageContaining("username");
+    assertThat(new HubAuditorAware().getCurrentAuditor()).contains("alice");
   }
 
   @Test
