@@ -83,7 +83,10 @@ users:
 | --- | --- | --- | --- | --- |
 | Users | `GET /internal/users/{id}/authorization` | Gateway | 불필요(사용자 검증 단계) | 적용 |
 | Hub | `GET /internal/hubs?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Hub 수신 검증 예정 |
-| Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Company 수신 검증 예정 |
+| Hub | `GET /internal/hubs/{id}` | Users, Company | 필수 | Company 발신 적용(업체 생성·허브 변경 시 허브 존재 확인) |
+| Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | 적용 |
+| Company | `GET /internal/companies/{id}` | Orders | 필수 | 적용 |
+| Company | `GET /internal/products/{id}` | Orders | 필수 | 적용 |
 | Hub | `POST /internal/stocks/deductions` | Orders | 필수 | 서비스 인증 적용. `order_id`는 추적용이며 재차감 금지 |
 | Hub | `POST /internal/stocks/restorations` | Orders | 필수 | 서비스 인증 적용. 주문별 멱등 복원 |
 
