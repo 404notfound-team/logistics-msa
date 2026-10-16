@@ -11,7 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryDetailResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
@@ -166,11 +168,14 @@ class DeliveryControllerTest {
   }
 
   @Test
-  void searchDetailReturnsTheDeliveryInSnakeCase() throws Exception {
+  void searchDetailReturnsTheDeliveryWithItsRoutesInSnakeCase() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    UUID relayHubId = UUID.fromString("00000000-0000-0000-0000-000000000004");
+    UUID firstRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+    UUID secondRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
     given(deliveryQueryService.searchDetail(deliveryId))
         .willReturn(
-            new DeliveryResult(
+            new DeliveryDetailResult(
                 deliveryId,
                 ORDER_ID,
                 DeliveryStatus.HUB_MOVING,
@@ -179,6 +184,29 @@ class DeliveryControllerTest {
                 "서울특별시 송파구 송파대로 55",
                 "홍길동",
                 null,
+                List.of(
+                    new DeliveryRouteResult(
+                        firstRouteId,
+                        1,
+                        DEPARTURE_HUB_ID,
+                        relayHubId,
+                        150,
+                        148,
+                        7200,
+                        7000,
+                        DeliveryStatus.DESTINATION_HUB_ARRIVED,
+                        DELIVERY_MANAGER_ID),
+                    new DeliveryRouteResult(
+                        secondRouteId,
+                        2,
+                        relayHubId,
+                        DESTINATION_HUB_ID,
+                        200,
+                        null,
+                        9000,
+                        null,
+                        DeliveryStatus.HUB_MOVING,
+                        null)),
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-02T00:00:00Z")));
 
@@ -194,7 +222,21 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.data.recipient_name").value("홍길동"))
         .andExpect(jsonPath("$.data.delivery_manager_id").isEmpty())
         .andExpect(jsonPath("$.data.created_at").value("2026-01-01T00:00:00Z"))
-        .andExpect(jsonPath("$.data.updated_at").value("2026-01-02T00:00:00Z"));
+        .andExpect(jsonPath("$.data.updated_at").value("2026-01-02T00:00:00Z"))
+        .andExpect(jsonPath("$.data.routes.length()").value(2))
+        .andExpect(jsonPath("$.data.routes[0].delivery_route_id").value(firstRouteId.toString()))
+        .andExpect(jsonPath("$.data.routes[0].sequence").value(1))
+        .andExpect(jsonPath("$.data.routes[0].departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
+        .andExpect(jsonPath("$.data.routes[0].arrival_hub_id").value(relayHubId.toString()))
+        .andExpect(jsonPath("$.data.routes[0].expected_distance_km").value(150))
+        .andExpect(jsonPath("$.data.routes[0].actual_distance_km").value(148))
+        .andExpect(jsonPath("$.data.routes[0].expected_duration_seconds").value(7200))
+        .andExpect(jsonPath("$.data.routes[0].actual_duration_seconds").value(7000))
+        .andExpect(jsonPath("$.data.routes[0].status").value("DESTINATION_HUB_ARRIVED"))
+        .andExpect(jsonPath("$.data.routes[0].assignee_id").value(DELIVERY_MANAGER_ID.toString()))
+        .andExpect(jsonPath("$.data.routes[1].delivery_route_id").value(secondRouteId.toString()))
+        .andExpect(jsonPath("$.data.routes[1].actual_distance_km").isEmpty())
+        .andExpect(jsonPath("$.data.routes[1].assignee_id").isEmpty());
   }
 
   @Test

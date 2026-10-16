@@ -1,21 +1,33 @@
 package com.notfound.logistics.delivery.domain.model;
 
 import jakarta.annotation.Nullable;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import java.util.UUID;
 import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import java.util.UUID;
-
+/** 배송의 허브 간 이동 구간. 소속 배송을 @ManyToOne으로 참조한다. */
 @Entity
 @Table(name = "p_delivery_routes")
+@Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class DeliveryRoute {
   @Id
+  @Column(name = "delivery_route_id")
   private UUID id;
 
-  @Column(name = "delivery_id", nullable = false, updatable = false)
-  private UUID deliveryId;
+  @ManyToOne(fetch = FetchType.LAZY, optional = false)
+  @JoinColumn(name = "delivery_id", nullable = false, updatable = false)
+  private Delivery delivery;
 
   @Column(name = "sequence", nullable = false, updatable = false)
   private Integer sequence;
@@ -44,25 +56,23 @@ public class DeliveryRoute {
   @Column(name = "status", nullable = false, length = 30)
   private DeliveryStatus status;
 
-  /**
-   * 배송 담당자, 배정전에는 null이다
-   */
+  /** 배송 담당자, 배정전에는 null이다 */
   @Nullable
   @Column(name = "assignee_id")
   private UUID assigneeId;
 
   public DeliveryRoute(
-    UUID id,
-    UUID deliveryId,
-    Integer sequence,
-    UUID arrivalHubId,
-    UUID departureHubId,
-    Integer expectedDistanceKm,
-    Integer expectedDurationSeconds,
-    DeliveryStatus status,
-    @Nullable UUID assigneeId) {
+      UUID id,
+      Delivery delivery,
+      Integer sequence,
+      UUID arrivalHubId,
+      UUID departureHubId,
+      Integer expectedDistanceKm,
+      Integer expectedDurationSeconds,
+      DeliveryStatus status,
+      @Nullable UUID assigneeId) {
     this.id = id;
-    this.deliveryId = deliveryId;
+    this.delivery = delivery;
     this.sequence = sequence;
     this.arrivalHubId = arrivalHubId;
     this.departureHubId = departureHubId;

@@ -1,8 +1,10 @@
 package com.notfound.logistics.delivery.application.service;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryDetailResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
+import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import java.util.UUID;
@@ -22,10 +24,11 @@ public class DeliveryQueryService {
     return deliveryRepository.search(condition, pageable).map(DeliveryResult::from);
   }
 
-  public DeliveryResult searchDetail(UUID deliveryId) {
-    return deliveryRepository
-        .findById(deliveryId)
-        .map(DeliveryResult::from)
-        .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+  public DeliveryDetailResult searchDetail(UUID deliveryId) {
+    Delivery delivery =
+        deliveryRepository
+            .findById(deliveryId)
+            .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+    return DeliveryDetailResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(deliveryId));
   }
 }
