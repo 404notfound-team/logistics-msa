@@ -108,6 +108,11 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/company_db?currentSchema=company
       DB_PASSWORD: ${COMPANY_DB_PASSWORD:?Set COMPANY_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Run bash scripts/init-env.sh}
+      COMPANY_SERVICE_TOKEN: ${COMPANY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      HUB_SERVICE_TOKEN: ${HUB_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,8 +130,11 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
       DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      HUB_SERVICE_TOKEN: ${HUB_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
       USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
       ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
+      COMPANY_SERVICE_TOKEN: ${COMPANY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      DELIVERY_SERVICE_TOKEN: ${DELIVERY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -163,6 +171,9 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/delivery_db?currentSchema=delivery
       DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Run bash scripts/init-env.sh}
+      DELIVERY_SERVICE_TOKEN: ${DELIVERY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy

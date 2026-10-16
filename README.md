@@ -40,7 +40,7 @@ docker compose up -d --build --wait --wait-timeout 300
 python3 scripts/smoke.py
 ```
 
-`init-env.sh`는 로컬 전용 DB·개발 계정 비밀번호와 인증 키를 생성합니다. 기존 DB 비밀번호와 지정한 키는 보존하고, 없거나 비어 있는 시험 인증 키만 채웁니다.
+`init-env.sh`는 로컬 전용 DB·개발 계정 비밀번호와 인증 키를 생성합니다. Gateway와 업무 서비스 5개의 서비스 토큰을 모두 준비하며, 기존 DB 비밀번호와 지정한 키는 보존하고 없거나 비어 있는 키만 채웁니다.
 직접 설정하려면 `.env.example`을 `.env`로 복사하고 빈 비밀번호를 모두 채웁니다.
 포트가 이미 사용 중이면 `.env`의 포트를 변경하고 점검 스크립트에도
 `--gateway-url`, `--eureka-url`, `--zipkin-url`을 전달하세요.
