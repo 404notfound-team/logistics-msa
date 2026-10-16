@@ -233,7 +233,10 @@ def serve(port, filename, service_token, jwt_secret):
             except (ValueError, KeyError, TypeError, AttributeError):
                 self.respond(400, {'code': 'INVALID_REQUEST', 'message': 'Invalid stub request', 'trace_id': None, 'field_errors': []})
 
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    class StubServer(ThreadingHTTPServer):
+        request_queue_size = 128
+
+    server = StubServer(('127.0.0.1', port), Handler)
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     print(json.dumps({'port': server.server_address[1], 'pid': os.getpid()}), flush=True)
     try: server.serve_forever(poll_interval=0.1)
