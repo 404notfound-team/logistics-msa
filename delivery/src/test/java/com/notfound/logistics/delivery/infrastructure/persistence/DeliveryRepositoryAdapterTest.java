@@ -1,6 +1,7 @@
 package com.notfound.logistics.delivery.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
@@ -17,6 +18,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -193,6 +195,15 @@ class DeliveryRepositoryAdapterTest {
         .filteredOn(route -> route.getDelivery().getId().equals(second))
         .extracting(DeliveryRoute::getId)
         .containsExactly(firstOfSecond, secondOfSecond);
+  }
+
+  @Test
+  void migrationRejectsTheSameSequenceInOneDeliveryLikeTheEntityMapping() {
+    insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+
+    assertThatThrownBy(() -> insertRoute(second, 1, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null))
+        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test
