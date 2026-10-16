@@ -22,12 +22,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
-import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -36,7 +35,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
-@ExtendWith(MockitoExtension.class)
+@WebMvcTest(DeliveryController.class)
 class DeliveryControllerTest {
   private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
   private static final UUID DEPARTURE_HUB_ID =
@@ -70,7 +69,7 @@ class DeliveryControllerTest {
   }
 
   @Test
-  void largestPageNumberIsAcceptedAndReturnsAnEmptyPage() throws Exception {
+  void w() throws Exception {
     given(deliveryQueryService.search(any(), any()))
         .willAnswer(
             invocation -> new PageImpl<DeliveryResult>(List.of(), invocation.getArgument(1), 3));
