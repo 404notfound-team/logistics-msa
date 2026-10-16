@@ -42,3 +42,47 @@
 - 업무 서비스에 `@EnableJpaAuditing`·`AuditorAware<String>`을 등록합니다. 인증된 사용자 또는 정해진 시스템 작업자를 사용하고, 주체가 없으면 예외를 발생시킵니다. 임의 `system` 대체나 `Optional.empty()` 반환은 금지합니다.
 - 인증·소유권 확인 후 트랜잭션 안에서 `markDeleted(username, 삭제시각)`를 호출합니다. 감사 주체·권한은 요청값을 신뢰하지 않으며 `repository.delete*`로 물리 삭제하지 않습니다.
 - **각 구체 엔티티에** `@SQLRestriction("deleted_at IS NULL")`를 선언합니다. `AuditEntity` 상속만으로 삭제 데이터가 조회에서 제외되지는 않습니다.
+
+## 인증
+
+외부 API의 사용자 인증은 [JWT 규약](jwt-contracts.md)을 따릅니다. Gateway가 현재 사용자 상태를 확인한 뒤 `Authorization: Bearer <JWT>`를 그대로 전달하고, 각 서비스는 OAuth2 Resource Server로 JWT를 검증해 `SecurityContext`를 구성합니다.
+
+### 서비스 간 내부 API
+
+`/internal/**` API는 서비스 인증으로 보호합니다. 사용자 JWT는 내부 호출의 필수 조건이 아닙니다.
+
+| 헤더 | 규칙 |
+| --- | --- |
+| `X-Service-Token` | 호출 서비스의 인증값입니다. 서비스별 값을 실행 환경(`<SERVICE>_SERVICE_TOKEN`)에 설정하며 코드·저장소에 커밋하지 않습니다. 서비스마다 서로 다른 값을 사용합니다. |
+| `X-Actor-Username` | 원 요청자의 username입니다. 감사 필드의 작업자 기준과 같으며, 외부 요청에서는 JWT의 `username`(`Authentication#getName()`)을 사용합니다. |
+
+- 수신 서비스는 `X-Service-Token`으로 호출 서비스를 식별하고, 그 서비스에 허용한 API인지 확인합니다. 토큰이 없거나 틀리면 401, 허용하지 않은 API면 403입니다.
+- 원 요청자가 있는 호출은 `X-Actor-Username`을 보냅니다. 로그인 전 회원가입의 업체·허브 조회처럼 원 요청자가 없는 호출은 생략할 수 있습니다.
+- 이미 접수된 작업의 후속 처리·자동 복구도 같은 서비스 인증을 사용하고, 원 요청자는 저장된 작업 정보에서 가져옵니다.
+- 외부에서 넣은 두 헤더는 Gateway가 제거합니다. 수신 서비스는 서비스 인증을 통과한 요청의 `X-Actor-Username`만 신뢰합니다.
+- 인증값 비교는 상수 시간 비교(`MessageDigest.isEqual`)를 사용하고, 발신 서비스는 인증값이 비어 있으면 기동하지 않습니다.
+
+#### 수신 측 설정
+
+수신 서비스는 호출 서비스별 인증값과 허용 API(`METHOD /path-pattern`)를 설정으로 관리합니다. 기준 구현은 Users의 `infrastructure/security` 패키지입니다.
+
+```yaml
+users:
+  internal-auth:
+    service-token: ${USERS_SERVICE_TOKEN}   # Users가 다른 서비스를 호출할 때 보내는 값
+    clients:                                # Users 내부 API를 호출할 수 있는 서비스
+      gateway:
+        token: ${GATEWAY_SERVICE_TOKEN}
+        allowed:
+          - GET /internal/users/*/authorization
+```
+
+#### 내부 API 목록
+
+| 수신 서비스 | API | 허용 호출 서비스 | 원 요청자 | 상태 |
+| --- | --- | --- | --- | --- |
+| Users | `GET /internal/users/{id}/authorization` | Gateway | 불필요(사용자 검증 단계) | 적용 |
+| Hub | `GET /internal/hubs?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Hub 수신 검증 예정 |
+| Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | Users 발신 적용, Company 수신 검증 예정 |
+
+내부 API를 추가하면 이 표와 수신 서비스의 허용 API 설정을 함께 갱신합니다.
