@@ -62,7 +62,7 @@ http.oauth2ResourceServer(rs -> rs.jwt(jwt -> jwt.jwtAuthenticationConverter(con
 
 ## Gateway 인증 흐름
 
-Gateway는 외부 요청을 하위 서비스로 라우팅하기 전에 아래 순서로 처리합니다.
+Gateway는 Spring Security(WebFlux) OAuth2 Resource Server로 인증·인가를 처리합니다. 규칙은 `GatewaySecurityConfiguration`의 `SecurityWebFilterChain`에 선언하며, 외부 요청을 하위 서비스로 라우팅하기 전에 아래 순서로 처리합니다.
 
 1. 외부에서 넣은 서비스 인증·사용자 식별 헤더를 제거합니다. 대상은 `X-Service-Token`, `X-Actor-Username`, `X-User-`로 시작하는 헤더이며 대소문자를 구분하지 않습니다. 공개 엔드포인트에도 적용합니다.
 2. `/api/**` 중 공개 엔드포인트(`POST /api/users/signup`, `POST /api/users/signin`)를 제외한 요청은 JWT 서명·만료·발급자(`iss`)와 `sub`·`user_id`·`role`·`is_delivery_staff` 클레임을 검증합니다. `user_id`는 UUID 형식이어야 합니다.
@@ -75,5 +75,16 @@ Gateway는 외부 요청을 하위 서비스로 라우팅하기 전에 아래 �
 | 탈퇴·삭제된 사용자, JWT의 `sub`(username)·역할·배송 담당 여부가 현재 값과 다름 | 401 `UNAUTHORIZED` |
 | `MASTER` 전용 경로를 다른 역할이 호출 | 403 `FORBIDDEN` |
 | Users 서비스 조회 실패·지연(2초 초과), Gateway 서비스 인증 거절 | 503 `SERVICE_UNAVAILABLE` |
+
+공개 엔드포인트와 `/api/**` 밖의 경로(Actuator, Swagger 등)에서는 `Authorization` 헤더를 읽지 않으므로, 만료된 토큰이 함께 와도 401로 막지 않습니다.
+
+`MASTER` 전용 경로는 다음과 같습니다. `/api/users/me`의 본인 조회(`GET`)·탈퇴(`DELETE`)는 로그인한 사용자 누구나 호출할 수 있습니다.
+
+| 메서드 | 경로 |
+| --- | --- |
+| `GET` | `/api/users`, `/api/users/{id}` |
+| `POST` | `/api/users`, `/api/stocks` |
+| `PATCH` | `/api/users/{id}` |
+| `DELETE` | `/api/users/{id}`, `/api/orders/{id}` |
 
 Gateway의 역할 검사는 경로 단위의 최소 검사입니다. 소유자·담당자 같은 업무 권한은 각 서비스가 검사합니다.
