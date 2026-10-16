@@ -3,6 +3,7 @@ package com.notfound.logistics.delivery.presentation.controller;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
@@ -35,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 class DeliveryController {
   private final DeliveryQueryService deliveryQueryService;
+  private final DeliveryCommandService deliveryCommandService;
 
   @Operation(summary = "배송 목록 조회·검색", description = "지정한 조건을 모두 만족하는 배송을 페이지로 조회합니다.")
   @GetMapping
@@ -102,7 +104,7 @@ class DeliveryController {
 
   @Operation(summary = "배송 정보 수정·수동 배정", description = "id에 해당하는 배송의 상태 또는 담당자를 수정합니다.")
   @PatchMapping("/{delivery_id}")
-  void modify(
+  ApiResponse<DeliveryResponse> modify(
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId,
       @RequestBody DeliveryModifyRequest request) {
     DeliveryStatus status = request.status();
@@ -111,6 +113,7 @@ class DeliveryController {
       throw new InvalidRequestException("$", "status 또는 assignee_id 중 하나 이상을 입력해야 합니다.");
     }
     // TODO: 권한 검사하기
-    // TODO: 배송 정보 수정 로직 연결(deliveryId, status, assigneeId)
+    return new ApiResponse<>(
+        DeliveryResponse.from(deliveryCommandService.modify(deliveryId, status, assigneeId)));
   }
 }
