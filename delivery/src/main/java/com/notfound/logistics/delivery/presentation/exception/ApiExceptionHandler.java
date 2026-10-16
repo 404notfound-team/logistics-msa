@@ -1,5 +1,6 @@
 package com.notfound.logistics.delivery.presentation.exception;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,6 +43,19 @@ class ApiExceptionHandler {
   @ExceptionHandler(MethodArgumentTypeMismatchException.class)
   ResponseEntity<ApiErrorResponse> typeMismatch(MethodArgumentTypeMismatchException exception) {
     return validation(List.of(new FieldViolation(exception.getName(), "형식이 올바르지 않습니다.")));
+  }
+
+  // 본문이 없거나 JSON 문법·타입(enum, UUID 등)이 맞지 않는 요청. 경로는 외부(snake_case) 필드명이다.
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  ResponseEntity<ApiErrorResponse> unreadable(HttpMessageNotReadableException exception) {
+    if (exception.getCause() instanceof JsonMappingException mapping
+        && !mapping.getPath().isEmpty()
+        && mapping.getPath().getLast().getFieldName() != null) {
+      return validation(
+          List.of(
+              new FieldViolation(mapping.getPath().getLast().getFieldName(), "형식이 올바르지 않습니다.")));
+    }
+    return error(400, HttpHeaders.EMPTY, CommonErrorCode.INVALID_REQUEST);
   }
 
   @ExceptionHandler(HandlerMethodValidationException.class)
