@@ -200,6 +200,7 @@ class OrderApiIntegrationTest {
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     assertStatus(request("GET", "/api/orders/" + id, null, bob, null), 403);
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, bob, null), 403);
+    assertStatus(request("DELETE", "/api/orders/" + id, null, alice, null), 403);
     assertStatus(request("GET", "/api/orders/" + id, null, admin, null), 200);
     assertInventory(997, 1, 1);
   }
@@ -388,7 +389,8 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void cancellationCompletesOnlyAfterDeliveryCancellation() throws Exception {
+  void cancellationCompletesAfterDeliveryCancellationAndDeletionPreservesFirstAudit()
+      throws Exception {
     UUID key = UUID.randomUUID();
     UUID id = id(create(key, body(), alice));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
@@ -396,15 +398,34 @@ class OrderApiIntegrationTest {
     assertInventory(997, 1, 1);
     assertThat(STUB.state().at("/deliveries/0/status").asText()).isEqualTo("CANCELLED");
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
+    var first = repository.findIncludingDeleted(id).orElseThrow();
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
+    var second = repository.findIncludingDeleted(id).orElseThrow();
+    assertThat(second.getDeletedAt()).isEqualTo(first.getDeletedAt());
+    assertThat(second.getDeletedBy()).isEqualTo("admin");
+    assertThat(second.getCreatedBy()).isEqualTo("alice");
+    assertStatus(request("GET", "/api/orders/" + id, null, alice, null), 404);
+    assertThat(repository.count()).isZero();
+    assertStatus(create(key, body(), alice), 409);
+    assertThat(
+            json(request("GET", "/api/orders", null, admin, null))
+                .at("/data/total_elements")
+                .asLong())
+        .isZero();
   }
 
   @Test
-  void cancellationAfterDepartureIsRejectedWithoutRestoringStock() throws Exception {
+  void cancellationAfterDepartureIsRejectedAndDeletionDoesNotRestoreStock() throws Exception {
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     STUB.control(
         Map.of("action", "delivery_status", "order_id", id.toString(), "status", "HUB_TRANSIT"));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
+    STUB.control(
+        Map.of("action", "delivery_status", "order_id", id.toString(), "status", "COMPLETED"));
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
     assertThat(STUB.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
     assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
   }
@@ -479,6 +500,17 @@ class OrderApiIntegrationTest {
     STUB.awaitIdle();
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
     assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void deletionCanResumeAfterRemoteDeletionCommittedButAcknowledgementTimedOut() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    fault("delivery.delete", Map.of("delay_after_ms", 3000));
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 503);
+    assertThat(repository.findById(id)).isPresent();
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
+    assertThat(repository.findById(id)).isEmpty();
   }
 
   @Test
@@ -571,6 +603,7 @@ class OrderApiIntegrationTest {
     fault("delivery.create", Map.of("delay_after_ms", 3000));
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 409);
+    assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 409);
     assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
   }
 
@@ -736,6 +769,52 @@ class OrderApiIntegrationTest {
     assertThat(STUB.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
     assertThat(STUB.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
     assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void overlappingDeletionAfterFirstCompletionReturnsNoContent() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 200);
+    var paused = new CountDownLatch(1);
+    var proceed = new CountDownLatch(1);
+    var attempts = new AtomicInteger();
+    doAnswer(
+            invocation -> {
+              if (attempts.incrementAndGet() == 1) {
+                paused.countDown();
+                assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+              }
+              return invocation.callRealMethod();
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.DELETE));
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var first = executor.submit(() -> request("DELETE", "/api/orders/" + id, null, admin, null));
+      try {
+        assertThat(paused.await(5, TimeUnit.SECONDS)).isTrue();
+        assertStatus(request("DELETE", "/api/orders/" + id, null, admin, null), 204);
+      } finally {
+        proceed.countDown();
+      }
+      assertStatus(first.get(10, TimeUnit.SECONDS), 204);
+    }
+    assertThat(repository.findIncludingDeleted(id).orElseThrow().getDeletedBy()).isEqualTo("admin");
+    assertThat(STUB.state().at("/counts/delivery.delete").asInt()).isEqualTo(1);
+  }
+
+  @Test
+  void deletionOfFailedOrderWithoutDeliverySkipsRemoteDeleteAndMissingOrderReturnsNotFound()
+      throws Exception {
+    assertStatus(request("DELETE", "/api/orders/" + UUID.randomUUID(), null, admin, null), 404);
+    STUB.control(Map.of("action", "stock", "quantity", 0));
+    UUID key = UUID.randomUUID();
+    assertStatus(create(key, body(), alice), 409);
+    var failed = repository.findReservedKey("alice", key).orElseThrow();
+    assertThat(failed.getStatus().name()).isEqualTo("FAILED");
+    assertStatus(request("DELETE", "/api/orders/" + failed.getId(), null, admin, null), 204);
+    assertThat(repository.findById(failed.getId())).isEmpty();
+    assertThat(STUB.state().at("/counts/delivery.delete").asInt()).isZero();
+    assertThat(STUB.state().at("/counts/stock.restore").asInt()).isZero();
   }
 
   private void assertCancellationAfterRecoveryOwnerChanges(boolean replacementOwner)

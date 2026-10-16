@@ -18,11 +18,14 @@ import org.springframework.data.repository.query.Param;
 
 public interface OrderRepository
     extends JpaRepository<Order, UUID>, JpaSpecificationExecutor<Order> {
-  // Native lookup deliberately retains reserved keys, including soft-deleted orders.
+  // Native queries deliberately retain reserved keys and permit idempotent deletion.
   @Query(
       value = "select * from p_orders where created_by = :actor and idempotency_key = :key",
       nativeQuery = true)
   Optional<Order> findReservedKey(@Param("actor") String actor, @Param("key") UUID key);
+
+  @Query(value = "select * from p_orders where id = :id", nativeQuery = true)
+  Optional<Order> findIncludingDeleted(@Param("id") UUID id);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select o from Order o where o.id = :id")

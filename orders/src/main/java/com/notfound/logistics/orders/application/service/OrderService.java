@@ -353,6 +353,45 @@ public class OrderService {
     return parts[0].equals("order_id") ? sort : sort.and(Sort.by("id"));
   }
 
+  public void delete(UUID id, String username, boolean master) {
+    if (!master) throw business(OrderErrorCode.ORDER_FORBIDDEN);
+    if (active.begin(id, Operation.DELETE) != null) {
+      Order current =
+          repository
+              .findIncludingDeleted(id)
+              .orElseThrow(() -> business(OrderErrorCode.ORDER_NOT_FOUND));
+      if (current.getDeletedAt() != null) return;
+      throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    }
+    try {
+      Order order =
+          repository
+              .findIncludingDeleted(id)
+              .orElseThrow(() -> business(OrderErrorCode.ORDER_NOT_FOUND));
+      if (order.getDeletedAt() != null) return;
+      if (!Set.of(OrderStatus.CANCELLED, OrderStatus.FAILED, OrderStatus.CONFIRMED)
+          .contains(order.getStatus())) throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+      if (order.getDeliveryId() != null) {
+        try {
+          Delivery remote = delivery(id);
+          if (order.getStatus() == OrderStatus.CONFIRMED
+              && remote != null
+              && (!validDelivery(order, remote) || !"COMPLETED".equals(remote.status())))
+            throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+          deliveries.delete(order.getDeliveryId());
+        } catch (RemoteFailure failure) {
+          if (failure.status() == 409) throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+          throw unavailable();
+        } catch (FeignException exception) {
+          throw unavailable();
+        }
+      }
+      transactions.change(id, entity -> entity.markDeleted(username, Instant.now()));
+    } finally {
+      active.end(id);
+    }
+  }
+
   public void recover() {
     for (Order candidate :
         repository.findTop50ByStatusInOrderByUpdatedAtAsc(
