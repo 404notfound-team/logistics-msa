@@ -8,6 +8,7 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
@@ -171,8 +172,8 @@ class DeliveryRepositoryAdapterTest {
     assertThat(route.getSequence()).isEqualTo(1);
     assertThat(route.getDepartureHubId()).isEqualTo(HUB_A);
     assertThat(route.getArrivalHubId()).isEqualTo(HUB_B);
-    assertThat(route.getExpectedDistanceKm()).isEqualTo(100);
-    assertThat(route.getExpectedDurationSeconds()).isEqualTo(3600);
+    assertThat(route.getExpectedDistanceKm()).isEqualByComparingTo(new BigDecimal("12.345"));
+    assertThat(route.getExpectedDurationSeconds()).isEqualTo(3600L);
     assertThat(route.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
     assertThat(route.getAssigneeId()).isEqualTo(MANAGER_B);
   }
@@ -296,7 +297,7 @@ class DeliveryRepositoryAdapterTest {
             delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
             expected_distance_km, expected_duration_seconds, status, assignee_id,
             created_at, created_by, updated_at, updated_by)
-        VALUES (?, ?, ?, ?, ?, 100, 3600, ?, ?, ?, 'tester', ?, 'tester')
+        VALUES (?, ?, ?, ?, ?, 12.345, 3600, ?, ?, ?, 'tester', ?, 'tester')
         """,
         id,
         deliveryId,

@@ -14,6 +14,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -53,19 +54,19 @@ public class DeliveryRoute extends AuditEntity {
   @Column(name = "arrival_hub_id", nullable = false)
   private UUID arrivalHubId;
 
-  @Column(name = "expected_distance_km", nullable = false)
-  private Integer expectedDistanceKm;
+  @Column(name = "expected_distance_km", nullable = false, precision = 12, scale = 3)
+  private BigDecimal expectedDistanceKm;
 
   @Nullable
-  @Column(name = "actual_distance_km")
-  private Integer actualDistanceKm;
+  @Column(name = "actual_distance_km", precision = 12, scale = 3)
+  private BigDecimal actualDistanceKm;
 
   @Column(name = "expected_duration_seconds", nullable = false)
-  private Integer expectedDurationSeconds;
+  private Long expectedDurationSeconds;
 
   @Nullable
   @Column(name = "actual_duration_seconds")
-  private Integer actualDurationSeconds;
+  private Long actualDurationSeconds;
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 30)
@@ -82,8 +83,8 @@ public class DeliveryRoute extends AuditEntity {
       Integer sequence,
       UUID arrivalHubId,
       UUID departureHubId,
-      Integer expectedDistanceKm,
-      Integer expectedDurationSeconds,
+      BigDecimal expectedDistanceKm,
+      Long expectedDurationSeconds,
       DeliveryStatus status,
       @Nullable UUID assigneeId) {
     this.id = id;

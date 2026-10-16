@@ -18,6 +18,7 @@ import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessExceptio
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -107,7 +108,7 @@ class DeliveryControllerTest {
                     1,
                     DEPARTURE_HUB_ID,
                     DESTINATION_HUB_ID,
-                    150,
+                    new BigDecimal("150.5"),
                     null,
                     7200,
                     null,
@@ -205,10 +206,10 @@ class DeliveryControllerTest {
                         1,
                         DEPARTURE_HUB_ID,
                         relayHubId,
-                        150,
-                        148,
+                        new BigDecimal("150.5"),
+                        new BigDecimal("148.125"),
                         7200,
-                        7000,
+                        7000L,
                         DeliveryStatus.DESTINATION_HUB_ARRIVED,
                         ASSIGNEE_ID),
                     new DeliveryRouteResult(
@@ -216,7 +217,7 @@ class DeliveryControllerTest {
                         2,
                         relayHubId,
                         DESTINATION_HUB_ID,
-                        200,
+                        new BigDecimal("200"),
                         null,
                         9000,
                         null,
@@ -243,8 +244,8 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.data.routes[0].sequence").value(1))
         .andExpect(jsonPath("$.data.routes[0].departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
         .andExpect(jsonPath("$.data.routes[0].arrival_hub_id").value(relayHubId.toString()))
-        .andExpect(jsonPath("$.data.routes[0].expected_distance_km").value(150))
-        .andExpect(jsonPath("$.data.routes[0].actual_distance_km").value(148))
+        .andExpect(jsonPath("$.data.routes[0].expected_distance_km").value(150.5))
+        .andExpect(jsonPath("$.data.routes[0].actual_distance_km").value(148.125))
         .andExpect(jsonPath("$.data.routes[0].expected_duration_seconds").value(7200))
         .andExpect(jsonPath("$.data.routes[0].actual_duration_seconds").value(7000))
         .andExpect(jsonPath("$.data.routes[0].status").value("DESTINATION_HUB_ARRIVED"))
