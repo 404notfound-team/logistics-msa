@@ -1,7 +1,7 @@
 package com.notfound.logistics.delivery.presentation.dto;
 
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
-import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
+import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -16,7 +16,7 @@ public record DeliveryRouteResponse(
     @Schema(description = "실제 거리(km). 도착 전에는 null", nullable = true) BigDecimal actualDistanceKm,
     @Schema(description = "예상 소요 시간(초)") long expectedDurationSeconds,
     @Schema(description = "실제 소요 시간(초). 도착 전에는 null", nullable = true) Long actualDurationSeconds,
-    @Schema(description = "구간 상태") DeliveryStatus status,
+    @Schema(description = "구간 상태") DeliveryRouteStatus status,
     @Schema(description = "배송 담당자 ID. 배정 전에는 null", nullable = true) UUID assigneeId) {
   public static DeliveryRouteResponse from(DeliveryRouteResult result) {
     return new DeliveryRouteResponse(

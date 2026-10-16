@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
+import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
@@ -161,9 +162,10 @@ class DeliveryRepositoryAdapterTest {
 
   @Test
   void findRoutesByDeliveryIdReturnsOnlyThatDeliverysRoutesInSequenceOrder() {
-    UUID secondRoute = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
-    UUID firstRoute = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, MANAGER_B);
-    insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    UUID secondRoute = insertRoute(second, 2, HUB_B, HUB_C, DeliveryRouteStatus.WAITING, null);
+    UUID firstRoute =
+        insertRoute(second, 1, HUB_A, HUB_B, DeliveryRouteStatus.IN_TRANSIT, MANAGER_B);
+    insertRoute(first, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
 
     List<DeliveryRoute> routes = repository.findRoutesByDeliveryId(second);
 
@@ -174,17 +176,17 @@ class DeliveryRepositoryAdapterTest {
     assertThat(route.getArrivalHubId()).isEqualTo(HUB_B);
     assertThat(route.getExpectedDistanceKm()).isEqualByComparingTo(new BigDecimal("12.345"));
     assertThat(route.getExpectedDurationSeconds()).isEqualTo(3600L);
-    assertThat(route.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
+    assertThat(route.getStatus()).isEqualTo(DeliveryRouteStatus.IN_TRANSIT);
     assertThat(route.getAssigneeId()).isEqualTo(MANAGER_B);
   }
 
   @Test
   void findRoutesByDeliveryIdsReturnsTheRoutesOfAllGivenDeliveriesInSequenceOrder() {
-    UUID secondOfSecond = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
-    UUID firstOfFirst = insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
-    UUID firstOfSecond = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, null);
-    insertRoute(third, 1, HUB_B, HUB_C, DeliveryStatus.DELIVERED, null);
-    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    UUID secondOfSecond = insertRoute(second, 2, HUB_B, HUB_C, DeliveryRouteStatus.WAITING, null);
+    UUID firstOfFirst = insertRoute(first, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
+    UUID firstOfSecond = insertRoute(second, 1, HUB_A, HUB_B, DeliveryRouteStatus.IN_TRANSIT, null);
+    insertRoute(third, 1, HUB_B, HUB_C, DeliveryRouteStatus.ARRIVED, null);
+    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
 
     List<DeliveryRoute> routes =
         repository.findRoutesByDeliveryIds(List.of(first, second, deleted));
@@ -200,17 +202,18 @@ class DeliveryRepositoryAdapterTest {
 
   @Test
   void migrationRejectsTheSameSequenceInOneDeliveryLikeTheEntityMapping() {
-    insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
-    insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    insertRoute(second, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
+    insertRoute(first, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
 
-    assertThatThrownBy(() -> insertRoute(second, 1, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null))
+    assertThatThrownBy(
+            () -> insertRoute(second, 1, HUB_B, HUB_C, DeliveryRouteStatus.WAITING, null))
         .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test
   void deletedRoutesAreExcludedFromBothRouteLookups() {
-    UUID active = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, null);
-    UUID removed = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
+    UUID active = insertRoute(second, 1, HUB_A, HUB_B, DeliveryRouteStatus.IN_TRANSIT, null);
+    UUID removed = insertRoute(second, 2, HUB_B, HUB_C, DeliveryRouteStatus.WAITING, null);
     jdbc.update(
         "UPDATE p_delivery_routes SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_route_id = ?",
         Timestamp.from(BASE.plusSeconds(5)),
@@ -226,7 +229,7 @@ class DeliveryRepositoryAdapterTest {
 
   @Test
   void findRoutesByDeliveryIdIsEmptyForADeliveryWithoutRoutesOrADeletedOne() {
-    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
 
     assertThat(repository.findRoutesByDeliveryId(third)).isEmpty();
     assertThat(repository.findRoutesByDeliveryId(deleted)).isEmpty();
@@ -288,7 +291,7 @@ class DeliveryRepositoryAdapterTest {
       int sequence,
       UUID departureHubId,
       UUID arrivalHubId,
-      DeliveryStatus status,
+      DeliveryRouteStatus status,
       UUID assigneeId) {
     UUID id = UUID.randomUUID();
     jdbc.update(

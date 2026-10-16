@@ -2,11 +2,14 @@ package com.notfound.logistics.delivery.presentation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
+import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -57,15 +60,17 @@ class DeliveryRouteRoundTripTest {
 
   @Test
   void fractionalDistancesAndLongDurationsSurviveFromDatabaseToJsonResponse() throws Exception {
-    UUID deliveryId = insertDelivery();
+    UUID deliveryId = insertDelivery(DeliveryStatus.HUB_MOVING);
     insertRoute(
         deliveryId,
         1,
+        DeliveryRouteStatus.ARRIVED,
         new BigDecimal("123456789.123"),
         new BigDecimal("12.345"),
         3_000_000_000L,
         2_999_999_999L);
-    insertRoute(deliveryId, 2, new BigDecimal("0.001"), null, 1L, null);
+    insertRoute(
+        deliveryId, 2, DeliveryRouteStatus.IN_TRANSIT, new BigDecimal("0.001"), null, 1L, null);
 
     String body =
         mockMvc
@@ -101,17 +106,37 @@ class DeliveryRouteRoundTripTest {
     assertThat(second.get("actual_duration_seconds").isNull()).isTrue();
   }
 
-  private UUID insertDelivery() {
+  @Test
+  void arrivedRouteStaysArrivedWhileTheDeliveryMovesOnToTheCompany() throws Exception {
+    UUID deliveryId = insertDelivery(DeliveryStatus.COMPANY_MOVING);
+    insertRoute(
+        deliveryId,
+        1,
+        DeliveryRouteStatus.ARRIVED,
+        new BigDecimal("10.5"),
+        new BigDecimal("10.25"),
+        600L,
+        620L);
+
+    mockMvc
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("COMPANY_MOVING"))
+        .andExpect(jsonPath("$.data.routes[0].status").value("ARRIVED"));
+  }
+
+  private UUID insertDelivery(DeliveryStatus status) {
     UUID id = UUID.randomUUID();
     jdbc.update(
         """
         INSERT INTO p_deliveries (
             delivery_id, order_id, status, departure_hub_id, destination_hub_id, address,
             recipient_name, created_at, created_by, updated_at, updated_by)
-        VALUES (?, ?, 'HUB_MOVING', ?, ?, '서울특별시 송파구 송파대로 55', '홍길동', ?, 'tester', ?, 'tester')
+        VALUES (?, ?, ?, ?, ?, '서울특별시 송파구 송파대로 55', '홍길동', ?, 'tester', ?, 'tester')
         """,
         id,
         UUID.randomUUID(),
+        status.name(),
         UUID.randomUUID(),
         UUID.randomUUID(),
         Timestamp.from(BASE),
@@ -122,6 +147,7 @@ class DeliveryRouteRoundTripTest {
   private void insertRoute(
       UUID deliveryId,
       int sequence,
+      DeliveryRouteStatus status,
       BigDecimal expectedDistanceKm,
       BigDecimal actualDistanceKm,
       Long expectedDurationSeconds,
@@ -132,7 +158,7 @@ class DeliveryRouteRoundTripTest {
             delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
             expected_distance_km, actual_distance_km, expected_duration_seconds,
             actual_duration_seconds, status, created_at, created_by, updated_at, updated_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'HUB_MOVING', ?, 'tester', ?, 'tester')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'tester', ?, 'tester')
         """,
         UUID.randomUUID(),
         deliveryId,
@@ -143,6 +169,7 @@ class DeliveryRouteRoundTripTest {
         actualDistanceKm,
         expectedDurationSeconds,
         actualDurationSeconds,
+        status.name(),
         Timestamp.from(BASE),
         Timestamp.from(BASE));
   }
