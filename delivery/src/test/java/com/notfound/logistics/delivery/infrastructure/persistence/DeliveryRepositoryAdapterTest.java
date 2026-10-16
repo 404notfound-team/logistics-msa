@@ -196,6 +196,23 @@ class DeliveryRepositoryAdapterTest {
   }
 
   @Test
+  void deletedRoutesAreExcludedFromBothRouteLookups() {
+    UUID active = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, null);
+    UUID removed = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
+    jdbc.update(
+        "UPDATE p_delivery_routes SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_route_id = ?",
+        Timestamp.from(BASE.plusSeconds(5)),
+        removed);
+
+    assertThat(repository.findRoutesByDeliveryId(second))
+        .extracting(DeliveryRoute::getId)
+        .containsExactly(active);
+    assertThat(repository.findRoutesByDeliveryIds(List.of(second)))
+        .extracting(DeliveryRoute::getId)
+        .containsExactly(active);
+  }
+
+  @Test
   void findRoutesByDeliveryIdIsEmptyForADeliveryWithoutRoutesOrADeletedOne() {
     insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
 
@@ -266,8 +283,9 @@ class DeliveryRepositoryAdapterTest {
         """
         INSERT INTO p_delivery_routes (
             delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
-            expected_distance_km, expected_duration_seconds, status, assignee_id)
-        VALUES (?, ?, ?, ?, ?, 100, 3600, ?, ?)
+            expected_distance_km, expected_duration_seconds, status, assignee_id,
+            created_at, created_by, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, 100, 3600, ?, ?, ?, 'tester', ?, 'tester')
         """,
         id,
         deliveryId,
@@ -275,7 +293,9 @@ class DeliveryRepositoryAdapterTest {
         departureHubId,
         arrivalHubId,
         status.name(),
-        assigneeId);
+        assigneeId,
+        Timestamp.from(BASE),
+        Timestamp.from(BASE));
     return id;
   }
 }
