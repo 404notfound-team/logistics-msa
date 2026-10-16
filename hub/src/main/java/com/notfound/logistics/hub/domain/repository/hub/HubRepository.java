@@ -18,4 +18,8 @@ public interface HubRepository {
   long count();
 
   List<Hub> findByName(String name);
+
+  Page<Hub> searchByName(String pattern, Pageable pageable);
+
+  long countByNamePattern(String pattern);
 }

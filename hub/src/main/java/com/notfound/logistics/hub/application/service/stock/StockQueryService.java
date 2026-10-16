@@ -1,6 +1,7 @@
 package com.notfound.logistics.hub.application.service.stock;
 
 import com.notfound.logistics.hub.application.dto.stock.StockResult;
+import com.notfound.logistics.hub.application.service.QuerySort;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
@@ -12,7 +13,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,12 +31,12 @@ public class StockQueryService {
   }
 
   public Page<StockResult> getStocks(UUID hubId, UUID productId, int page, int size) {
+    return getStocks(hubId, productId, page, size, null);
+  }
 
-    Pageable pageable =
-        PageRequest.of(
-            page,
-            size,
-            Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+  public Page<StockResult> getStocks(UUID hubId, UUID productId, int page, int size, String sort) {
+
+    Pageable pageable = PageRequest.of(page, size, QuerySort.resolve(sort, "desc"));
 
     if (pageable.getOffset() >= Integer.MAX_VALUE) {
       long total = countStocks(hubId, productId);

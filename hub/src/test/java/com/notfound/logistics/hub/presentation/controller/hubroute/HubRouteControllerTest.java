@@ -34,7 +34,7 @@ class HubRouteControllerTest {
     UUID from = UUID.randomUUID();
     UUID to = UUID.randomUUID();
     UUID id = UUID.randomUUID();
-    when(service.getRoutes(null, null, 0, 20))
+    when(service.getRoutes(null, null, 0, 20, null))
         .thenReturn(
             new PageImpl<>(
                 List.of(new HubRouteResult(id, from, to, 10, new BigDecimal("9.25"))),
@@ -58,7 +58,7 @@ class HubRouteControllerTest {
   void bindsSnakeCaseFilters(boolean departure, boolean arrival) throws Exception {
     UUID from = departure ? UUID.randomUUID() : null;
     UUID to = arrival ? UUID.randomUUID() : null;
-    when(service.getRoutes(from, to, 0, 20))
+    when(service.getRoutes(from, to, 0, 20, null))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 20), 0));
     var request = authenticatedGet("/api/hub-routes");
     if (departure) {
@@ -68,7 +68,7 @@ class HubRouteControllerTest {
       request.param("arrival_hub_id", to.toString());
     }
     mvc.perform(request).andExpect(status().isOk()).andExpect(jsonPath("$.data.content").isEmpty());
-    verify(service).getRoutes(from, to, 0, 20);
+    verify(service).getRoutes(from, to, 0, 20, null);
   }
 
   @ParameterizedTest
@@ -107,7 +107,7 @@ class HubRouteControllerTest {
     "21474837,100,289"
   })
   void acceptsValidBoundaryAndOutOfRangePages(int page, int size, long total) throws Exception {
-    when(service.getRoutes(null, null, page, size))
+    when(service.getRoutes(null, null, page, size, null))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(page, size), total));
     mvc.perform(
             authenticatedGet("/api/hub-routes")

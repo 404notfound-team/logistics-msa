@@ -127,7 +127,8 @@ class StockRestorationRestartIntegrationTest {
                 "spring.sql.init.data-locations",
                 "classpath:db/seed/data.sql,classpath:db/seed/hub-routes.sql"),
             Map.entry("hub.jwt.secret", HubSecurityTestTokens.SECRET),
-            Map.entry("hub.security.internal.orders-token", HubSecurityTestTokens.ORDERS))
+            Map.entry("hub.internal-auth.service-token", "hub-service-test-token"),
+            Map.entry("hub.internal-auth.clients.orders.token", HubSecurityTestTokens.ORDERS))
         .forEach((name, value) -> arguments.add("--" + name + "=" + value));
     return (ServletWebServerApplicationContext)
         new SpringApplicationBuilder(HubApplication.class).run(arguments.toArray(String[]::new));

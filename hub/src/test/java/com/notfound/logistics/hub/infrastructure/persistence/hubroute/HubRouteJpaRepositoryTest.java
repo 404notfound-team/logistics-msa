@@ -93,6 +93,20 @@ class HubRouteJpaRepositoryTest extends HubRouteDatabaseTestSupport {
   }
 
   @Test
+  void requestedSortUsesMappedFieldsAndStableTieBreakers() {
+    jdbc.update("DELETE FROM hub.p_hub_routes");
+    insertRoute(1, 1, 2, "2026-01-01T00:00:00Z");
+    insertRoute(2, 1, 3, "2026-01-01T00:00:00Z");
+    insertRoute(3, 1, 4, "2026-01-02T00:00:00Z");
+    assertThat(service.getRoutes(hub(1), null, 0, 20, "created_at,asc").getContent())
+        .extracting(result -> result.id())
+        .containsExactly(hub(2), hub(1), hub(3));
+    assertThat(service.getRoutes(hub(1), null, 0, 20, "id,asc").getContent())
+        .extracting(result -> result.id())
+        .containsExactly(hub(1), hub(2), hub(3));
+  }
+
+  @Test
   void excludesDeletedRoutesFromAllSearchesAndCounts() {
     jdbc.update(
         "UPDATE hub.p_hub_routes SET deleted_at = ?, deleted_by = 'test' WHERE departure_hub_id = ? AND arrival_hub_id = ?",

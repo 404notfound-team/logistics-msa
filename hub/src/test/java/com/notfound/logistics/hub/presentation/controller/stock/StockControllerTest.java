@@ -203,16 +203,16 @@ class StockControllerTest {
     var result =
         new PageImpl<>(
             List.of(new StockResult(stockId, hubId, productId, 10)), PageRequest.of(0, 20), 1);
-    when(query.getStocks(hubId, null, 0, 20)).thenReturn(result);
-    when(query.getStocks(null, productId, 0, 20)).thenReturn(result);
+    when(query.getStocks(hubId, null, 0, 20, null)).thenReturn(result);
+    when(query.getStocks(null, productId, 0, 20, null)).thenReturn(result);
     mvc.perform(authenticatedGet("/api/hubs/{hubId}/stocks", hubId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.total_elements").value(1));
     mvc.perform(authenticatedGet("/api/products/{productId}/stocks", productId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content[0].quantity").value(10));
-    verify(query).getStocks(hubId, null, 0, 20);
-    verify(query).getStocks(null, productId, 0, 20);
+    verify(query).getStocks(hubId, null, 0, 20, null);
+    verify(query).getStocks(null, productId, 0, 20, null);
   }
 
   @ParameterizedTest
@@ -277,8 +277,8 @@ class StockControllerTest {
   })
   void bothListEndpointsAcceptPaginationBoundaries(int page, int size) throws Exception {
     var empty = new PageImpl<StockResult>(List.of(), PageRequest.of(page, size), 0);
-    when(query.getStocks(hubId, null, page, size)).thenReturn(empty);
-    when(query.getStocks(null, productId, page, size)).thenReturn(empty);
+    when(query.getStocks(hubId, null, page, size, null)).thenReturn(empty);
+    when(query.getStocks(null, productId, page, size, null)).thenReturn(empty);
     mvc.perform(
             authenticatedGet("/api/hubs/{hubId}/stocks", hubId)
                 .param("page", String.valueOf(page))

@@ -10,6 +10,9 @@ import com.notfound.logistics.hub.domain.model.stock.StockRestoration;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRestorationRepository;
+import com.notfound.logistics.hub.infrastructure.client.CompanyProductClient;
+import com.notfound.logistics.hub.infrastructure.client.ProductLookupException;
+import feign.FeignException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,6 +26,7 @@ public class StockCommandService {
   private final StockRepository stockRepository;
   private final HubRepository hubRepository;
   private final StockRestorationRepository restorations;
+  private final CompanyProductClient products;
 
   @Transactional
   @PreAuthorize("hasRole('MASTER')")
@@ -33,16 +37,26 @@ public class StockCommandService {
         .findById(hubId)
         .orElseThrow(() -> new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
 
-    // TODO(Company): 상품 내부 조회 API 구현 후 외부 연동 인터페이스로 존재·논리 삭제 여부를 확인한다.
-    // 상품 없음과 연동 실패를 구분하고, 공급업체·관리 허브 관계 검증 책임은 담당자와 확정한다.
-
     if (stockRepository.existsByHubIdAndProductId(hubId, productId)) {
       throw new StockBusinessException(StockErrorCode.STOCK_ALREADY_EXISTS);
     }
 
+    verifyProduct(productId);
+
     Stock stock = Stock.create(hubId, productId, quantity);
 
     return StockResult.from(stockRepository.saveAndFlush(stock));
+  }
+
+  private void verifyProduct(UUID productId) {
+    try {
+      var response = products.getProduct(productId);
+      if (response == null || response.data() == null || !productId.equals(response.data().id())) {
+        throw new ProductLookupException();
+      }
+    } catch (FeignException exception) {
+      throw new ProductLookupException(exception);
+    }
   }
 
   @Transactional

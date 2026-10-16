@@ -20,7 +20,7 @@ public record StockApiErrorCode(StockErrorCode error) implements ApiErrorCode {
     return switch (error) {
       case INVALID_STOCK_QUANTITY, INVALID_INITIAL_STOCK -> 400;
 
-      case STOCK_NOT_FOUND -> 404;
+      case STOCK_NOT_FOUND, PRODUCT_NOT_FOUND -> 404;
 
       case INSUFFICIENT_STOCK,
           STOCK_ALREADY_EXISTS,

@@ -15,6 +15,7 @@ import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
+import com.notfound.logistics.hub.support.CompanyApiTestServer;
 import com.notfound.logistics.hub.support.HubSecurityTest;
 import com.notfound.logistics.hub.support.HubSecurityTestTokens;
 import jakarta.persistence.EntityManager;
@@ -78,6 +79,8 @@ class StockPersistenceIntegrationTest {
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry registry) {
+    registry.add("hub.clients.company-url", CompanyApiTestServer::url);
+    registry.add("hub.clients.read-timeout-ms", () -> "500");
     registry.add("spring.datasource.url", DATABASE::getJdbcUrl);
     registry.add("spring.datasource.username", DATABASE::getUsername);
     registry.add("spring.datasource.password", DATABASE::getPassword);
@@ -91,6 +94,116 @@ class StockPersistenceIntegrationTest {
   @Autowired private EntityManager entities;
   @Autowired private MockMvc mvc;
   private final UUID hubId = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
+  @ParameterizedTest
+  @CsvSource({
+    "2,404,PRODUCT_NOT_FOUND",
+    "3,503,SERVICE_UNAVAILABLE",
+    "4,503,SERVICE_UNAVAILABLE",
+    "5,503,SERVICE_UNAVAILABLE",
+    "6,503,SERVICE_UNAVAILABLE",
+    "7,503,SERVICE_UNAVAILABLE",
+    "8,503,SERVICE_UNAVAILABLE",
+    "9,503,SERVICE_UNAVAILABLE",
+    "10,503,SERVICE_UNAVAILABLE",
+    "11,503,SERVICE_UNAVAILABLE",
+    "12,503,SERVICE_UNAVAILABLE",
+    "13,503,SERVICE_UNAVAILABLE",
+    "14,503,SERVICE_UNAVAILABLE",
+    "15,503,SERVICE_UNAVAILABLE"
+  })
+  void companyFailuresNeverCreateStock(int failure, int status, String code) throws Exception {
+    mvc.perform(
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    "{\"hub_id\":\""
+                        + hubId
+                        + "\",\"product_id\":\""
+                        + CompanyApiTestServer.failureId(failure)
+                        + "\",\"quantity\":1}"))
+        .andExpect(status().is(status))
+        .andExpect(jsonPath("$.code").value(code))
+        .andExpect(jsonPath("$.field_errors").isArray());
+    assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM hub.p_stocks", Long.class)).isZero();
+  }
+
+  @ParameterizedTest
+  @org.junit.jupiter.params.provider.ValueSource(
+      strings = {
+        "unknown,asc",
+        "createdAt,desc",
+        "created_at,bad",
+        "created_at",
+        "",
+        "id,asc,desc"
+      })
+  void everyListRejectsUnapprovedOrMalformedSort(String sort) throws Exception {
+    for (String path :
+        List.of(
+            "/api/hubs",
+            "/api/hub-routes",
+            "/api/hubs/" + hubId + "/stocks",
+            "/api/products/" + UUID.randomUUID() + "/stocks")) {
+      mvc.perform(authenticatedGet(path).param("sort", sort))
+          .andExpect(status().isBadRequest())
+          .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    }
+  }
+
+  @Test
+  void httpHubSearchAndSortReturnActualFilteredRows() throws Exception {
+    mvc.perform(authenticatedGet("/api/hubs").param("name", "존재하지않는허브"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.total_elements").value(0));
+    mvc.perform(
+            authenticatedGet("/api/hubs")
+                .param("name", "경기")
+                .param("size", "1")
+                .param("sort", "id,asc"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content.length()").value(1))
+        .andExpect(jsonPath("$.data.total_elements").value(2));
+    mvc.perform(
+            authenticatedGet("/api/hubs")
+                .param("name", "경기")
+                .param("page", "21474837")
+                .param("size", "100"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content").isEmpty())
+        .andExpect(jsonPath("$.data.total_elements").value(2));
+  }
+
+  @Test
+  void requestedStockAndRouteSortIsAppliedThroughHttp() throws Exception {
+    UUID product = UUID.randomUUID();
+    var first = command.create(hubId, product, 1);
+    var second =
+        command.create(UUID.fromString("00000000-0000-0000-0000-000000000002"), product, 2);
+    var earlier = Timestamp.from(Instant.parse("2020-01-01T00:00:00Z"));
+    var later = Timestamp.from(Instant.parse("2020-01-02T00:00:00Z"));
+    jdbc.update("UPDATE hub.p_stocks SET created_at=? WHERE id=?", earlier, first.id());
+    jdbc.update("UPDATE hub.p_stocks SET created_at=? WHERE id=?", later, second.id());
+    mvc.perform(
+            authenticatedGet("/api/products/" + product + "/stocks")
+                .param("sort", "created_at,asc"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].id").value(first.id().toString()))
+        .andExpect(jsonPath("$.data.content[1].id").value(second.id().toString()));
+    mvc.perform(authenticatedGet("/api/hubs/" + hubId + "/stocks").param("sort", "id,asc"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].id").value(first.id().toString()));
+    String smallest =
+        jdbc.queryForObject(
+            "SELECT id::text FROM hub.p_hub_routes ORDER BY id ASC LIMIT 1", String.class);
+    mvc.perform(authenticatedGet("/api/hub-routes").param("sort", "id,asc").param("size", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.content[0].id").value(smallest));
+    mvc.perform(authenticatedGet("/api/hubs").param("name", "x".repeat(101)))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+  }
 
   @Test
   void realAuthenticationControlsWritesAndPreservesOriginalAuditActor() throws Exception {

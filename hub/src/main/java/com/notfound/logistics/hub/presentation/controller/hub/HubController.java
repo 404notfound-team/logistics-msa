@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -29,16 +30,22 @@ public class HubController {
 
   private final HubQueryService hubQueryService;
 
-  @Operation(summary = "허브 목록 조회", description = "등록된 허브 목록을 조회합니다.")
+  @Operation(
+      summary = "허브 목록·검색",
+      description =
+          "허브명 부분 일치(대소문자 무시)로 검색합니다. sort는 created_at 또는 id와 asc/desc를 지정합니다. 생략하면 direction을 적용합니다.")
   @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공")
   @GetMapping
   public ApiResponse<PageResponse<HubResponse>> getHubs(
       @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") @Min(0)
           int page,
       @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
-      @RequestParam(defaultValue = "desc") @Pattern(regexp = "(?i)asc|desc") String direction) {
+      @RequestParam(defaultValue = "desc") @Pattern(regexp = "(?i)asc|desc") String direction,
+      @RequestParam(required = false) @Size(max = 100) String name,
+      @RequestParam(required = false) @Pattern(regexp = "(?i)(created_at|id),(asc|desc)")
+          String sort) {
 
-    Page<HubResult> result = hubQueryService.getHubs(page, size, direction);
+    Page<HubResult> result = hubQueryService.getHubs(page, size, direction, name, sort);
 
     return new ApiResponse<>(
         new PageResponse<>(

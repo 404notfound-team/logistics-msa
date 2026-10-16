@@ -16,6 +16,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
       "eureka.client.enabled=false",
+      "hub.internal-auth.service-token=hub-service-test-token",
+      "hub.clients.company-url=http://127.0.0.1:1",
       "management.tracing.enabled=false",
       "springdoc.api-docs.enabled=false"
     })

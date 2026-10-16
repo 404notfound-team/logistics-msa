@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -40,10 +41,14 @@ public class HubRouteController {
           @RequestParam(defaultValue = "20")
           @Min(1)
           @Max(100)
-          int size) {
+          int size,
+      @Parameter(description = "정렬: created_at,desc(기본) 또는 id,asc 등")
+          @RequestParam(required = false)
+          @Pattern(regexp = "(?i)(created_at|id),(asc|desc)")
+          String sort) {
 
     Page<HubRouteResult> result =
-        hubRouteQueryService.getRoutes(departureHubId, arrivalHubId, page, size);
+        hubRouteQueryService.getRoutes(departureHubId, arrivalHubId, page, size, sort);
 
     return new ApiResponse<>(
         new PageResponse<>(

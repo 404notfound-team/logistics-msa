@@ -21,7 +21,8 @@ class HubRouteExceptionHandlerTest {
   @EnumSource(HubRouteErrorCode.class)
   void usesSharedErrorContractBeforeGlobalFallback(HubRouteErrorCode errorCode) throws Exception {
     var service = mock(HubRouteQueryService.class);
-    when(service.getRoutes(null, null, 0, 20)).thenThrow(new HubRouteBusinessException(errorCode));
+    when(service.getRoutes(null, null, 0, 20, null))
+        .thenThrow(new HubRouteBusinessException(errorCode));
     var mvc =
         MockMvcBuilders.standaloneSetup(new HubRouteController(service))
             .setControllerAdvice(new GlobalExceptionHandler(), new HubRouteExceptionHandler())

@@ -1,6 +1,7 @@
 package com.notfound.logistics.hub.application.service.hubroute;
 
 import com.notfound.logistics.hub.application.dto.hubroute.HubRouteResult;
+import com.notfound.logistics.hub.application.service.QuerySort;
 import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteBusinessException;
 import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteErrorCode;
 import com.notfound.logistics.hub.domain.model.hubroute.HubRoute;
@@ -12,7 +13,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,12 +25,13 @@ public class HubRouteQueryService {
 
   public Page<HubRouteResult> getRoutes(
       UUID departureHubId, UUID arrivalHubId, int page, int size) {
+    return getRoutes(departureHubId, arrivalHubId, page, size, null);
+  }
 
-    Pageable pageable =
-        PageRequest.of(
-            page,
-            size,
-            Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+  public Page<HubRouteResult> getRoutes(
+      UUID departureHubId, UUID arrivalHubId, int page, int size, String sort) {
+
+    Pageable pageable = PageRequest.of(page, size, QuerySort.resolve(sort, "desc"));
 
     // JPA Offset의 정수 범위 초과 방지
     if (pageable.getOffset() >= Integer.MAX_VALUE) {
