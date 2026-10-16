@@ -48,8 +48,8 @@ public class Delivery extends AuditEntity {
   private String recipientName;
 
   /** 업체 배송 담당 사용자 ID. 배정 전에는 null이다. */
-  @Column(name = "delivery_manager_id")
-  private UUID deliveryManagerId;
+  @Column(name = "assignee_id")
+  private UUID assigneeId;
 
   private Delivery(
       UUID orderId,

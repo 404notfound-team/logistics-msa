@@ -41,8 +41,8 @@ final class DeliverySpecifications {
                 containsPattern(condition.recipientName()),
                 LIKE_ESCAPE));
       }
-      if (condition.deliveryManagerId() != null) {
-        predicates.add(cb.equal(root.get("deliveryManagerId"), condition.deliveryManagerId()));
+      if (condition.assigneeId() != null) {
+        predicates.add(cb.equal(root.get("assigneeId"), condition.assigneeId()));
       }
       return cb.and(predicates.toArray(Predicate[]::new));
     };

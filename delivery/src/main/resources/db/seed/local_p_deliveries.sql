@@ -15,7 +15,7 @@
 
 INSERT INTO delivery.p_deliveries (
     delivery_id, order_id, status, departure_hub_id, destination_hub_id,
-    address, recipient_name, delivery_manager_id,
+    address, recipient_name, assignee_id,
     created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
 ) VALUES
     ('d0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'HUB_WAITING',
