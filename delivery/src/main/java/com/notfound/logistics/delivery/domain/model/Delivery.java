@@ -74,6 +74,16 @@ public class Delivery extends AuditEntity {
     return new Delivery(orderId, departureHubId, destinationHubId, address, recipientName);
   }
 
+  /** 배송 상태를 바꾼다. 상태 전이 규칙은 아직 정하지 않아 어떤 상태로든 바꿀 수 있다. */
+  public void changeStatus(DeliveryStatus status) {
+    this.status = Objects.requireNonNull(status, "status");
+  }
+
+  /** 업체 배송 담당자를 배정한다. 이미 배정돼 있으면 새 담당자로 바꾼다. */
+  public void assign(UUID assigneeId) {
+    this.assigneeId = Objects.requireNonNull(assigneeId, "assigneeId");
+  }
+
   private static String requireText(String value, String name) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(name + " must not be blank");

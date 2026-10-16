@@ -13,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
@@ -48,6 +49,7 @@ class DeliveryControllerTest {
 
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DeliveryQueryService deliveryQueryService;
+  @MockitoBean private DeliveryCommandService deliveryCommandService;
 
   @Test
   void defaultSearchUsesFirstPageAndNewestFirstWithPrimaryKeyTieBreaker() throws Exception {
