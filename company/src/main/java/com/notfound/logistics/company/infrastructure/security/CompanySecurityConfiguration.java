@@ -52,12 +52,15 @@ public class CompanySecurityConfiguration {
   SecurityFilterChain companyInternalSecurityFilterChain(
       HttpSecurity http,
       ObjectMapper mapper,
-      @Value("${company.security.internal.orders-token:}") String orders)
+      @Value("${company.security.internal.orders-token:}") String orders,
+      @Value("${company.security.internal.users-token:}") String users)
       throws Exception {
     AuthenticationEntryPoint unauthorized = unauthorized(mapper, false);
-    var filter = new CompanyServiceAuthenticationFilter(Map.of("ORDERS", orders), unauthorized);
+    var filter =
+        new CompanyServiceAuthenticationFilter(
+            Map.of("ORDERS", orders, "USERS", users), unauthorized);
     return stateless(http)
-        .securityMatcher("/internal/companies/**", "/internal/products/**")
+        .securityMatcher("/internal/companies", "/internal/companies/**", "/internal/products/**")
         .addFilterBefore(filter, AnonymousAuthenticationFilter.class)
         .exceptionHandling(
             errors ->
@@ -67,6 +70,8 @@ public class CompanySecurityConfiguration {
         .authorizeHttpRequests(
             requests ->
                 requests
+                    .requestMatchers(HttpMethod.GET, "/internal/companies")
+                    .hasAuthority("SERVICE_USERS")
                     .requestMatchers(
                         HttpMethod.GET, "/internal/companies/*", "/internal/products/*")
                     .hasAuthority("SERVICE_ORDERS")

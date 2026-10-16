@@ -24,7 +24,8 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(
     properties = {
       "company.jwt.secret=" + CompanySecurityTestTokens.SECRET,
-      "company.security.internal.orders-token=" + CompanySecurityTestTokens.ORDERS_TOKEN
+      "company.security.internal.orders-token=" + CompanySecurityTestTokens.ORDERS_TOKEN,
+      "company.security.internal.users-token=" + CompanySecurityTestTokens.USERS_TOKEN
     })
 public @interface CompanySecurityTest {
 

@@ -35,7 +35,8 @@ import org.springframework.web.bind.annotation.RestController;
 @WebMvcTest(
     properties = {
       "company.jwt.secret=" + CompanySecurityTestTokens.SECRET,
-      "company.security.internal.orders-token=" + CompanySecurityTestTokens.ORDERS_TOKEN
+      "company.security.internal.orders-token=" + CompanySecurityTestTokens.ORDERS_TOKEN,
+      "company.security.internal.users-token=" + CompanySecurityTestTokens.USERS_TOKEN
     })
 @ContextConfiguration(
     classes = {
@@ -201,6 +202,39 @@ class CompanySecurityIntegrationTest {
           .andExpect(status().isForbidden())
           .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
+
+    @Test
+    void usersCanLookUpCompaniesByNameWithoutActorForSignup() throws Exception {
+      mvc.perform(
+              get("/internal/companies")
+                  .param("name", "물류")
+                  .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.username").value(""))
+          .andExpect(jsonPath("$.authorities[0]").value("SERVICE_USERS"));
+    }
+
+    @Test
+    void usersMustSendActorOutsideSignupLookup() throws Exception {
+      mvc.perform(get(PATH).header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+          .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void eachServiceReachesOnlyItsOwnInternalApi() throws Exception {
+      // users는 단건 조회를, orders는 이름 조회를 쓸 수 없다.
+      mvc.perform(
+              get(PATH)
+                  .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN)
+                  .header("X-Actor-Username", "member"))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              get("/internal/companies")
+                  .param("name", "물류")
+                  .header("X-Service-Token", CompanySecurityTestTokens.ORDERS_TOKEN)
+                  .header("X-Actor-Username", "orderer"))
+          .andExpect(status().isForbidden());
+    }
   }
 
   @Nested
@@ -237,7 +271,11 @@ class CompanySecurityIntegrationTest {
       return getActor(authentication);
     }
 
-    @GetMapping({"/internal/companies/security-fixture", "/internal/products/security-fixture"})
+    @GetMapping({
+      "/internal/companies",
+      "/internal/companies/security-fixture",
+      "/internal/products/security-fixture"
+    })
     Map<String, Object> getService(Authentication authentication) {
       return getActor(authentication);
     }

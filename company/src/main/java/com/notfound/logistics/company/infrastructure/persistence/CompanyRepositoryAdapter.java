@@ -42,6 +42,11 @@ class CompanyRepositoryAdapter implements CompanyRepository {
   }
 
   @Override
+  public List<Company> findAllByName(String name) {
+    return jpaRepository.findAllByName(name);
+  }
+
+  @Override
   public Page<Product> searchProducts(ProductSearchCondition condition, Pageable pageable) {
     UUID companyId = condition.companyId();
     String pattern =

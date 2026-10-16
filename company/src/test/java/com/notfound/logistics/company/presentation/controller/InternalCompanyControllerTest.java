@@ -13,6 +13,8 @@ import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
 import com.notfound.logistics.company.support.CompanySecurityTest;
+import com.notfound.logistics.company.support.CompanySecurityTestTokens;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +50,45 @@ class InternalCompanyControllerTest {
         // 공개 API 전용 필드는 내부 응답에 포함하지 않는다.
         .andExpect(jsonPath("$.data.company_id").doesNotExist())
         .andExpect(jsonPath("$.data.created_at").doesNotExist());
+  }
+
+  @Test
+  void getCompaniesByNameReturnsMatchesForUsers() throws Exception {
+    Company company = Company.of("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
+    ReflectionTestUtils.setField(company, "id", COMPANY_ID);
+    given(companyService.findCompaniesByName("테스트 물류업체")).willReturn(List.of(company));
+
+    // users는 id·name·hub_id만 읽는다.
+    mvc.perform(
+            get("/internal/companies")
+                .param("name", "테스트 물류업체")
+                .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(1))
+        .andExpect(jsonPath("$.data[0].id").value(COMPANY_ID.toString()))
+        .andExpect(jsonPath("$.data[0].name").value("테스트 물류업체"))
+        .andExpect(jsonPath("$.data[0].hub_id").value(HUB_ID.toString()));
+  }
+
+  @Test
+  void getCompaniesByNameWithoutMatchReturnsEmptyList() throws Exception {
+    given(companyService.findCompaniesByName("없는 업체")).willReturn(List.of());
+
+    mvc.perform(
+            get("/internal/companies")
+                .param("name", "없는 업체")
+                .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data").isEmpty());
+  }
+
+  @Test
+  void getCompaniesWithoutNameReturnsBadRequest() throws Exception {
+    mvc.perform(
+            get("/internal/companies")
+                .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
 
   @Test
