@@ -1,6 +1,8 @@
 package com.notfound.logistics.hub.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -542,7 +544,7 @@ class HubSecurityIntegrationTest {
     UUID hubId = UUID.fromString(HUB);
     UUID productId = UUID.fromString(PRODUCT);
 
-    when(commands.restore(hubId, productId, 10))
+    when(commands.restore(any(UUID.class), eq(hubId), eq(productId), eq(10L)))
         .thenReturn(new StockResult(UUID.randomUUID(), hubId, productId, 100));
 
     var request =
@@ -558,7 +560,7 @@ class HubSecurityIntegrationTest {
     mvc.perform(request).andExpect(status().is(expected));
 
     if (expected == 200) {
-      verify(commands).restore(hubId, productId, 10);
+      verify(commands).restore(any(UUID.class), eq(hubId), eq(productId), eq(10L));
     } else {
       verifyNoInteractions(commands);
     }

@@ -8,7 +8,7 @@ import java.util.UUID;
 
 @Schema(description = "내부 재고 복원 요청")
 public record StockRestoreRequest(
-    @Schema(description = "호출 추적용 주문 ID. 중복 복원 방지 키로 사용하지 않음") @NotNull UUID orderId,
+    @Schema(description = "주문별 복원 멱등 키. 같은 키에 다른 허브·상품·수량은 409") @NotNull UUID orderId,
     @Schema(description = "허브 ID") @NotNull UUID hubId,
     @Schema(description = "상품 ID") @NotNull UUID productId,
     @Schema(description = "복원할 수량", minimum = "1")

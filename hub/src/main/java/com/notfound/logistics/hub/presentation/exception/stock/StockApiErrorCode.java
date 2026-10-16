@@ -22,7 +22,11 @@ public record StockApiErrorCode(StockErrorCode error) implements ApiErrorCode {
 
       case STOCK_NOT_FOUND -> 404;
 
-      case INSUFFICIENT_STOCK, STOCK_ALREADY_EXISTS, STOCK_QUANTITY_OVERFLOW -> 409;
+      case INSUFFICIENT_STOCK,
+          STOCK_ALREADY_EXISTS,
+          STOCK_QUANTITY_OVERFLOW,
+          STOCK_RESTORATION_CONFLICT ->
+          409;
     };
   }
 }

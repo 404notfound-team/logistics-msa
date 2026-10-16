@@ -18,6 +18,7 @@ import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Deduction;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Delivery;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.DeliveryRequest;
+import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Restoration;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Stock;
 import com.notfound.logistics.orders.infrastructure.client.RemoteFailure;
 import com.notfound.logistics.orders.infrastructure.client.StockClient;
@@ -265,6 +266,7 @@ public class OrderService {
 
   private OrderOperationResult processCancel(UUID id) {
     Order order = load(id);
+    if (order.awaitingStockRestoration()) return restoreStock(order);
     try {
       Delivery delivery = delivery(id);
       if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
@@ -284,11 +286,33 @@ public class OrderService {
         transactions.change(id, Order::rejectCancellation);
         return operation(load(id), Outcome.REJECTED, OrderErrorCode.ORDER_STATE_CONFLICT);
       }
-      transactions.change(id, Order::cancel);
-      return operation(load(id), Outcome.RETURNED, null);
+      transactions.change(id, Order::awaitStockRestoration);
+      return restoreStock(load(id));
     } catch (RemoteFailure | FeignException exception) {
       return recovery(id, "UPSTREAM_UNAVAILABLE");
     }
+  }
+
+  private OrderOperationResult restoreStock(Order order) {
+    UUID id = order.getId();
+    try {
+      var response =
+          stocks.restore(
+              new Restoration(
+                  id, order.getDepartureHubId(), order.getProductId(), order.getQuantity()));
+      Stock stock = response == null ? null : response.data();
+      if (stock == null
+          || stock.id() == null
+          || !Objects.equals(stock.hubId(), order.getDepartureHubId())
+          || !Objects.equals(stock.productId(), order.getProductId())
+          || stock.quantity() == null
+          || stock.quantity() < 0) return recovery(id, "STOCK_RESTORATION_UNKNOWN");
+    } catch (RemoteFailure | FeignException exception) {
+      return recovery(id, "STOCK_RESTORATION_UNKNOWN");
+    }
+    // The receipt makes this safe even if this commit fails after Hub has committed.
+    transactions.change(id, Order::cancel);
+    return operation(load(id), Outcome.RETURNED, null);
   }
 
   public OrderResult get(UUID id, String username, boolean master) {

@@ -15,6 +15,7 @@ import com.notfound.logistics.hub.domain.model.hub.Hub;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
+import com.notfound.logistics.hub.domain.repository.stock.StockRestorationRepository;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -22,7 +23,8 @@ import org.junit.jupiter.api.Test;
 class StockCommandServiceTest {
   private final StockRepository stocks = mock(StockRepository.class);
   private final HubRepository hubs = mock(HubRepository.class);
-  private final StockCommandService service = new StockCommandService(stocks, hubs);
+  private final StockRestorationRepository restorations = mock(StockRestorationRepository.class);
+  private final StockCommandService service = new StockCommandService(stocks, hubs, restorations);
   private final UUID hubId = UUID.randomUUID();
   private final UUID productId = UUID.randomUUID();
 
@@ -185,7 +187,7 @@ class StockCommandServiceTest {
 
     when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
 
-    StockResult result = service.restore(hubId, productId, 30);
+    StockResult result = service.restore(UUID.randomUUID(), hubId, productId, 30);
 
     assertThat(result.quantity()).isEqualTo(100);
     assertThat(stock.getQuantity()).isEqualTo(100);
@@ -195,7 +197,7 @@ class StockCommandServiceTest {
   void missingStockCannotBeRestored() {
     when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service.restore(hubId, productId, 10))
+    assertThatThrownBy(() -> service.restore(UUID.randomUUID(), hubId, productId, 10))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
@@ -208,7 +210,7 @@ class StockCommandServiceTest {
     when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
 
     for (long quantity : new long[] {0, -1, Long.MIN_VALUE}) {
-      assertThatThrownBy(() -> service.restore(hubId, productId, quantity))
+      assertThatThrownBy(() -> service.restore(UUID.randomUUID(), hubId, productId, quantity))
           .isInstanceOf(StockBusinessException.class)
           .extracting(e -> ((StockBusinessException) e).getErrorCode())
           .isEqualTo(StockErrorCode.INVALID_STOCK_QUANTITY);
@@ -223,7 +225,7 @@ class StockCommandServiceTest {
 
     when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
 
-    assertThatThrownBy(() -> service.restore(hubId, productId, 1))
+    assertThatThrownBy(() -> service.restore(UUID.randomUUID(), hubId, productId, 1))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);

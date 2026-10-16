@@ -24,7 +24,8 @@ public class InternalStockRestorationController {
   @PostMapping("/restorations")
   public ApiResponse<StockResponse> restore(@Valid @RequestBody StockRestoreRequest request) {
     StockResult result =
-        stockCommandService.restore(request.hubId(), request.productId(), request.quantity());
+        stockCommandService.restore(
+            request.orderId(), request.hubId(), request.productId(), request.quantity());
 
     return new ApiResponse<>(StockResponse.from(result));
   }
