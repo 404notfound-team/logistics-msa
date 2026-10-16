@@ -88,6 +88,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:?Set GATEWAY_SERVICE_TOKEN in .env}
       USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
+      DEV_DATA_ENABLED: 'true'
+      DEV_DATA_PASSWORD: ${DEV_DATA_PASSWORD:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -120,9 +122,9 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
       DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
-      JWT_SECRET: ${JWT_SECRET:-}
-      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:-}
-      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:-}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
     depends_on:
       postgres:
         condition: service_healthy
