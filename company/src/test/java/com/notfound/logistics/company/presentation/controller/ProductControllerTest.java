@@ -1,5 +1,6 @@
 package com.notfound.logistics.company.presentation.controller;
 
+import static com.notfound.logistics.company.support.CompanySecurityTestTokens.USER_ID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -16,6 +17,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.notfound.logistics.company.application.service.CompanyService;
+import com.notfound.logistics.company.application.service.Requester;
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
@@ -48,7 +50,8 @@ class ProductControllerTest {
 
   @Test
   void createProductReturnsCreatedWithLocation() throws Exception {
-    given(companyService.createProduct(any(), any(), any(), any())).willReturn(savedProduct());
+    given(companyService.createProduct(any(), any(), any(), any(), any()))
+        .willReturn(savedProduct());
 
     mvc.perform(
             post(PRODUCTS)
@@ -63,7 +66,13 @@ class ProductControllerTest {
         .andExpect(jsonPath("$.data.company_id").value(COMPANY_ID.toString()))
         .andExpect(jsonPath("$.data.price").value(35000));
 
-    verify(companyService).createProduct(eq(COMPANY_ID), eq("무선 키보드"), eq("블루투스 키보드"), eq(35000L));
+    verify(companyService)
+        .createProduct(
+            eq(new Requester(USER_ID, false)),
+            eq(COMPANY_ID),
+            eq("무선 키보드"),
+            eq("블루투스 키보드"),
+            eq(35000L));
   }
 
   @Test
@@ -79,12 +88,12 @@ class ProductControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("price"));
 
-    verify(companyService, never()).createProduct(any(), any(), any(), any());
+    verify(companyService, never()).createProduct(any(), any(), any(), any(), any());
   }
 
   @Test
   void createProductForMissingCompanyReturnsNotFound() throws Exception {
-    given(companyService.createProduct(any(), any(), any(), any()))
+    given(companyService.createProduct(any(), any(), any(), any(), any()))
         .willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND));
 
     mvc.perform(
@@ -124,7 +133,7 @@ class ProductControllerTest {
 
   @Test
   void updateProductPassesOnlySentFields() throws Exception {
-    given(companyService.updateProduct(any(), any(), any(), any(), any()))
+    given(companyService.updateProduct(any(), any(), any(), any(), any(), any()))
         .willReturn(savedProduct());
 
     mvc.perform(
@@ -138,7 +147,13 @@ class ProductControllerTest {
 
     // 보내지 않은 필드는 null로 전달되어 기존 값을 유지한다.
     verify(companyService)
-        .updateProduct(eq(COMPANY_ID), eq(PRODUCT_ID), eq(null), eq(null), eq(39000L));
+        .updateProduct(
+            eq(new Requester(USER_ID, false)),
+            eq(COMPANY_ID),
+            eq(PRODUCT_ID),
+            eq(null),
+            eq(null),
+            eq(39000L));
   }
 
   @Test
@@ -147,14 +162,15 @@ class ProductControllerTest {
         .andExpect(status().isNoContent())
         .andExpect(content().string(""));
 
-    verify(companyService).deleteProduct(COMPANY_ID, PRODUCT_ID);
+    verify(companyService)
+        .deleteProduct(eq(new Requester(USER_ID, false)), eq(COMPANY_ID), eq(PRODUCT_ID));
   }
 
   @Test
   void deleteMissingProductReturnsNotFound() throws Exception {
     willThrow(new CompanyException(CompanyError.PRODUCT_NOT_FOUND))
         .given(companyService)
-        .deleteProduct(COMPANY_ID, PRODUCT_ID);
+        .deleteProduct(eq(new Requester(USER_ID, false)), eq(COMPANY_ID), eq(PRODUCT_ID));
 
     mvc.perform(delete(PRODUCTS + "/" + PRODUCT_ID))
         .andExpect(status().isNotFound())

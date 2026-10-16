@@ -1,5 +1,6 @@
 package com.notfound.logistics.company.presentation.controller;
 
+import static com.notfound.logistics.company.support.CompanySecurityTestTokens.USER_ID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
@@ -19,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.notfound.logistics.company.application.service.CompanyService;
+import com.notfound.logistics.company.application.service.Requester;
 import com.notfound.logistics.company.domain.exception.CompanyError;
 import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.domain.model.Company;
@@ -54,7 +56,7 @@ class CompanyControllerTest {
     // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 ID를 직접 넣는다.
     Company company = Company.of("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
     ReflectionTestUtils.setField(company, "id", COMPANY_ID);
-    given(companyService.createCompany(any(), any(), any(), any())).willReturn(company);
+    given(companyService.createCompany(any(), any(), any(), any(), any())).willReturn(company);
 
     // 요청 JSON은 문자열로 직접 써서 snake_case 변환까지 함께 확인한다.
     mvc.perform(
@@ -93,7 +95,7 @@ class CompanyControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("hub_id"));
 
-    verify(companyService, never()).createCompany(any(), any(), any(), any());
+    verify(companyService, never()).createCompany(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -114,7 +116,7 @@ class CompanyControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
 
-    verify(companyService, never()).createCompany(any(), any(), any(), any());
+    verify(companyService, never()).createCompany(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -137,7 +139,7 @@ class CompanyControllerTest {
             jsonPath("$.field_errors[*].field")
                 .value(containsInAnyOrder("hub_id", "manager_user_id")));
 
-    verify(companyService, never()).createCompany(any(), any(), any(), any());
+    verify(companyService, never()).createCompany(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -157,7 +159,7 @@ class CompanyControllerTest {
         .andExpect(header().string("Accept", containsString("application/json")))
         .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"));
 
-    verify(companyService, never()).createCompany(any(), any(), any(), any());
+    verify(companyService, never()).createCompany(any(), any(), any(), any(), any());
   }
 
   @Test
@@ -238,7 +240,7 @@ class CompanyControllerTest {
 
   @Test
   void updateCompanyPassesOnlySentFieldsAndReturnsCompany() throws Exception {
-    given(companyService.updateCompany(any(), any(), any(), any(), any()))
+    given(companyService.updateCompany(any(), any(), any(), any(), any(), any()))
         .willReturn(savedCompany());
 
     mvc.perform(
@@ -252,7 +254,14 @@ class CompanyControllerTest {
         .andExpect(jsonPath("$.data.id").value(COMPANY_ID.toString()));
 
     // 보내지 않은 필드는 null로 전달되어 서비스에서 기존 값을 유지한다.
-    verify(companyService).updateCompany(eq(COMPANY_ID), eq("변경 업체"), eq(null), eq(null), eq(null));
+    verify(companyService)
+        .updateCompany(
+            eq(new Requester(USER_ID, false)),
+            eq(COMPANY_ID),
+            eq("변경 업체"),
+            eq(null),
+            eq(null),
+            eq(null));
   }
 
   @Test
@@ -268,12 +277,12 @@ class CompanyControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("name"));
 
-    verify(companyService, never()).updateCompany(any(), any(), any(), any(), any());
+    verify(companyService, never()).updateCompany(any(), any(), any(), any(), any(), any());
   }
 
   @Test
   void updateMissingCompanyReturnsNotFound() throws Exception {
-    given(companyService.updateCompany(any(), any(), any(), any(), any()))
+    given(companyService.updateCompany(any(), any(), any(), any(), any(), any()))
         .willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND));
 
     mvc.perform(
@@ -293,14 +302,14 @@ class CompanyControllerTest {
         .andExpect(status().isNoContent())
         .andExpect(content().string(""));
 
-    verify(companyService).deleteCompany(COMPANY_ID);
+    verify(companyService).deleteCompany(eq(new Requester(USER_ID, false)), eq(COMPANY_ID));
   }
 
   @Test
   void deleteMissingCompanyReturnsNotFound() throws Exception {
     willThrow(new CompanyException(CompanyError.COMPANY_NOT_FOUND))
         .given(companyService)
-        .deleteCompany(COMPANY_ID);
+        .deleteCompany(eq(new Requester(USER_ID, false)), eq(COMPANY_ID));
 
     mvc.perform(delete("/api/companies/" + COMPANY_ID))
         .andExpect(status().isNotFound())

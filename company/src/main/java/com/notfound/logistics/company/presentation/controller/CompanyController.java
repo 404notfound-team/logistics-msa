@@ -27,6 +27,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -65,14 +67,26 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.CREATE_INVALID_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.CREATE_INVALID_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER가 아니면서 본인이 아닌 사용자를 관리자로 지정함 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<CompanyResponse>> createCompany(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Valid @RequestBody CompanyCreateRequest request) {
     Company company =
         companyService.createCompany(
-            request.name(), request.hubId(), request.address(), request.managerUserId());
+            Requesters.from(principal),
+            request.name(),
+            request.hubId(),
+            request.address(),
+            request.managerUserId());
     CompanyResponse response = CompanyResponse.from(company);
     // 이 서비스는 항상 Gateway를 거쳐 호출되므로 Location은 Gateway 기준 상대 경로로 준다.
     URI location = URI.create("/api/companies/" + response.id());
@@ -170,17 +184,30 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @PatchMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
           @PathVariable("company_id")
           UUID companyId,
       @Valid @RequestBody CompanyUpdateRequest request) {
     Company company =
         companyService.updateCompany(
-            companyId, request.name(), request.hubId(), request.address(), request.managerUserId());
+            Requesters.from(principal),
+            companyId,
+            request.name(),
+            request.hubId(),
+            request.address(),
+            request.managerUserId());
     return ResponseEntity.ok(new ApiResponse<>(CompanyResponse.from(company)));
   }
 
@@ -202,14 +229,22 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @DeleteMapping("/{company_id}")
   public ResponseEntity<Void> deleteCompany(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
           @PathVariable("company_id")
           UUID companyId) {
-    companyService.deleteCompany(companyId);
+    companyService.deleteCompany(Requesters.from(principal), companyId);
     return ResponseEntity.noContent().build();
   }
 }

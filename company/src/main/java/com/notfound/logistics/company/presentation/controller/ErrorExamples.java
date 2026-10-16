@@ -67,4 +67,14 @@ final class ErrorExamples {
       """;
 
   private ErrorExamples() {}
+
+  static final String ACCESS_DENIED_EXAMPLE =
+      """
+      {
+        "code": "COMPANY_ACCESS_DENIED",
+        "message": "업체에 대한 권한이 없습니다.",
+        "trace_id": null,
+        "field_errors": []
+      }
+      """;
 }

@@ -27,6 +27,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -71,17 +73,29 @@ public class ProductController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
           @PathVariable("company_id")
           UUID companyId,
       @Valid @RequestBody ProductCreateRequest request) {
     Product product =
         companyService.createProduct(
-            companyId, request.name(), request.description(), request.price());
+            Requesters.from(principal),
+            companyId,
+            request.name(),
+            request.description(),
+            request.price());
     ProductResponse response = ProductResponse.from(product);
     // 이 서비스는 항상 Gateway를 거쳐 호출되므로 Location은 Gateway 기준 상대 경로로 준다.
     URI location = URI.create("/api/companies/" + companyId + "/products/" + response.productId());
@@ -194,10 +208,18 @@ public class ProductController {
                 examples = {
                   @ExampleObject(name = "상품 없음", value = ErrorExamples.PRODUCT_NOT_FOUND_EXAMPLE),
                   @ExampleObject(name = "업체 없음", value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)
-                }))
+                })),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @PatchMapping("/{product_id}")
   public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
           @PathVariable("company_id")
           UUID companyId,
@@ -207,7 +229,12 @@ public class ProductController {
       @Valid @RequestBody ProductUpdateRequest request) {
     Product product =
         companyService.updateProduct(
-            companyId, productId, request.name(), request.description(), request.price());
+            Requesters.from(principal),
+            companyId,
+            productId,
+            request.name(),
+            request.description(),
+            request.price());
     return ResponseEntity.ok(new ApiResponse<>(ProductResponse.from(product)));
   }
 
@@ -232,17 +259,25 @@ public class ProductController {
                 examples = {
                   @ExampleObject(name = "상품 없음", value = ErrorExamples.PRODUCT_NOT_FOUND_EXAMPLE),
                   @ExampleObject(name = "업체 없음", value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)
-                }))
+                })),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "403",
+        description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
   })
   @DeleteMapping("/{product_id}")
   public ResponseEntity<Void> deleteProduct(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "업체 ID", example = "7d752e7e-788b-485b-808e-fd438dfe8bae")
           @PathVariable("company_id")
           UUID companyId,
       @Parameter(description = "상품 ID", example = "5b7a9c1e-3f2d-4e8a-9b6c-1d2e3f4a5b6c")
           @PathVariable("product_id")
           UUID productId) {
-    companyService.deleteProduct(companyId, productId);
+    companyService.deleteProduct(Requesters.from(principal), companyId, productId);
     return ResponseEntity.noContent().build();
   }
 }

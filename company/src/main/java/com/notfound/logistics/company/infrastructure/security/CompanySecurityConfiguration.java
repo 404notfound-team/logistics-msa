@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,7 +42,8 @@ import org.springframework.security.web.authentication.AnonymousAuthenticationFi
 
 /**
  * 내부 API(/internal/companies·/internal/products)는 서비스 인증(X-Service-Token)으로, 공개 API(/api/**)는
- * users가 발급한 JWT(HS256, issuer logistics-users, sub=username, role=USER|MASTER)로 인증한다.
+ * users가 발급한 JWT(HS256, issuer logistics-users, sub=username, role=USER|MASTER, user_id=UUID)로
+ * 인증한다. 업무 권한(MASTER 또는 업체 관리자)은 CompanyService가 검사한다.
  */
 @Configuration(proxyBeanMethods = false)
 public class CompanySecurityConfiguration {
@@ -126,8 +128,21 @@ public class CompanySecurityConfiguration {
             new JwtClaimValidator<String>(
                 "sub", value -> value != null && !value.isBlank() && value.length() <= 100),
             new JwtClaimValidator<String>(
-                "role", value -> Set.of("USER", "MASTER").contains(value == null ? "" : value))));
+                "role", value -> Set.of("USER", "MASTER").contains(value == null ? "" : value)),
+            // user_id는 업체 관리자 여부(manager_user_id) 판단에 쓴다.
+            new JwtClaimValidator<Object>("user_id", CompanySecurityConfiguration::isUuid)));
     return decoder;
+  }
+
+  private static boolean isUuid(Object value) {
+    if (!(value instanceof String text)) {
+      return false;
+    }
+    try {
+      return UUID.fromString(text).toString().equalsIgnoreCase(text);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
   }
 
   private static HttpSecurity stateless(HttpSecurity http) throws Exception {
