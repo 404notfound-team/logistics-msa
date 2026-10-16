@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,5 +79,12 @@ class DeliveryController {
             page,
             size,
             result.getTotalElements()));
+  }
+
+  @Operation(summary = "배송 정보 조회", description = "id에 해당하는 배송 정보를 조회합니다")
+  @GetMapping("/{delivery_id}")
+  ApiResponse<DeliveryResponse> searchDetail(
+      @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
+    return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
   }
 }

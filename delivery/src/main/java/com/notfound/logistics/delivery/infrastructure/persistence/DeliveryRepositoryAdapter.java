@@ -4,6 +4,8 @@ import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -24,5 +26,10 @@ class DeliveryRepositoryAdapter implements DeliveryRepository {
       return new PageImpl<>(List.of(), pageable, jpaRepository.count(specification));
     }
     return jpaRepository.findAll(specification, pageable);
+  }
+
+  @Override
+  public Optional<Delivery> findById(UUID id) {
+    return jpaRepository.findById(id);
   }
 }

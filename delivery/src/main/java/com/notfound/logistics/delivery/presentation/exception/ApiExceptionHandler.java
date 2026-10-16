@@ -4,6 +4,7 @@ import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
+import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import io.micrometer.tracing.Tracer;
 import java.util.Arrays;
 import java.util.List;
@@ -25,6 +26,12 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RequiredArgsConstructor
 class ApiExceptionHandler {
   private final ObjectProvider<Tracer> tracer;
+
+  @ExceptionHandler(DeliveryBusinessException.class)
+  ResponseEntity<ApiErrorResponse> business(DeliveryBusinessException exception) {
+    DeliveryApiErrorCode error = new DeliveryApiErrorCode(exception.getErrorCode());
+    return error(error.httpStatus(), HttpHeaders.EMPTY, error);
+  }
 
   @ExceptionHandler(InvalidRequestException.class)
   ResponseEntity<ApiErrorResponse> invalidRequest(InvalidRequestException exception) {
