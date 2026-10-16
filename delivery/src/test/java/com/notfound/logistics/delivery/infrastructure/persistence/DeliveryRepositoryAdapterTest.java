@@ -3,6 +3,7 @@ package com.notfound.logistics.delivery.infrastructure.persistence;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
+import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
@@ -32,7 +33,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.hibernate.ddl-auto=validate",
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql"
+          + "classpath:db/migration/V1__create_p_deliveries.sql,"
+          + "classpath:db/migration/V2__create_p_delivery_routes.sql"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DeliveryRepositoryAdapter.class)
@@ -154,6 +156,34 @@ class DeliveryRepositoryAdapterTest {
     assertThat(repository.findById(UUID.randomUUID())).isEmpty();
   }
 
+  @Test
+  void findRoutesByDeliveryIdReturnsOnlyThatDeliverysRoutesInSequenceOrder() {
+    UUID secondRoute = insertRoute(second, 2, HUB_B, HUB_C, DeliveryStatus.HUB_WAITING, null);
+    UUID firstRoute = insertRoute(second, 1, HUB_A, HUB_B, DeliveryStatus.HUB_MOVING, MANAGER_B);
+    insertRoute(first, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+
+    List<DeliveryRoute> routes = repository.findRoutesByDeliveryId(second);
+
+    assertThat(routes).extracting(DeliveryRoute::getId).containsExactly(firstRoute, secondRoute);
+    DeliveryRoute route = routes.getFirst();
+    assertThat(route.getSequence()).isEqualTo(1);
+    assertThat(route.getDepartureHubId()).isEqualTo(HUB_A);
+    assertThat(route.getArrivalHubId()).isEqualTo(HUB_B);
+    assertThat(route.getExpectedDistanceKm()).isEqualTo(100);
+    assertThat(route.getExpectedDurationSeconds()).isEqualTo(3600);
+    assertThat(route.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
+    assertThat(route.getAssigneeId()).isEqualTo(MANAGER_B);
+  }
+
+  @Test
+  void findRoutesByDeliveryIdIsEmptyForADeliveryWithoutRoutesOrADeletedOne() {
+    insertRoute(deleted, 1, HUB_A, HUB_B, DeliveryStatus.HUB_WAITING, null);
+
+    assertThat(repository.findRoutesByDeliveryId(third)).isEmpty();
+    assertThat(repository.findRoutesByDeliveryId(deleted)).isEmpty();
+    assertThat(repository.findRoutesByDeliveryId(UUID.randomUUID())).isEmpty();
+  }
+
   private List<UUID> ids(DeliverySearchCondition condition) {
     return repository.search(condition, page(0, 20)).map(Delivery::getId).getContent();
   }
@@ -207,6 +237,31 @@ class DeliveryRepositoryAdapterTest {
         deliveryManagerId,
         createdAt,
         createdAt);
+    return id;
+  }
+
+  private UUID insertRoute(
+      UUID deliveryId,
+      int sequence,
+      UUID departureHubId,
+      UUID arrivalHubId,
+      DeliveryStatus status,
+      UUID assigneeId) {
+    UUID id = UUID.randomUUID();
+    jdbc.update(
+        """
+        INSERT INTO p_delivery_routes (
+            delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
+            expected_distance_km, expected_duration_seconds, status, assignee_id)
+        VALUES (?, ?, ?, ?, ?, 100, 3600, ?, ?)
+        """,
+        id,
+        deliveryId,
+        sequence,
+        departureHubId,
+        arrivalHubId,
+        status.name(),
+        assigneeId);
     return id;
   }
 }

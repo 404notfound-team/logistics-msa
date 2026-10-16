@@ -1,6 +1,8 @@
 package com.notfound.logistics.delivery.domain.repository;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
+import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -11,4 +13,7 @@ public interface DeliveryRepository {
   Page<Delivery> search(DeliverySearchCondition condition, Pageable pageable);
 
   Optional<Delivery> findById(UUID id);
+
+  /** 배송의 이동 구간을 sequence 순서로 읽는다. */
+  List<DeliveryRoute> findRoutesByDeliveryId(UUID deliveryId);
 }

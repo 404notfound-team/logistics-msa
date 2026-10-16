@@ -1,6 +1,7 @@
 package com.notfound.logistics.delivery.infrastructure.persistence;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
+import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import java.util.List;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Repository;
 @RequiredArgsConstructor
 class DeliveryRepositoryAdapter implements DeliveryRepository {
   private final DeliveryJpaRepository jpaRepository;
+  private final DeliveryRouteJpaRepository routeJpaRepository;
 
   @Override
   public Page<Delivery> search(DeliverySearchCondition condition, Pageable pageable) {
@@ -31,5 +33,10 @@ class DeliveryRepositoryAdapter implements DeliveryRepository {
   @Override
   public Optional<Delivery> findById(UUID id) {
     return jpaRepository.findById(id);
+  }
+
+  @Override
+  public List<DeliveryRoute> findRoutesByDeliveryId(UUID deliveryId) {
+    return routeJpaRepository.findAllByDeliveryIdOrderBySequenceAsc(deliveryId);
   }
 }
