@@ -126,7 +126,7 @@ class DeliveryRouteEntitySchemaTest {
             delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
             expected_distance_km, expected_duration_seconds, status,
             created_at, created_by, updated_at, updated_by)
-        VALUES (?, ?, ?, ?, ?, 100, 3600, 'HUB_WAITING', ?, 'tester', ?, 'tester')
+        VALUES (?, ?, ?, ?, ?, 100, 3600, 'WAITING', ?, 'tester', ?, 'tester')
         """,
         UUID.randomUUID(),
         deliveryId,

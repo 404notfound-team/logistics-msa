@@ -70,7 +70,7 @@ public class DeliveryRoute extends AuditEntity {
 
   @Enumerated(EnumType.STRING)
   @Column(name = "status", nullable = false, length = 30)
-  private DeliveryStatus status;
+  private DeliveryRouteStatus status;
 
   /** 배송 담당자, 배정전에는 null이다 */
   @Nullable
@@ -85,7 +85,7 @@ public class DeliveryRoute extends AuditEntity {
       UUID departureHubId,
       BigDecimal expectedDistanceKm,
       Long expectedDurationSeconds,
-      DeliveryStatus status,
+      DeliveryRouteStatus status,
       @Nullable UUID assigneeId) {
     this.id = id;
     this.delivery = delivery;

@@ -16,6 +16,7 @@ import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
+import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import java.math.BigDecimal;
@@ -112,7 +113,7 @@ class DeliveryControllerTest {
                     null,
                     7200,
                     null,
-                    DeliveryStatus.HUB_MOVING,
+                    DeliveryRouteStatus.IN_TRANSIT,
                     ASSIGNEE_ID)),
             Instant.parse("2026-01-01T00:00:00Z"),
             Instant.parse("2026-01-01T01:00:00Z"));
@@ -149,7 +150,7 @@ class DeliveryControllerTest {
             jsonPath("$.data.content[0].routes[0].delivery_route_id")
                 .value("00000000-0000-0000-0000-0000000000c1"))
         .andExpect(jsonPath("$.data.content[0].routes[0].sequence").value(1))
-        .andExpect(jsonPath("$.data.content[0].routes[0].status").value("HUB_MOVING"))
+        .andExpect(jsonPath("$.data.content[0].routes[0].status").value("IN_TRANSIT"))
         .andExpect(jsonPath("$.data.page").value(1))
         .andExpect(jsonPath("$.data.total_elements").value(11))
         .andExpect(jsonPath("$.data.total_pages").value(2));
@@ -210,7 +211,7 @@ class DeliveryControllerTest {
                         new BigDecimal("148.125"),
                         7200,
                         7000L,
-                        DeliveryStatus.DESTINATION_HUB_ARRIVED,
+                        DeliveryRouteStatus.ARRIVED,
                         ASSIGNEE_ID),
                     new DeliveryRouteResult(
                         secondRouteId,
@@ -221,7 +222,7 @@ class DeliveryControllerTest {
                         null,
                         9000,
                         null,
-                        DeliveryStatus.HUB_MOVING,
+                        DeliveryRouteStatus.IN_TRANSIT,
                         null)),
                 Instant.parse("2026-01-01T00:00:00Z"),
                 Instant.parse("2026-01-02T00:00:00Z")));
@@ -248,9 +249,10 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.data.routes[0].actual_distance_km").value(148.125))
         .andExpect(jsonPath("$.data.routes[0].expected_duration_seconds").value(7200))
         .andExpect(jsonPath("$.data.routes[0].actual_duration_seconds").value(7000))
-        .andExpect(jsonPath("$.data.routes[0].status").value("DESTINATION_HUB_ARRIVED"))
+        .andExpect(jsonPath("$.data.routes[0].status").value("ARRIVED"))
         .andExpect(jsonPath("$.data.routes[0].assignee_id").value(ASSIGNEE_ID.toString()))
         .andExpect(jsonPath("$.data.routes[1].delivery_route_id").value(secondRouteId.toString()))
+        .andExpect(jsonPath("$.data.routes[1].status").value("IN_TRANSIT"))
         .andExpect(jsonPath("$.data.routes[1].actual_distance_km").isEmpty())
         .andExpect(jsonPath("$.data.routes[1].assignee_id").isEmpty());
   }
