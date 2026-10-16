@@ -142,8 +142,9 @@ class HubSecurityIntegrationTest {
   void userCanReadProductAndHubStocks() throws Exception {
     UUID hub = UUID.fromString(HUB);
     UUID product = UUID.fromString(PRODUCT);
-    when(stocks.getStocks(hub, null, 0, 20)).thenReturn(Page.empty(PageRequest.of(0, 20)));
-    when(stocks.getStocks(null, product, 0, 20)).thenReturn(Page.empty(PageRequest.of(0, 20)));
+    when(stocks.getStocks(hub, null, 0, 20, null)).thenReturn(Page.empty(PageRequest.of(0, 20)));
+    when(stocks.getStocks(null, product, 0, 20, null))
+        .thenReturn(Page.empty(PageRequest.of(0, 20)));
     when(stocks.getStock(hub, product))
         .thenReturn(new StockResult(UUID.randomUUID(), hub, product, 0));
     for (String path :
@@ -514,7 +515,37 @@ class HubSecurityIntegrationTest {
   }
 
   @Nested
-  @TestPropertySource(properties = "hub.security.internal.orders-token=")
+  @TestPropertySource(
+      properties = {
+        "hub.internal-auth.clients.orders.allowed[0]=GET /internal/hubs/*/stocks/*",
+        "hub.internal-auth.clients.orders.allowed[1]=POST /internal/stocks/deductions",
+        "hub.internal-auth.clients.orders.allowed[2]=POST /internal/stocks/disabled"
+      })
+  class WithRestorationDisabled {
+    @Autowired private MockMvc configuredMvc;
+
+    @Test
+    void configurationCanRemoveAnOtherwiseAuthenticatedServicePermission() throws Exception {
+      configuredMvc
+          .perform(
+              post("/internal/stocks/restorations")
+                  .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
+                  .header("X-Actor-Username", "alice")
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content(
+                      "{\"order_id\":\"11111111-1111-1111-1111-111111111111\",\"hub_id\":\""
+                          + HUB
+                          + "\",\"product_id\":\""
+                          + PRODUCT
+                          + "\",\"quantity\":1}"))
+          .andExpect(status().isForbidden())
+          .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+      verifyNoInteractions(commands);
+    }
+  }
+
+  @Nested
+  @TestPropertySource(properties = "hub.internal-auth.clients.orders.token=")
   class WithoutOrdersToken {
     @Autowired private MockMvc unconfiguredMvc;
 

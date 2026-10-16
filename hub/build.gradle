@@ -15,4 +15,12 @@ dependencies {
     runtimeOnly 'org.postgresql:postgresql'
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'com.squareup.okhttp3:mockwebserver'
+}
+
+tasks.named('test') {
+    def simulationUrl = providers.gradleProperty('hubCompanySimulationUrl')
+    if (simulationUrl.isPresent()) {
+        systemProperty 'hub.company.simulation-url', simulationUrl.get()
+    }
 }

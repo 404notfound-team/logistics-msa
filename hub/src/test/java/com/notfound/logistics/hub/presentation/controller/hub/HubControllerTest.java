@@ -38,7 +38,7 @@ class HubControllerTest {
 
     HubResult hub = new HubResult(id, "서울특별시 센터", "서울특별시 송파구 송파대로 55");
 
-    when(hubQueryService.getHubs(0, 20, "desc"))
+    when(hubQueryService.getHubs(0, 20, "desc", null, null))
         .thenReturn(new PageImpl<>(List.of(hub), PageRequest.of(0, 20), 1));
 
     mockMvc
@@ -115,7 +115,7 @@ class HubControllerTest {
 
   @Test
   void getHubsOutOfRangePage() throws Exception {
-    when(hubQueryService.getHubs(5, 10, "desc"))
+    when(hubQueryService.getHubs(5, 10, "desc", null, null))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(5, 10), 17));
 
     mockMvc
@@ -130,7 +130,7 @@ class HubControllerTest {
     int page = 21474837;
     int size = 100;
 
-    when(hubQueryService.getHubs(page, size, "desc"))
+    when(hubQueryService.getHubs(page, size, "desc", null, null))
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(page, size), 17));
 
     mockMvc

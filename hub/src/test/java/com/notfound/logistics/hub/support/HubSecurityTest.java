@@ -20,9 +20,10 @@ import org.springframework.test.context.TestPropertySource;
 @TestPropertySource(
     properties = {
       "hub.jwt.secret=" + HubSecurityTestTokens.SECRET,
-      "hub.security.internal.orders-token=" + HubSecurityTestTokens.ORDERS,
-      "hub.security.internal.users-token=" + HubSecurityTestTokens.USERS,
-      "hub.security.internal.company-token=" + HubSecurityTestTokens.COMPANY,
-      "hub.security.internal.delivery-token=" + HubSecurityTestTokens.DELIVERY
+      "hub.internal-auth.service-token=hub-service-test-token",
+      "hub.internal-auth.clients.orders.token=" + HubSecurityTestTokens.ORDERS,
+      "hub.internal-auth.clients.users.token=" + HubSecurityTestTokens.USERS,
+      "hub.internal-auth.clients.company.token=" + HubSecurityTestTokens.COMPANY,
+      "hub.internal-auth.clients.delivery.token=" + HubSecurityTestTokens.DELIVERY
     })
 public @interface HubSecurityTest {}

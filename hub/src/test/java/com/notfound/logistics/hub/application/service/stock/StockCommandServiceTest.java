@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.hub.application.dto.stock.StockResult;
 import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
@@ -16,6 +17,8 @@ import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRestorationRepository;
+import com.notfound.logistics.hub.infrastructure.client.CompanyProductClient;
+import com.notfound.logistics.hub.infrastructure.client.CompanyProductClient.ProductResponse;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -24,7 +27,9 @@ class StockCommandServiceTest {
   private final StockRepository stocks = mock(StockRepository.class);
   private final HubRepository hubs = mock(HubRepository.class);
   private final StockRestorationRepository restorations = mock(StockRestorationRepository.class);
-  private final StockCommandService service = new StockCommandService(stocks, hubs, restorations);
+  private final CompanyProductClient products = mock(CompanyProductClient.class);
+  private final StockCommandService service =
+      new StockCommandService(stocks, hubs, restorations, products);
   private final UUID hubId = UUID.randomUUID();
   private final UUID productId = UUID.randomUUID();
 
@@ -47,6 +52,9 @@ class StockCommandServiceTest {
 
   @Test
   void createsStockWithZeroInitialQuantity() {
+    when(products.getProduct(productId))
+        .thenReturn(
+            new ApiResponse<>(new ProductResponse(productId, UUID.randomUUID(), "상품", 100L)));
     when(hubs.findById(hubId)).thenReturn(Optional.of(mock(Hub.class)));
     when(stocks.saveAndFlush(any(Stock.class))).thenAnswer(call -> call.getArgument(0));
     var result = service.create(hubId, productId, 0);

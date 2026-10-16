@@ -1,18 +1,19 @@
 package com.notfound.logistics.hub.application.service.hub;
 
 import com.notfound.logistics.hub.application.dto.hub.HubResult;
+import com.notfound.logistics.hub.application.service.QuerySort;
 import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.hub.HubErrorCode;
 import com.notfound.logistics.hub.domain.model.hub.Hub;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,22 +25,34 @@ public class HubQueryService {
   private final HubRepository hubRepository;
 
   public Page<HubResult> getHubs(int page, int size, String direction) {
+    return getHubs(page, size, direction, null, null);
+  }
 
-    Sort.Direction sortDirection = Sort.Direction.fromString(direction);
+  public Page<HubResult> getHubs(int page, int size, String direction, String name, String sort) {
 
-    Pageable pageable =
-        PageRequest.of(
-            page,
-            size,
-            Sort.by(sortDirection, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
+    Pageable pageable = PageRequest.of(page, size, QuerySort.resolve(sort, direction));
+    String pattern = name == null || name.isBlank() ? null : containsPattern(name.strip());
 
     if (pageable.getOffset() >= Integer.MAX_VALUE) {
-      long totalElements = hubRepository.count();
+      long totalElements =
+          pattern == null ? hubRepository.count() : hubRepository.countByNamePattern(pattern);
 
       return new PageImpl<>(List.of(), pageable, totalElements);
     }
 
-    return hubRepository.findAll(pageable).map(HubResult::from);
+    return (pattern == null
+            ? hubRepository.findAll(pageable)
+            : hubRepository.searchByName(pattern, pageable))
+        .map(HubResult::from);
+  }
+
+  private static String containsPattern(String name) {
+    return "%"
+        + name.toLowerCase(Locale.ROOT)
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        + "%";
   }
 
   public HubResult getHub(UUID id) {

@@ -44,17 +44,16 @@ final class HubServiceAuthenticationFilter extends OncePerRequestFilter {
       throws ServletException, IOException {
     try {
       String supplied = singleHeader(request, "X-Service-Token", true);
-      String service =
-          tokens.entrySet().stream()
-              .filter(entry -> !entry.getValue().isBlank())
-              .filter(
-                  entry ->
-                      MessageDigest.isEqual(
-                          entry.getValue().getBytes(StandardCharsets.UTF_8),
-                          supplied.getBytes(StandardCharsets.UTF_8)))
-              .map(Map.Entry::getKey)
-              .findFirst()
-              .orElseThrow(() -> new BadCredentialsException("Invalid service credentials"));
+      String service = null;
+      byte[] suppliedBytes = supplied.getBytes(StandardCharsets.UTF_8);
+      for (var entry : tokens.entrySet()) {
+        if (!entry.getValue().isBlank()
+            && MessageDigest.isEqual(
+                entry.getValue().getBytes(StandardCharsets.UTF_8), suppliedBytes)) {
+          service = entry.getKey();
+        }
+      }
+      if (service == null) throw new BadCredentialsException("Invalid service credentials");
       boolean signupLookup =
           "USERS".equals(service)
               && "GET".equals(request.getMethod())

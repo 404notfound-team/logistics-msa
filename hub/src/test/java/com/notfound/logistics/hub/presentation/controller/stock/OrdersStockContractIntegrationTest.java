@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.hub.HubApplication;
+import com.notfound.logistics.hub.support.CompanyApiTestServer;
 import com.notfound.logistics.hub.support.HubSecurityTest;
 import com.notfound.logistics.hub.support.HubSecurityTestTokens;
 import feign.Feign;
@@ -70,6 +71,7 @@ class OrdersStockContractIntegrationTest {
 
   @DynamicPropertySource
   static void properties(DynamicPropertyRegistry registry) {
+    registry.add("hub.clients.company-url", CompanyApiTestServer::url);
     registry.add("spring.datasource.url", DATABASE::getJdbcUrl);
     registry.add("spring.datasource.username", DATABASE::getUsername);
     registry.add("spring.datasource.password", DATABASE::getPassword);

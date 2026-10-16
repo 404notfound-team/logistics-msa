@@ -1,6 +1,7 @@
 package com.notfound.logistics.hub.domain.exception.stock;
 
 public enum StockErrorCode {
+  PRODUCT_NOT_FOUND("상품을 찾을 수 없습니다."),
   STOCK_NOT_FOUND("재고를 찾을 수 없습니다."),
   INVALID_STOCK_QUANTITY("재고 변경 수량은 0보다 커야 합니다."),
   INVALID_INITIAL_STOCK("초기 재고는 0 이상이어야 합니다."),

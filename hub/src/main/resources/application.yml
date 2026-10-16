@@ -3,12 +3,32 @@ server:
 hub:
   jwt:
     secret: ${JWT_SECRET:}
-  security:
-    internal:
-      orders-token: ${ORDERS_SERVICE_TOKEN:}
-      users-token: ${USERS_SERVICE_TOKEN:}
-      company-token: ${COMPANY_SERVICE_TOKEN:}
-      delivery-token: ${DELIVERY_SERVICE_TOKEN:}
+  clients:
+    company-url: ${COMPANY_URL:}
+    connect-timeout-ms: 2000
+    read-timeout-ms: 5000
+  internal-auth:
+    service-token: ${HUB_SERVICE_TOKEN:}
+    clients:
+      orders:
+        token: ${ORDERS_SERVICE_TOKEN:}
+        allowed:
+          - GET /internal/hubs/*/stocks/*
+          - POST /internal/stocks/deductions
+          - POST /internal/stocks/restorations
+      users:
+        token: ${USERS_SERVICE_TOKEN:}
+        allowed:
+          - GET /internal/hubs
+          - GET /internal/hubs/*
+      company:
+        token: ${COMPANY_SERVICE_TOKEN:}
+        allowed:
+          - GET /internal/hubs/*
+      delivery:
+        token: ${DELIVERY_SERVICE_TOKEN:}
+        allowed:
+          - GET /internal/hub-routes
 springdoc:
   api-docs:
     enabled: false
@@ -43,6 +63,10 @@ spring:
           default:
             connect-timeout: 2000
             read-timeout: 5000
+          hubProducts:
+            connect-timeout: ${hub.clients.connect-timeout-ms}
+            read-timeout: ${hub.clients.read-timeout-ms}
+            follow-redirects: false
       micrometer:
         enabled: true
 

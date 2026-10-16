@@ -5,6 +5,7 @@ import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
+import com.notfound.logistics.hub.infrastructure.client.ProductLookupException;
 import com.notfound.logistics.hub.presentation.controller.stock.StockController;
 import com.notfound.logistics.hub.presentation.exception.hub.HubApiErrorCode;
 import org.hibernate.exception.ConstraintViolationException;
@@ -21,6 +22,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(basePackageClasses = StockController.class)
 public class StockExceptionHandler {
   private static final Logger LOG = LoggerFactory.getLogger(StockExceptionHandler.class);
+
+  @ExceptionHandler(ProductLookupException.class)
+  public ResponseEntity<ApiErrorResponse> handleProductLookupFailure(
+      ProductLookupException exception) {
+    var code = CommonErrorCode.SERVICE_UNAVAILABLE;
+    return ResponseEntity.status(code.httpStatus())
+        .body(ApiErrorResponse.of(code, MDC.get("traceId")));
+  }
 
   @ExceptionHandler(DataIntegrityViolationException.class)
   public ResponseEntity<ApiErrorResponse> handleIntegrityViolation(

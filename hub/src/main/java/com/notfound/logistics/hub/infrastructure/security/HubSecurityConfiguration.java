@@ -4,12 +4,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -31,6 +33,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 
 @Configuration(proxyBeanMethods = false)
+@EnableConfigurationProperties(HubInternalAuthProperties.class)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 public class HubSecurityConfiguration {
   @Bean
@@ -41,16 +44,15 @@ public class HubSecurityConfiguration {
   @Bean
   @Order(1)
   SecurityFilterChain hubInternalSecurityFilterChain(
-      HttpSecurity http,
-      HubSecurityErrorHandler errors,
-      @Value("${hub.security.internal.orders-token:}") String orders,
-      @Value("${hub.security.internal.users-token:}") String users,
-      @Value("${hub.security.internal.company-token:}") String company,
-      @Value("${hub.security.internal.delivery-token:}") String delivery)
+      HttpSecurity http, HubSecurityErrorHandler errors, HubInternalAuthProperties properties)
       throws Exception {
     var filter =
         new HubServiceAuthenticationFilter(
-            Map.of("ORDERS", orders, "USERS", users, "COMPANY", company, "DELIVERY", delivery),
+            properties.clients().entrySet().stream()
+                .collect(
+                    Collectors.toMap(
+                        entry -> entry.getKey().toUpperCase(Locale.ROOT),
+                        entry -> entry.getValue().token())),
             errors);
     return stateless(http)
         .securityMatcher(
@@ -65,23 +67,7 @@ public class HubSecurityConfiguration {
             handler -> handler.authenticationEntryPoint(errors).accessDeniedHandler(errors))
         .authorizeHttpRequests(
             requests ->
-                requests
-                    .requestMatchers(HttpMethod.GET, "/internal/hubs")
-                    .hasAuthority("SERVICE_USERS")
-                    .requestMatchers(HttpMethod.GET, "/internal/hubs/*/stocks/*")
-                    .hasAuthority("SERVICE_ORDERS")
-                    .requestMatchers(HttpMethod.GET, "/internal/hubs/*")
-                    .hasAnyAuthority("SERVICE_USERS", "SERVICE_COMPANY")
-                    .requestMatchers(HttpMethod.GET, "/internal/hub-routes")
-                    .hasAuthority("SERVICE_DELIVERY")
-                    .requestMatchers(HttpMethod.POST, "/internal/stocks/deductions")
-                    .hasAuthority("SERVICE_ORDERS")
-                    .requestMatchers(HttpMethod.POST, "/internal/stocks/deductions")
-                    .hasAuthority("SERVICE_ORDERS")
-                    .requestMatchers(HttpMethod.POST, "/internal/stocks/restorations")
-                    .hasAuthority("SERVICE_ORDERS")
-                    .anyRequest()
-                    .denyAll())
+                requests.anyRequest().access(new HubInternalApiAuthorizationManager(properties)))
         .build();
   }
 

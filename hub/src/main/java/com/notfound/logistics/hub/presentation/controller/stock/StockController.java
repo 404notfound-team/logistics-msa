@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import java.net.URI;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -52,8 +53,10 @@ public class StockController {
   public ApiResponse<PageResponse<StockResponse>> getHubStocks(
       @PathVariable UUID hubId,
       @RequestParam(defaultValue = "0") @Min(0) int page,
-      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-    return pageResponse(stockQueryService.getStocks(hubId, null, page, size));
+      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(required = false) @Pattern(regexp = "(?i)(created_at|id),(asc|desc)")
+          String sort) {
+    return pageResponse(stockQueryService.getStocks(hubId, null, page, size, sort));
   }
 
   @Operation(summary = "상품의 전체 허브 재고 조회")
@@ -61,9 +64,11 @@ public class StockController {
   public ApiResponse<PageResponse<StockResponse>> getProductStocks(
       @PathVariable UUID productId,
       @RequestParam(defaultValue = "0") @Min(0) int page,
-      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
+      @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size,
+      @RequestParam(required = false) @Pattern(regexp = "(?i)(created_at|id),(asc|desc)")
+          String sort) {
 
-    return pageResponse(stockQueryService.getStocks(null, productId, page, size));
+    return pageResponse(stockQueryService.getStocks(null, productId, page, size, sort));
   }
 
   private ApiResponse<PageResponse<StockResponse>> pageResponse(Page<StockResult> result) {
