@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -39,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
 // 오류 응답에는 ApiErrorResponse 형식을 지정한다. 지정하지 않으면 성공 응답 타입이 모든 상태 코드에 표시된다.
 @Tag(name = "Company", description = "업체 API")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/companies")
 @RequiredArgsConstructor

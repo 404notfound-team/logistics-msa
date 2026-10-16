@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.ExampleObject;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -39,6 +40,7 @@ import org.springframework.web.bind.annotation.RestController;
 // 상품은 Company Aggregate의 내부 엔티티라서 별도 서비스 없이 CompanyService를 통해 다룬다.
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
 @Tag(name = "Product", description = "업체 상품 API")
+@SecurityRequirement(name = "bearerAuth")
 @RestController
 @RequestMapping("/api/companies/{company_id}/products")
 @RequiredArgsConstructor

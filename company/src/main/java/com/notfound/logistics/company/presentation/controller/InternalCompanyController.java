@@ -11,10 +11,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 // 서비스 간 호출 전용. Gateway는 /api/** 만 라우팅하고 Swagger도 공개 경로만 문서화하므로 외부에 노출되지 않는다.
-// TODO(auth, #46): hub와 같은 서비스 인증을 적용한다.
-//  - X-Service-Token으로 호출 서비스를 인증해 orders만 허용한다.
-//  - X-Actor-Username은 서비스 인증 후에만 감사 주체로 쓴다.
-//  - 참고: hub의 HubSecurityConfiguration, HubServiceAuthenticationFilter
+// CompanySecurityConfiguration의 서비스 인증(X-Service-Token)으로 orders만 호출할 수 있다.
 @RestController
 @RequestMapping("/internal/companies")
 @RequiredArgsConstructor

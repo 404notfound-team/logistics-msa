@@ -1,5 +1,13 @@
 server:
   port: 8080
+company:
+  jwt:
+    # users가 발급하는 JWT를 검증하는 HS256 키. 비어 있으면 모든 /api/** 요청을 401로 거부한다.
+    secret: "${JWT_SECRET:}"
+  security:
+    internal:
+      # 내부 API를 호출하는 서비스의 X-Service-Token. 비어 있으면 그 서비스의 호출을 401로 거부한다.
+      orders-token: "${ORDERS_SERVICE_TOKEN:}"
 springdoc:
   api-docs:
     enabled: false
