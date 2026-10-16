@@ -2,6 +2,7 @@ package com.notfound.logistics.delivery.application.dto;
 
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public record DeliveryRouteResult(
@@ -9,10 +10,10 @@ public record DeliveryRouteResult(
     int sequence,
     UUID departureHubId,
     UUID arrivalHubId,
-    int expectedDistanceKm,
-    Integer actualDistanceKm,
-    int expectedDurationSeconds,
-    Integer actualDurationSeconds,
+    BigDecimal expectedDistanceKm,
+    BigDecimal actualDistanceKm,
+    long expectedDurationSeconds,
+    Long actualDurationSeconds,
     DeliveryStatus status,
     UUID assigneeId) {
   public static DeliveryRouteResult from(DeliveryRoute route) {

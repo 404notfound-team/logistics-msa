@@ -17,6 +17,7 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -110,8 +111,8 @@ class DeliveryQueryServiceTest {
         sequence,
         UUID.randomUUID(),
         UUID.randomUUID(),
-        120,
-        5400,
+        new BigDecimal("120.5"),
+        5400L,
         DeliveryStatus.HUB_WAITING,
         null);
   }
