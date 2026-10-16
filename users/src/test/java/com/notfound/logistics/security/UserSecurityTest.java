@@ -259,6 +259,31 @@ class UserSecurityTest {
   }
 
   @Test
+  void unsupportedMethodOnPublicEndpointIsMethodNotAllowed() throws Exception {
+    mvc.perform(get("/api/users/signin"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    mvc.perform(get("/api/users/signup")).andExpect(status().isMethodNotAllowed());
+  }
+
+  @Test
+  void malformedIdOrQueryValueIsClientError() throws Exception {
+    mvc.perform(get("/api/users/not-a-uuid").header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            get("/api/users")
+                .param("company_id", "not-a-uuid")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    mvc.perform(
+            get("/api/users")
+                .param("role", "ADMIN")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void masterDeletesUserAsJwtSubject() throws Exception {
     UUID target = UUID.randomUUID();
 
