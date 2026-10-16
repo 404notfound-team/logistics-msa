@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.api.ThrowableAssert.ThrowingCallable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,6 +40,11 @@ class CompanyServiceTest {
   private static final UUID OTHER_HUB_ID = UUID.fromString("44444444-4444-4444-4444-444444444444");
   private static final UUID PRODUCT_ID = UUID.fromString("55555555-5555-5555-5555-555555555555");
   private static final Instant NOW = Instant.parse("2026-10-15T00:00:00Z");
+  private static final UUID OTHER_USER_ID = UUID.fromString("77777777-7777-7777-7777-777777777777");
+  // 기존 업무 테스트는 해당 업체 관리자로 요청한다.
+  private static final Requester MANAGER = new Requester(MANAGER_ID, false);
+  private static final Requester OTHER_USER = new Requester(OTHER_USER_ID, false);
+  private static final Requester MASTER = new Requester(OTHER_USER_ID, true);
 
   @Mock private CompanyRepository companyRepository;
   @Mock private AuditorAware<String> auditorAware;
@@ -54,7 +60,7 @@ class CompanyServiceTest {
 
   @Test
   void createCompanySavesRequestValues() {
-    companyService.createCompany("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
+    companyService.createCompany(MANAGER, "테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
 
     // save()에 실제로 넘어간 엔티티를 꺼내 요청 값이 그대로 담겼는지 확인한다.
     ArgumentCaptor<Company> captor = ArgumentCaptor.forClass(Company.class);
@@ -69,7 +75,7 @@ class CompanyServiceTest {
   @Test
   void createCompanyReturnsSavedCompany() {
     Company company =
-        companyService.createCompany("테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
+        companyService.createCompany(MANAGER, "테스트 물류업체", HUB_ID, "서울특별시 강남구 테헤란로 123", MANAGER_ID);
 
     // 단위 테스트에서는 JPA가 동작하지 않으므로 ID와 감사 시각은 확인하지 않는다.
     assertThat(company.getName()).isEqualTo("테스트 물류업체");
@@ -116,7 +122,8 @@ class CompanyServiceTest {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
 
     // 이름과 허브만 보내고 주소·관리자는 null로 둔다.
-    Company updated = companyService.updateCompany(COMPANY_ID, "변경 업체", OTHER_HUB_ID, null, null);
+    Company updated =
+        companyService.updateCompany(MANAGER, COMPANY_ID, "변경 업체", OTHER_HUB_ID, null, null);
 
     assertThat(updated.getName()).isEqualTo("변경 업체");
     assertThat(updated.getHubId()).isEqualTo(OTHER_HUB_ID);
@@ -128,7 +135,8 @@ class CompanyServiceTest {
   void updateMissingCompanyThrowsCompanyNotFound() {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> companyService.updateCompany(COMPANY_ID, "변경 업체", null, null, null))
+    assertThatThrownBy(
+            () -> companyService.updateCompany(MANAGER, COMPANY_ID, "변경 업체", null, null, null))
         .isInstanceOf(CompanyException.class)
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
@@ -140,7 +148,7 @@ class CompanyServiceTest {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
-    companyService.deleteCompany(COMPANY_ID);
+    companyService.deleteCompany(MANAGER, COMPANY_ID);
 
     // 물리 삭제가 아니라 삭제 시각·작업자만 기록한다. 도메인 저장소에는 delete 메서드가 없어 물리 삭제 호출은 컴파일 단계에서 막힌다.
     assertThat(company.getDeletedAt()).isEqualTo(NOW);
@@ -151,7 +159,7 @@ class CompanyServiceTest {
   void deleteMissingCompanyThrowsCompanyNotFound() {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> companyService.deleteCompany(COMPANY_ID))
+    assertThatThrownBy(() -> companyService.deleteCompany(MANAGER, COMPANY_ID))
         .isInstanceOf(CompanyException.class)
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
@@ -164,7 +172,7 @@ class CompanyServiceTest {
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.empty());
 
     // 공통 계약: 작업자를 알 수 없으면 임의 값으로 채우지 않고 실패한다.
-    assertThatThrownBy(() -> companyService.deleteCompany(COMPANY_ID))
+    assertThatThrownBy(() -> companyService.deleteCompany(MANAGER, COMPANY_ID))
         .isInstanceOf(IllegalStateException.class);
     assertThat(company.getDeletedAt()).isNull();
   }
@@ -176,7 +184,7 @@ class CompanyServiceTest {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
-    companyService.deleteCompany(COMPANY_ID);
+    companyService.deleteCompany(MANAGER, COMPANY_ID);
 
     // 루트가 삭제되면 내부 상품도 같은 작업자·시각으로 삭제 기록된다.
     assertThat(product.getDeletedAt()).isEqualTo(NOW);
@@ -188,7 +196,7 @@ class CompanyServiceTest {
     Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
 
-    Product product = companyService.createProduct(COMPANY_ID, "무선 키보드", "설명", 35000L);
+    Product product = companyService.createProduct(MANAGER, COMPANY_ID, "무선 키보드", "설명", 35000L);
 
     assertThat(product.getCompany()).isSameAs(company);
     assertThat(product.getName()).isEqualTo("무선 키보드");
@@ -203,7 +211,7 @@ class CompanyServiceTest {
   void createProductForMissingCompanyThrowsCompanyNotFound() {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> companyService.createProduct(COMPANY_ID, "상품", null, 1000L))
+    assertThatThrownBy(() -> companyService.createProduct(MANAGER, COMPANY_ID, "상품", null, 1000L))
         .isInstanceOf(CompanyException.class)
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
@@ -245,7 +253,8 @@ class CompanyServiceTest {
     Company company = companyWithProduct();
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
 
-    Product updated = companyService.updateProduct(COMPANY_ID, PRODUCT_ID, null, null, 39000L);
+    Product updated =
+        companyService.updateProduct(MANAGER, COMPANY_ID, PRODUCT_ID, null, null, 39000L);
 
     assertThat(updated.getName()).isEqualTo("기존 상품");
     assertThat(updated.getDescription()).isEqualTo("기존 설명");
@@ -259,7 +268,7 @@ class CompanyServiceTest {
     given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
-    companyService.deleteProduct(COMPANY_ID, PRODUCT_ID);
+    companyService.deleteProduct(MANAGER, COMPANY_ID, PRODUCT_ID);
 
     assertThat(product.getDeletedAt()).isEqualTo(NOW);
     assertThat(product.getDeletedBy()).isEqualTo("test-user");
@@ -276,6 +285,71 @@ class CompanyServiceTest {
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
     verify(companyRepository, never()).searchProducts(any(), any());
+  }
+
+  @Test
+  void masterCanCreateCompanyForAnyManager() {
+    companyService.createCompany(MASTER, "테스트 물류업체", HUB_ID, "주소", MANAGER_ID);
+
+    verify(companyRepository).save(any());
+  }
+
+  @Test
+  void userCannotCreateCompanyManagedBySomeoneElse() {
+    assertAccessDenied(
+        () -> companyService.createCompany(OTHER_USER, "테스트 물류업체", HUB_ID, "주소", MANAGER_ID));
+
+    // 권한이 없으면 저장까지 가지 않는다.
+    verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void masterCanChangeCompanyManagedBySomeoneElse() {
+    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    companyService.updateCompany(MASTER, COMPANY_ID, "변경 업체", null, null, null);
+
+    assertThat(company.getName()).isEqualTo("변경 업체");
+  }
+
+  @Test
+  void otherUserCannotChangeCompanyOrItsProducts() {
+    Company company = companyWithProduct();
+    Product product = company.getProduct(PRODUCT_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    assertAccessDenied(
+        () -> companyService.updateCompany(OTHER_USER, COMPANY_ID, "변경 업체", null, null, null));
+    assertAccessDenied(() -> companyService.deleteCompany(OTHER_USER, COMPANY_ID));
+    assertAccessDenied(
+        () -> companyService.createProduct(OTHER_USER, COMPANY_ID, "상품", null, 1000L));
+    assertAccessDenied(
+        () -> companyService.updateProduct(OTHER_USER, COMPANY_ID, PRODUCT_ID, null, null, 1L));
+    assertAccessDenied(() -> companyService.deleteProduct(OTHER_USER, COMPANY_ID, PRODUCT_ID));
+
+    assertThat(company.getName()).isEqualTo("업체");
+    assertThat(company.getDeletedAt()).isNull();
+    assertThat(product.getPrice()).isEqualTo(35000L);
+    assertThat(product.getDeletedAt()).isNull();
+  }
+
+  @Test
+  void accessCheckOnMissingCompanyIsNotFound() {
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+    // 없는 업체는 권한과 관계없이 404로 응답한다.
+    assertThatThrownBy(() -> companyService.deleteCompany(OTHER_USER, COMPANY_ID))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+  }
+
+  private static void assertAccessDenied(ThrowingCallable call) {
+    assertThatThrownBy(call)
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_ACCESS_DENIED);
   }
 
   // 저장 후 상태를 흉내 내기 위해 JPA가 채우는 상품 ID를 직접 넣는다.

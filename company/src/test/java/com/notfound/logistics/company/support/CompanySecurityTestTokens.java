@@ -3,6 +3,7 @@ package com.notfound.logistics.company.support;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -15,6 +16,7 @@ public final class CompanySecurityTestTokens {
   public static final String USERNAME = "test-user";
   // 내부 API 호출 서비스(orders)의 테스트용 X-Service-Token.
   public static final String ORDERS_TOKEN = "orders-test-only-service-token";
+  public static final UUID USER_ID = UUID.fromString("66666666-6666-6666-6666-666666666666");
 
   private CompanySecurityTestTokens() {}
 
@@ -24,6 +26,8 @@ public final class CompanySecurityTestTokens {
         .subject(USERNAME)
         .issuedAt(Instant.now())
         .expiresAt(Instant.now().plusSeconds(300))
+        .claim("user_id", USER_ID.toString())
+        .claim("is_delivery_staff", false)
         .claim("role", "USER");
   }
 

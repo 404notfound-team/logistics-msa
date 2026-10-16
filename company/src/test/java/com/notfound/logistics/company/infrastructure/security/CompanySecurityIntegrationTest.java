@@ -115,7 +115,9 @@ class CompanySecurityIntegrationTest {
         claims().subject(" ").build(),
         claims().subject("x".repeat(101)).build(),
         claims().claims(values -> values.remove("role")).build(),
-        claims().claim("role", "ADMIN").build());
+        claims().claim("role", "ADMIN").build(),
+        claims().claims(values -> values.remove("user_id")).build(),
+        claims().claim("user_id", "not-a-uuid").build());
   }
 
   @Test

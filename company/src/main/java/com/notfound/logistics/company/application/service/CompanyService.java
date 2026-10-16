@@ -24,16 +24,15 @@ public class CompanyService {
   private final Clock clock;
 
   @Transactional
-  public Company createCompany(String name, UUID hubId, String address, UUID managerUserId) {
-    // TODO(auth): Gateway 인증 구현 후 요청자 정보(사용자 ID·역할)를 받아 권한을 검사한다.
-    //  - MASTER: 제한 없음
-    //  - 업체 관리자: manager_user_id가 본인 ID일 때만 생성 가능
-    //  - 그 외 역할: 403
+  public Company createCompany(
+      Requester requester, String name, UUID hubId, String address, UUID managerUserId) {
+    // MASTER는 제한 없이, 그 외에는 본인을 관리자로 지정할 때만 생성할 수 있다.
+    checkManages(requester, managerUserId);
+    // TODO(users): manager_user_id가 실제 사용자인지 users 서비스로 확인할지 팀과 결정한다.
+    //  - 확인한다면 users 내부 API(Feign) 호출
     // TODO(hub): hub 서비스 내부 API(Feign)로 hub_id가 실제 존재하는 허브인지 확인한다.
     //  - 경로·응답 형식은 hub 담당자와 합의 (예: GET /internal/hubs/{hubId})
     //  - 없는 허브면 CompanyError.HUB_NOT_FOUND, hub 서비스 장애면 503
-    // TODO(users): manager_user_id가 업체 관리자 역할의 실제 사용자인지 users 서비스로 확인할지 팀과 결정한다.
-    //  - 확인한다면 users 내부 API(Feign) 호출
 
     Company company = Company.of(name, hubId, address, managerUserId);
     companyRepository.save(company);
@@ -57,9 +56,8 @@ public class CompanyService {
   /** null인 값은 변경하지 않는다. 변경 내용은 트랜잭션 종료 시 저장된다. */
   @Transactional
   public Company updateCompany(
-      UUID id, String name, UUID hubId, String address, UUID managerUserId) {
-    // TODO(auth): MASTER 또는 해당 업체 관리자만 수정할 수 있다. 그 외 403.
-    Company company = findCompany(id);
+      Requester requester, UUID id, String name, UUID hubId, String address, UUID managerUserId) {
+    Company company = findManagedCompany(requester, id);
     if (name != null) {
       company.changeName(name);
     }
@@ -77,18 +75,17 @@ public class CompanyService {
   }
 
   @Transactional
-  public void deleteCompany(UUID id) {
-    // TODO(auth): MASTER 또는 해당 업체 관리자만 삭제할 수 있다. 그 외 403.
-    Company company = findCompany(id);
+  public void deleteCompany(Requester requester, UUID id) {
+    Company company = findManagedCompany(requester, id);
     // 업체와 소속 상품을 같은 작업자·시각으로 함께 논리 삭제한다.
     company.delete(currentActor(), clock.instant());
   }
 
   @Transactional
-  public Product createProduct(UUID companyId, String name, String description, Long price) {
-    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 생성할 수 있다. 그 외 403.
+  public Product createProduct(
+      Requester requester, UUID companyId, String name, String description, Long price) {
     // 상품은 Company를 통해 추가하고, 업체 저장 시 함께 저장된다(cascade). ID는 커밋 시점에 채워진다.
-    return findCompany(companyId).addProduct(name, description, price);
+    return findManagedCompany(requester, companyId).addProduct(name, description, price);
   }
 
   @Transactional(readOnly = true)
@@ -114,15 +111,33 @@ public class CompanyService {
   /** null인 값은 변경하지 않는다. */
   @Transactional
   public Product updateProduct(
-      UUID companyId, UUID productId, String name, String description, Long price) {
-    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 수정할 수 있다. 그 외 403.
-    return findCompany(companyId).updateProduct(productId, name, description, price);
+      Requester requester,
+      UUID companyId,
+      UUID productId,
+      String name,
+      String description,
+      Long price) {
+    return findManagedCompany(requester, companyId)
+        .updateProduct(productId, name, description, price);
   }
 
   @Transactional
-  public void deleteProduct(UUID companyId, UUID productId) {
-    // TODO(auth): MASTER 또는 해당 업체 관리자만 상품을 삭제할 수 있다. 그 외 403.
-    findCompany(companyId).deleteProduct(productId, currentActor(), clock.instant());
+  public void deleteProduct(Requester requester, UUID companyId, UUID productId) {
+    findManagedCompany(requester, companyId)
+        .deleteProduct(productId, currentActor(), clock.instant());
+  }
+
+  // 업체와 그 상품의 변경은 MASTER 또는 해당 업체 관리자만 할 수 있다. 없는 업체는 권한 확인 전에 404로 응답한다.
+  private Company findManagedCompany(Requester requester, UUID companyId) {
+    Company company = findCompany(companyId);
+    checkManages(requester, company.getManagerUserId());
+    return company;
+  }
+
+  private static void checkManages(Requester requester, UUID managerUserId) {
+    if (!requester.master() && !requester.manages(managerUserId)) {
+      throw new CompanyException(CompanyError.COMPANY_ACCESS_DENIED);
+    }
   }
 
   // 생성·수정 기록과 같은 작업자 출처를 쓴다. 인증 연동 시 AuditorAware만 바꾸면 삭제 기록도 함께 바뀐다.
