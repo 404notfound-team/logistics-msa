@@ -29,7 +29,7 @@ import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 @Component
-@Order(Ordered.HIGHEST_PRECEDENCE)
+@Order(Ordered.HIGHEST_PRECEDENCE + 1)
 public class JwtAuthenticationFilter implements GlobalFilter {
   private final JwtDecoder jwtDecoder;
   private final ObjectMapper objectMapper;
