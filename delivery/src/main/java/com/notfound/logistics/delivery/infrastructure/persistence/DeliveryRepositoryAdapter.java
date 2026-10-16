@@ -4,6 +4,7 @@ import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -38,5 +39,10 @@ class DeliveryRepositoryAdapter implements DeliveryRepository {
   @Override
   public List<DeliveryRoute> findRoutesByDeliveryId(UUID deliveryId) {
     return routeJpaRepository.findAllByDeliveryIdOrderBySequenceAsc(deliveryId);
+  }
+
+  @Override
+  public List<DeliveryRoute> findRoutesByDeliveryIds(Collection<UUID> deliveryIds) {
+    return routeJpaRepository.findAllByDeliveryIdInOrderBySequenceAsc(deliveryIds);
   }
 }

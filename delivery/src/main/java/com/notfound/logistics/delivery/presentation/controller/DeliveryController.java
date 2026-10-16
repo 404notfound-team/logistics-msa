@@ -6,7 +6,6 @@ import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
-import com.notfound.logistics.delivery.presentation.dto.DeliveryDetailResponse;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -89,13 +88,12 @@ class DeliveryController {
 
   @Operation(summary = "배송 정보 조회", description = "id에 해당하는 배송 정보를 조회합니다")
   @GetMapping("/{delivery_id}")
-  ApiResponse<DeliveryDetailResponse> searchDetail(
+  ApiResponse<DeliveryResponse> searchDetail(
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
     // TODO: 권한 검사하기
     /*
 
     */
-    return new ApiResponse<>(
-        DeliveryDetailResponse.from(deliveryQueryService.searchDetail(deliveryId)));
+    return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
   }
 }

@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.notfound.logistics.delivery.application.dto.DeliveryDetailResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
@@ -103,6 +102,18 @@ class DeliveryControllerTest {
             "서울특별시 송파구 송파대로 55",
             "홍길동",
             DELIVERY_MANAGER_ID,
+            List.of(
+                new DeliveryRouteResult(
+                    UUID.fromString("00000000-0000-0000-0000-0000000000c1"),
+                    1,
+                    DEPARTURE_HUB_ID,
+                    DESTINATION_HUB_ID,
+                    150,
+                    null,
+                    7200,
+                    null,
+                    DeliveryStatus.HUB_MOVING,
+                    DELIVERY_MANAGER_ID)),
             Instant.parse("2026-01-01T00:00:00Z"),
             Instant.parse("2026-01-01T01:00:00Z"));
     given(deliveryQueryService.search(any(), any()))
@@ -134,6 +145,12 @@ class DeliveryControllerTest {
         .andExpect(
             jsonPath("$.data.content[0].delivery_manager_id").value(DELIVERY_MANAGER_ID.toString()))
         .andExpect(jsonPath("$.data.content[0].created_at").value("2026-01-01T00:00:00Z"))
+        .andExpect(jsonPath("$.data.content[0].routes.length()").value(1))
+        .andExpect(
+            jsonPath("$.data.content[0].routes[0].delivery_route_id")
+                .value("00000000-0000-0000-0000-0000000000c1"))
+        .andExpect(jsonPath("$.data.content[0].routes[0].sequence").value(1))
+        .andExpect(jsonPath("$.data.content[0].routes[0].status").value("HUB_MOVING"))
         .andExpect(jsonPath("$.data.page").value(1))
         .andExpect(jsonPath("$.data.total_elements").value(11))
         .andExpect(jsonPath("$.data.total_pages").value(2));
@@ -175,7 +192,7 @@ class DeliveryControllerTest {
     UUID secondRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
     given(deliveryQueryService.searchDetail(deliveryId))
         .willReturn(
-            new DeliveryDetailResult(
+            new DeliveryResult(
                 deliveryId,
                 ORDER_ID,
                 DeliveryStatus.HUB_MOVING,
