@@ -25,6 +25,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
@@ -58,6 +59,7 @@ class OrdersAuditingIntegrationTest {
   @Autowired private FixtureRepository repository;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private PlatformTransactionManager transactionManager;
+  @Autowired private OrdersAuditorAware auditor;
 
   @DynamicPropertySource
   static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -142,6 +144,35 @@ class OrdersAuditingIntegrationTest {
     assertThatThrownBy(() -> repository.saveAndFlush(new Fixture("invalid")))
         .hasRootCauseInstanceOf(IllegalStateException.class);
     assertThat(repository.count()).isZero();
+  }
+
+  @Test
+  void recoveryUsesTheStoredUsernameAndRestoresThePreviousContextAfterFailure() {
+    var previous = SecurityContextHolder.getContext();
+    previous.setAuthentication(
+        UsernamePasswordAuthenticationToken.authenticated(
+            "admin", null, List.of(new SimpleGrantedAuthority("ROLE_MASTER"))));
+    assertThatThrownBy(
+            () ->
+                auditor.runAsPersistedUser(
+                    "original-user",
+                    () -> {
+                      assertThat(
+                              SecurityContextHolder.getContext()
+                                  .getAuthentication()
+                                  .getAuthorities())
+                          .isEmpty();
+                      var saved = repository.saveAndFlush(new Fixture("recovered"));
+                      assertThat(saved.getCreatedBy()).isEqualTo("original-user");
+                      throw new IllegalStateException("fixture failure");
+                    }))
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("fixture failure");
+    assertThat(SecurityContextHolder.getContext()).isSameAs(previous);
+    assertThat(auditor.getCurrentAuditor()).contains("admin");
+    assertThat(previous.getAuthentication().getAuthorities())
+        .extracting(GrantedAuthority::getAuthority)
+        .containsExactly("ROLE_MASTER");
   }
 
   private void authenticate(String username) {

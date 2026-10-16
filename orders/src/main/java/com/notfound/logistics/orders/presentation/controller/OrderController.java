@@ -16,6 +16,8 @@ import java.net.URI;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -50,11 +52,12 @@ public class OrderController {
   })
   @PostMapping
   public ResponseEntity<ApiResponse<OrderResponse>> create(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Valid @RequestBody CreateOrderRequest request,
       @Parameter(description = "요청별 UUID. 같은 주문 재시도 시 동일 값 사용", required = true)
           @RequestHeader("Idempotency-Key")
           UUID key) {
-    return operation(service.create(request.toCommand(key)));
+    return operation(service.create(request.toCommand(key), principal.getSubject()));
   }
 
   private ResponseEntity<ApiResponse<OrderResponse>> operation(OrderOperationResult result) {

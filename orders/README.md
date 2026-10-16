@@ -20,6 +20,7 @@ orders/
 Gateway 연동 시 원본 Bearer 토큰을 전달받아 Spring Security Resource Server로 검증하고, 주문별 권한을 검사합니다.
 사용자 활성 상태·현재 권한 확인과 권한 변경 후 기존 토큰 거절은 Gateway의 책임이며, 실제 연동 시 검증합니다.
 외부 사용자 식별 헤더는 주문 인증에 사용하지 않습니다.
+컨트롤러는 `@AuthenticationPrincipal`로 검증된 JWT를 받아 필요한 사용자 정보를 서비스 인자로 전달합니다.
 JWT는 users 구현과 같은 HS256, issuer `logistics-users`, subject `username`, role `USER`/`MASTER`를 사용합니다.
 `JWT_SECRET`은 32 UTF-8 바이트 이상이어야 합니다. 미설정 시 주문 API는 401을 반환합니다.
 

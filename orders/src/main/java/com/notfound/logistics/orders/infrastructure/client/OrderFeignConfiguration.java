@@ -1,7 +1,7 @@
 package com.notfound.logistics.orders.infrastructure.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.notfound.logistics.orders.infrastructure.security.OrderActors;
+import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
 import feign.Request;
 import feign.RequestInterceptor;
 import feign.Retryer;
@@ -25,11 +25,11 @@ public class OrderFeignConfiguration {
   }
 
   @Bean
-  RequestInterceptor orderActorHeaders(
-      OrderActors actors, @Value("${orders.clients.service-token:}") String serviceToken) {
+  RequestInterceptor orderRequestHeaders(
+      OrdersAuditorAware auditor, @Value("${orders.clients.service-token:}") String serviceToken) {
     return template -> {
       if (!serviceToken.isBlank()) template.header("X-Service-Token", serviceToken);
-      template.header("X-Actor-Username", actors.require().username());
+      template.header("X-Actor-Username", auditor.getCurrentAuditor().orElseThrow());
     };
   }
 
