@@ -25,14 +25,14 @@ spring:
               uri: lb://users
               predicates:
                 - Path=/api/users/**
+            - id: hub
+              uri: lb://hub
+              predicates:
+                - Path=/api/hubs/**,/api/hub-routes/**,/api/stocks/**,/api/products/{productid}/stocks
             - id: company
               uri: lb://company
               predicates:
                 - Path=/api/companies/**,/api/products/**
-            - id: hub
-              uri: lb://hub
-              predicates:
-                - Path=/api/hubs/**,/api/hub-routes/**,/api/stocks/**
             - id: orders
               uri: lb://orders
               predicates:
