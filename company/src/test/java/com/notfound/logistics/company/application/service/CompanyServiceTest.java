@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -48,6 +49,7 @@ class CompanyServiceTest {
 
   @Mock private CompanyRepository companyRepository;
   @Mock private AuditorAware<String> auditorAware;
+  @Mock private HubVerifier hubVerifier;
 
   private CompanyService companyService;
 
@@ -55,7 +57,8 @@ class CompanyServiceTest {
   @BeforeEach
   void setUp() {
     companyService =
-        new CompanyService(companyRepository, auditorAware, Clock.fixed(NOW, ZoneOffset.UTC));
+        new CompanyService(
+            companyRepository, auditorAware, hubVerifier, Clock.fixed(NOW, ZoneOffset.UTC));
   }
 
   @Test
@@ -291,6 +294,7 @@ class CompanyServiceTest {
   void masterCanCreateCompanyForAnyManager() {
     companyService.createCompany(MASTER, "테스트 물류업체", HUB_ID, "주소", MANAGER_ID);
 
+    verify(hubVerifier).verifyExists(HUB_ID);
     verify(companyRepository).save(any());
   }
 
@@ -299,8 +303,49 @@ class CompanyServiceTest {
     assertAccessDenied(
         () -> companyService.createCompany(OTHER_USER, "테스트 물류업체", HUB_ID, "주소", MANAGER_ID));
 
-    // 권한이 없으면 저장까지 가지 않는다.
+    // 권한이 없으면 허브 확인이나 저장까지 가지 않는다.
+    verify(hubVerifier, never()).verifyExists(any());
     verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void createCompanyWithMissingHubIsNotSaved() {
+    willThrow(new CompanyException(CompanyError.HUB_NOT_FOUND))
+        .given(hubVerifier)
+        .verifyExists(HUB_ID);
+
+    assertThatThrownBy(
+            () -> companyService.createCompany(MANAGER, "테스트 물류업체", HUB_ID, "주소", MANAGER_ID))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.HUB_NOT_FOUND);
+    verify(companyRepository, never()).save(any());
+  }
+
+  @Test
+  void updateCompanyVerifiesOnlyChangedHub() {
+    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+
+    companyService.updateCompany(MANAGER, COMPANY_ID, "변경 업체", null, null, null);
+
+    verify(hubVerifier, never()).verifyExists(any());
+  }
+
+  @Test
+  void updateCompanyToMissingHubFails() {
+    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
+    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    willThrow(new CompanyException(CompanyError.HUB_NOT_FOUND))
+        .given(hubVerifier)
+        .verifyExists(OTHER_HUB_ID);
+
+    assertThatThrownBy(
+            () -> companyService.updateCompany(MANAGER, COMPANY_ID, null, OTHER_HUB_ID, null, null))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.HUB_NOT_FOUND);
+    assertThat(company.getHubId()).isEqualTo(HUB_ID);
   }
 
   @Test
