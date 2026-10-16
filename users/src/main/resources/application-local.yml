@@ -5,3 +5,7 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+users:
+  dev-data:
+    enabled: ${DEV_DATA_ENABLED:false}
+    password: ${DEV_DATA_PASSWORD:}

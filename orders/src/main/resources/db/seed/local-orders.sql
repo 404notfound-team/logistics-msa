@@ -6,7 +6,7 @@ DO 'BEGIN
     IF EXISTS (
         SELECT 1 FROM orders.p_orders
         WHERE id IN (SELECT (''c0ffee39-0003-4000-8000-'' || lpad(n::text, 12, ''0''))::uuid FROM generate_series(1, 31) AS n)
-          AND (created_by IS NULL OR created_by NOT IN (''dev-seed'', ''dev-seed-other''))
+          AND (created_by IS NULL OR created_by NOT IN (''devseed'', ''devseed2'', ''dev-seed'', ''dev-seed-other''))
     ) THEN
         RAISE EXCEPTION ''Reserved development sample ID belongs to another actor in orders.p_orders'';
     END IF;
@@ -40,11 +40,11 @@ SELECT ('c0ffee39-0003-4000-8000-' || lpad(n::text, 12, '0'))::uuid,
        CASE WHEN n BETWEEN 26 AND 30 THEN NULL ELSE ('c0ffee39-0004-4000-8000-' || lpad(n::text, 12, '0'))::uuid END,
        CASE WHEN n BETWEEN 26 AND 30 THEN 'INSUFFICIENT_STOCK' ELSE NULL END, NULL,
        '2026-10-01 00:00:00+00'::timestamptz + n * interval '1 hour',
-       CASE WHEN n % 2 = 0 THEN 'dev-seed-other' ELSE 'dev-seed' END,
+       CASE WHEN n % 2 = 0 THEN 'devseed2' ELSE 'devseed' END,
        '2026-10-01 00:00:00+00'::timestamptz + n * interval '1 hour',
-       CASE WHEN n % 2 = 0 THEN 'dev-seed-other' ELSE 'dev-seed' END,
+       CASE WHEN n % 2 = 0 THEN 'devseed2' ELSE 'devseed' END,
        CASE WHEN n = 31 THEN '2026-10-03 00:00:00+00'::timestamptz ELSE NULL END,
-       CASE WHEN n = 31 THEN 'dev-seed' ELSE NULL END
+       CASE WHEN n = 31 THEN 'devseed' ELSE NULL END
 FROM linked
 ON CONFLICT (id) DO NOTHING;
 COMMIT;

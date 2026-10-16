@@ -2,11 +2,8 @@
 """새 로컬 Compose의 연결된 샘플·조회 분기를 확인하거나 개발용 JWT를 출력한다."""
 import argparse
 import base64
-import hashlib
-import hmac
 import json
 import subprocess
-import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -18,32 +15,33 @@ def compose(*args):
     return subprocess.check_output(["docker", "compose", *args], cwd=ROOT, text=True).strip()
 
 
-def token(username, role):
-    # 실행 중인 서비스의 실제 키를 메모리에서만 사용한다. 토큰 출력은 --token 요청 때만 한다.
-    secret = compose("exec", "-T", "orders", "printenv", "JWT_SECRET")
-    if len(secret.encode()) < 32:
-        raise SystemExit("JWT_SECRET이 없습니다. 개발용 키를 .env에 설정하고 hub·orders를 다시 시작하세요.")
-
-    def encode(value):
-        return base64.urlsafe_b64encode(json.dumps(value, separators=(",", ":")).encode()).rstrip(b"=")
-
-    now = int(time.time())
-    signing = encode({"alg": "HS256", "typ": "JWT"}) + b"." + encode(
-        {"iss": "logistics-users", "sub": username, "role": role, "iat": now, "exp": now + 3600})
-    signature = base64.urlsafe_b64encode(hmac.new(secret.encode(), signing, hashlib.sha256).digest()).rstrip(b"=")
-    return (signing + b"." + signature).decode()
+def token(base, username, role):
+    # 실제 Users 로그인으로 발급한다. 비밀번호·토큰은 메모리에서만 사용한다.
+    password = compose("exec", "-T", "users", "printenv", "DEV_DATA_PASSWORD")
+    if not password:
+        raise SystemExit("DEV_DATA_PASSWORD가 없습니다. init-env.sh 실행 뒤 Users를 다시 시작하세요.")
+    result = request(base, "/api/users/signin", body={"username": username, "password": password})
+    bearer = result["access_token"]
+    payload = bearer.split(".")[1]
+    claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+    assert claims["sub"] == username and claims["role"] == role, "개발 계정의 현재 역할이 요청과 다릅니다"
+    return bearer
 
 
-def request(base, path, bearer=None, expected=200):
+def request(base, path, bearer=None, expected=200, body=None):
     headers = {"Accept": "application/json"}
     if bearer:
         headers["Authorization"] = "Bearer " + bearer
+    data = None
+    if body is not None:
+        headers["Content-Type"] = "application/json"
+        data = json.dumps(body).encode()
     try:
-        with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers), timeout=10) as response:
+        with urllib.request.urlopen(urllib.request.Request(base + path, headers=headers, data=data), timeout=10) as response:
             status, body = response.status, json.load(response)
     except urllib.error.HTTPError as error:
         status, body = error.code, json.load(error)
-    assert status == expected, (path, status, expected, body)
+    assert status == expected, (path, status, expected)
     return body.get("data", body)
 
 
@@ -98,16 +96,16 @@ def check_links():
 
 
 def check_api(base):
-    master = token("dev-seed", "MASTER")
-    owner = token("dev-seed", "USER")
-    other = token("dev-seed-other", "USER")
+    master = token(base, "devmaster", "MASTER")
+    owner = token(base, "devseed", "USER")
+    other = token(base, "devseed2", "USER")
     first = sample_id(0, 1)
-    companies = request(base, "/api/companies?size=100")
+    companies = request(base, "/api/companies?size=100", master)
     assert companies["total_elements"] >= 34
-    assert len(request(base, f"/api/companies/{first}/products?size=2")["content"]) == 2
-    assert len(request(base, f"/api/companies/{first}/products?size=2&page=1")["content"]) == 1
-    assert request(base, "/api/companies?name=__no_sample_matches__")["content"] == []
-    request(base, f"/api/companies/{first}/products/{sample_id(1, 4)}", expected=404)
+    assert len(request(base, f"/api/companies/{first}/products?size=2", master)["content"]) == 2
+    assert len(request(base, f"/api/companies/{first}/products?size=2&page=1", master)["content"]) == 1
+    assert request(base, "/api/companies?name=__no_sample_matches__", master)["content"] == []
+    request(base, f"/api/companies/{first}/products/{sample_id(1, 4)}", master, expected=404)
     for number, quantity in [(1, 100), (2, 2), (3, 0)]:
         path = f"/api/hubs/00000000-0000-0000-0000-000000000001/products/{sample_id(1, number)}/stocks"
         assert request(base, path, master)["quantity"] == quantity
@@ -123,10 +121,10 @@ def check_api(base):
     assert request(base, "/api/orders?size=2&page=1", master)["page"] == 1
     assert request(base, "/api/orders?page=100", master)["content"] == []
     for status in ["HUB_WAITING", "HUB_MOVING", "DESTINATION_HUB_ARRIVED", "COMPANY_MOVING", "DELIVERED"]:
-        assert request(base, f"/api/deliveries?status={status}")["total_elements"] == 4
-    assert request(base, "/api/deliveries?size=100")["total_elements"] == 20
-    assert request(base, "/api/deliveries?size=2&page=1")["page"] == 1
-    assert request(base, "/api/deliveries?recipient_name=__no_sample_matches__")["content"] == []
+        assert request(base, f"/api/deliveries?status={status}", master)["total_elements"] == 4
+    assert request(base, "/api/deliveries?size=100", master)["total_elements"] == 20
+    assert request(base, "/api/deliveries?size=2&page=1", master)["page"] == 1
+    assert request(base, "/api/deliveries?recipient_name=__no_sample_matches__", master)["content"] == []
     request(base, "/api/orders?size=0", master, expected=400)
     print("PASS 상품 페이지·재고 충분/소량/품절·주문 상태/소유권·배송 5상태·삭제 제외·빈 검색·입력 오류")
 
@@ -134,12 +132,13 @@ def check_api(base):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gateway-url", default="http://127.0.0.1:8080")
-    parser.add_argument("--token", action="store_true", help="로컬 시험 JWT 출력 (실제 사용자 계정 생성 아님)")
-    parser.add_argument("--username", default="dev-seed")
+    parser.add_argument("--token", action="store_true", help="로컬 개발 계정의 실제 로그인 JWT 출력")
+    parser.add_argument("--username", help="기본값: MASTER는 devmaster, USER는 devseed")
     parser.add_argument("--role", choices=["USER", "MASTER"], default="MASTER")
     args = parser.parse_args()
     if args.token:
-        print(token(args.username, args.role))
+        username = args.username or ("devmaster" if args.role == "MASTER" else "devseed")
+        print(token(args.gateway_url.rstrip("/"), username, args.role))
         return
     check_links()
     check_api(args.gateway_url.rstrip("/"))
