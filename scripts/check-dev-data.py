@@ -2,6 +2,7 @@
 """새 로컬 Compose의 연결된 샘플·조회 분기를 확인하거나 개발용 JWT를 출력한다."""
 import argparse
 import base64
+from collections import Counter
 import json
 import subprocess
 import urllib.error
@@ -95,6 +96,39 @@ def check_links():
     print("PASS 허브 17·업체 34·상품/재고 102·주문 31·배송 26의 연결과 초기 수량")
 
 
+def check_routes():
+    hub_routes = {(r["departure_hub_id"], r["arrival_hub_id"]): r
+                  for r in rows("hub", "hub.p_hub_routes")}
+    assert len(hub_routes) == 289
+    deliveries = {r["delivery_id"]: r for r in rows("delivery", "delivery.p_deliveries")}
+    routes = [r for r in rows("delivery", "delivery.p_delivery_routes")
+              if r["delivery_route_id"].startswith("c0ffee39-0007-")]
+    assert len(routes) == 33
+    visible = [r for r in routes if r["deleted_at"] is None]
+    assert Counter(r["status"] for r in visible) == {"WAITING": 5, "IN_TRANSIT": 4, "ARRIVED": 16}
+    assert sum(r["status"] == "CANCELLED" for r in routes) == 7
+    for delivery in deliveries.values():
+        if not delivery["delivery_id"].startswith("c0ffee39-0004-"):
+            continue
+        legs = sorted((r for r in routes if r["delivery_id"] == delivery["delivery_id"]),
+                      key=lambda r: r["sequence"])
+        assert 1 <= len(legs) <= 2
+        assert [r["sequence"] for r in legs] == list(range(1, len(legs) + 1))
+        assert legs[0]["departure_hub_id"] == delivery["departure_hub_id"]
+        assert legs[-1]["arrival_hub_id"] == delivery["destination_hub_id"]
+        assert all(a["arrival_hub_id"] == b["departure_hub_id"] for a, b in zip(legs, legs[1:]))
+        for leg in legs:
+            source = hub_routes[(leg["departure_hub_id"], leg["arrival_hub_id"])]
+            assert leg["expected_distance_km"] == source["distance_km"]
+            assert leg["expected_duration_seconds"] == source["duration_minutes"] * 60
+            assert leg["deleted_at"] == delivery["deleted_at"]
+            assert leg["assignee_id"] == delivery["delivery_manager_id"]
+            arrived = leg["status"] == "ARRIVED"
+            assert (leg["actual_distance_km"] is not None) == arrived
+            assert (leg["actual_duration_seconds"] is not None) == arrived
+    print("PASS Hub 실제 거리·분→초 변환·배송 구간 33개·1/2구간 연결·구간 상태·삭제 전파")
+
+
 def check_api(base):
     master = token(base, "devmaster", "MASTER")
     owner = token(base, "devseed", "USER")
@@ -125,8 +159,22 @@ def check_api(base):
     assert request(base, "/api/deliveries?size=100", master)["total_elements"] == 20
     assert request(base, "/api/deliveries?size=2&page=1", master)["page"] == 1
     assert request(base, "/api/deliveries?recipient_name=__no_sample_matches__", master)["content"] == []
+    route_rows = {r["delivery_route_id"]: r for r in rows("delivery", "delivery.p_delivery_routes")}
+    delivery_page = request(base, "/api/deliveries?size=100", master)
+    for delivery in delivery_page["content"]:
+        detail = request(base, f'/api/deliveries/{delivery["delivery_id"]}', master)
+        assert delivery["routes"] == detail["routes"] and detail["routes"]
+        assert [r["sequence"] for r in detail["routes"]] == list(range(1, len(detail["routes"]) + 1))
+        for leg in detail["routes"]:
+            saved = route_rows[leg["delivery_route_id"]]
+            assert saved["deleted_at"] is None
+            for field, value in leg.items():
+                assert saved[field] == value, (delivery["delivery_id"], field)
+    for number in [21, 25, 31]:
+        request(base, f"/api/deliveries/{sample_id(4, number)}", master, expected=404)
     request(base, "/api/orders?size=0", master, expected=400)
     print("PASS 상품 페이지·재고 충분/소량/품절·주문 상태/소유권·배송 5상태·삭제 제외·빈 검색·입력 오류")
+    print("PASS 배송 목록·상세의 구간 순서·거리/시간·상태/담당자 일치·삭제 배송 상세 404")
 
 
 def main():
@@ -141,6 +189,7 @@ def main():
         print(token(args.gateway_url.rstrip("/"), username, args.role))
         return
     check_links()
+    check_routes()
     check_api(args.gateway_url.rstrip("/"))
 
 

@@ -74,6 +74,8 @@ services:
     depends_on:
       eureka:
         condition: service_healthy
+      dev-data:
+        condition: service_completed_successfully
 
   users:
     <<: *app
@@ -165,6 +167,24 @@ services:
       postgres:
         condition: service_healthy
       eureka:
+        condition: service_healthy
+
+  # 로컬 샘플 연결만 담당한다. 업무 앱에는 다른 서비스의 DB 자격증명을 주지 않는다.
+  dev-data:
+    image: postgres:18
+    restart: 'no'
+    command: ["bash", "/workspace/infra/dev-data/seed-delivery-routes.sh"]
+    environment:
+      HUB_DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+      DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+    volumes:
+      - ./infra/dev-data/seed-delivery-routes.sh:/workspace/infra/dev-data/seed-delivery-routes.sh:ro
+      - ./delivery/src/main/resources/db/seed/local_p_delivery_routes.sql:/workspace/delivery/src/main/resources/db/seed/local_p_delivery_routes.sql:ro
+    networks: [backend]
+    depends_on:
+      hub:
+        condition: service_healthy
+      delivery:
         condition: service_healthy
 
 networks:
