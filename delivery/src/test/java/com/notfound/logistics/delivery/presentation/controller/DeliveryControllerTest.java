@@ -277,6 +277,72 @@ class DeliveryControllerTest {
     then(deliveryQueryService).should(never()).searchDetail(any());
   }
 
+  @Test
+  void routesOfTheDeliveryAreReturnedInSequenceOrder() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000dd");
+    UUID firstRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
+    UUID secondRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
+    UUID relayHubId = UUID.fromString("00000000-0000-0000-0000-000000000004");
+    given(deliveryQueryService.searchRoutes(deliveryId))
+        .willReturn(
+            List.of(
+                new DeliveryRouteResult(
+                    firstRouteId,
+                    1,
+                    DEPARTURE_HUB_ID,
+                    relayHubId,
+                    new BigDecimal("150.5"),
+                    new BigDecimal("148.125"),
+                    7200,
+                    7000L,
+                    DeliveryRouteStatus.ARRIVED,
+                    ASSIGNEE_ID),
+                new DeliveryRouteResult(
+                    secondRouteId,
+                    2,
+                    relayHubId,
+                    DESTINATION_HUB_ID,
+                    new BigDecimal("200"),
+                    null,
+                    9000,
+                    null,
+                    DeliveryRouteStatus.WAITING,
+                    null)));
+
+    mockMvc
+        .perform(get("/api/deliveries/{id}/routes", deliveryId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(2))
+        .andExpect(jsonPath("$.data[0].delivery_route_id").value(firstRouteId.toString()))
+        .andExpect(jsonPath("$.data[0].sequence").value(1))
+        .andExpect(jsonPath("$.data[0].departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
+        .andExpect(jsonPath("$.data[0].arrival_hub_id").value(relayHubId.toString()))
+        .andExpect(jsonPath("$.data[0].expected_distance_km").value(150.5))
+        .andExpect(jsonPath("$.data[0].actual_distance_km").value(148.125))
+        .andExpect(jsonPath("$.data[0].expected_duration_seconds").value(7200))
+        .andExpect(jsonPath("$.data[0].actual_duration_seconds").value(7000))
+        .andExpect(jsonPath("$.data[0].status").value("ARRIVED"))
+        .andExpect(jsonPath("$.data[0].assignee_id").value(ASSIGNEE_ID.toString()))
+        .andExpect(jsonPath("$.data[1].delivery_route_id").value(secondRouteId.toString()))
+        .andExpect(jsonPath("$.data[1].sequence").value(2))
+        .andExpect(jsonPath("$.data[1].actual_distance_km").isEmpty())
+        .andExpect(jsonPath("$.data[1].status").value("WAITING"));
+  }
+
+  @Test
+  void routesOfAnUnknownDeliveryAreNotFoundInTheCommonErrorFormat() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
+    given(deliveryQueryService.searchRoutes(deliveryId))
+        .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+    mockMvc
+        .perform(get("/api/deliveries/{id}/routes", deliveryId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
+        .andExpect(jsonPath("$.message").value("배송을 찾을 수 없습니다."))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
   @ParameterizedTest
   @CsvSource({
     "size, 0",

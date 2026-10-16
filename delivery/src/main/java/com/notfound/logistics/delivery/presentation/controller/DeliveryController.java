@@ -7,12 +7,14 @@ import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryResponse;
+import com.notfound.logistics.delivery.presentation.dto.DeliveryRouteResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -83,5 +85,14 @@ class DeliveryController {
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
     // TODO: 권한 검사하기
     return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
+  }
+
+  @Operation(summary = "배송 경로 조회", description = "id에 해당하는 배송 경로를 조회합니다")
+  @GetMapping("/api/deliveries/{id}/routes")
+  ApiResponse<List<DeliveryRouteResponse>> searchRoutes(
+      @Parameter(description = "배송 ID") @PathVariable() UUID id) {
+    // TODO: 권한 검사하기
+    return new ApiResponse<>(
+        deliveryQueryService.searchRoutes(id).stream().map(DeliveryRouteResponse::from).toList());
   }
 }

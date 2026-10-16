@@ -1,6 +1,7 @@
 package com.notfound.logistics.delivery.application.service;
 
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.Delivery;
@@ -48,5 +49,15 @@ public class DeliveryQueryService {
     List<UUID> deliveryIds = deliveries.stream().map(Delivery::getId).toList();
     return deliveryRepository.findRoutesByDeliveryIds(deliveryIds).stream()
         .collect(Collectors.groupingBy(route -> route.getDelivery().getId()));
+  }
+
+  /** 배송의 경로를 sequence 순서로 읽는다. 없거나 삭제된 배송이면 DELIVERY_NOT_FOUND다. */
+  public List<DeliveryRouteResult> searchRoutes(UUID id) {
+    if (deliveryRepository.findById(id).isEmpty()) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND);
+    }
+    return deliveryRepository.findRoutesByDeliveryId(id).stream()
+        .map(DeliveryRouteResult::from)
+        .toList();
   }
 }
