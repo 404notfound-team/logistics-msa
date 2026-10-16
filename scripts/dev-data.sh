@@ -2,7 +2,7 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 usage() {
-    printf '사용법: bash scripts/dev-data.sh hubs | companies [MANAGER_USER_ID] | stocks | orders | deliveries | clear-companies\n' >&2
+    printf '사용법: bash scripts/dev-data.sh hubs | companies [MANAGER_USER_ID] | stocks | orders | deliveries | delivery-routes | clear-companies\n' >&2
     exit 2
 }
 [[ $# -ge 1 ]] || usage
@@ -34,6 +34,11 @@ case "$1" in
         service=delivery
         sql="$root/delivery/src/main/resources/db/seed/local_p_deliveries.sql"
         ;;
+    delivery-routes)
+        [[ $# -eq 1 ]] || usage
+        cd "$root"
+        exec docker compose run --rm --no-deps dev-data
+        ;;
     clear-companies)
         [[ $# -eq 1 ]] || usage
         service=company
@@ -62,3 +67,6 @@ cd "$root"
     exec psql -X --host 127.0.0.1 --username "${1}_app" --dbname "${1}_db" \
         --set=ON_ERROR_STOP=1 --set=manager_user_id="$2"
 ' sh "$service" "$manager_user_id"
+if [[ "$1" == deliveries ]]; then
+    docker compose run --rm --no-deps dev-data
+fi
