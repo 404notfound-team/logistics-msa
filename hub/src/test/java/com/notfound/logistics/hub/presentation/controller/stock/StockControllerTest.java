@@ -1,11 +1,11 @@
 package com.notfound.logistics.hub.presentation.controller.stock;
 
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedGet;
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedPost;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,6 +17,7 @@ import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.hub.HubErrorCode;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
+import com.notfound.logistics.hub.support.HubSecurityTest;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.UUID;
@@ -39,6 +40,7 @@ import org.springframework.test.web.servlet.MockMvc;
   InternalStockController.class,
   InternalStockDeductionController.class
 })
+@HubSecurityTest
 class StockControllerTest {
   @Autowired private MockMvc mvc;
   @MockitoBean private StockCommandService command;
@@ -81,7 +83,7 @@ class StockControllerTest {
       })
   void rejectsCoercedOrInvalidQuantitiesWithoutCallingService(String quantity) throws Exception {
     mvc.perform(
-            post("/api/stocks")
+            authenticatedPost("/api/stocks")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(creationBody(quantity)))
         .andExpect(status().isBadRequest())
@@ -95,7 +97,7 @@ class StockControllerTest {
     when(command.create(hubId, productId, quantity))
         .thenReturn(new StockResult(stockId, hubId, productId, quantity));
     mvc.perform(
-            post("/api/stocks")
+            authenticatedPost("/api/stocks")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(creationBody(quantity)))
         .andExpect(status().isCreated())
@@ -112,7 +114,9 @@ class StockControllerTest {
                 new ConstraintViolationException(
                     "duplicate", new SQLException(), "uk_stocks_hub_product")));
     mvc.perform(
-            post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(creationBody(1)))
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creationBody(1)))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("STOCK_ALREADY_EXISTS"));
   }
@@ -122,7 +126,9 @@ class StockControllerTest {
     when(command.create(hubId, productId, 0))
         .thenReturn(new StockResult(stockId, hubId, productId, 0));
     mvc.perform(
-            post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(creationBody(0)))
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creationBody(0)))
         .andExpect(status().isCreated())
         .andExpect(
             header()
@@ -146,7 +152,8 @@ class StockControllerTest {
         "{\"hub_id\":\"00000000-0000-0000-0000-000000000001\",\"product_id\":\"00000000-0000-0000-0000-000000000001\",\"quantity\":9223372036854775808}"
       })
   void validatesCreationBody(String body) throws Exception {
-    mvc.perform(post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(body))
+    mvc.perform(
+            authenticatedPost("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(body))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     verifyNoInteractions(command);
@@ -157,14 +164,18 @@ class StockControllerTest {
     when(command.create(hubId, productId, 1))
         .thenThrow(new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
     mvc.perform(
-            post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(creationBody(1)))
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creationBody(1)))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
     doThrow(new StockBusinessException(StockErrorCode.STOCK_ALREADY_EXISTS))
         .when(command)
         .create(hubId, productId, 1);
     mvc.perform(
-            post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(creationBody(1)))
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creationBody(1)))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("STOCK_ALREADY_EXISTS"));
   }
@@ -173,15 +184,15 @@ class StockControllerTest {
   void externalAndInternalDetailsUseHubAndProductIdentity() throws Exception {
     when(query.getStock(hubId, productId))
         .thenReturn(new StockResult(stockId, hubId, productId, 123));
-    mvc.perform(get("/api/hubs/{hubId}/products/{productId}/stocks", hubId, productId))
+    mvc.perform(authenticatedGet("/api/hubs/{hubId}/products/{productId}/stocks", hubId, productId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.quantity").value(123));
-    mvc.perform(get("/internal/hubs/{hubId}/stocks/{productId}", hubId, productId))
+    mvc.perform(authenticatedGet("/internal/hubs/{hubId}/stocks/{productId}", hubId, productId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.product_id").value(productId.toString()));
     when(query.getStock(hubId, productId))
         .thenThrow(new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
-    mvc.perform(get("/api/hubs/{hubId}/products/{productId}/stocks", hubId, productId))
+    mvc.perform(authenticatedGet("/api/hubs/{hubId}/products/{productId}/stocks", hubId, productId))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("STOCK_NOT_FOUND"));
   }
@@ -193,10 +204,10 @@ class StockControllerTest {
             List.of(new StockResult(stockId, hubId, productId, 10)), PageRequest.of(0, 20), 1);
     when(query.getStocks(hubId, null, 0, 20)).thenReturn(result);
     when(query.getStocks(null, productId, 0, 20)).thenReturn(result);
-    mvc.perform(get("/api/hubs/{hubId}/stocks", hubId))
+    mvc.perform(authenticatedGet("/api/hubs/{hubId}/stocks", hubId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.total_elements").value(1));
-    mvc.perform(get("/api/products/{productId}/stocks", productId))
+    mvc.perform(authenticatedGet("/api/products/{productId}/stocks", productId))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content[0].quantity").value(10));
     verify(query).getStocks(hubId, null, 0, 20);
@@ -219,10 +230,10 @@ class StockControllerTest {
     "size,abc"
   })
   void rejectsInvalidListParameters(String name, String value) throws Exception {
-    mvc.perform(get("/api/hubs/{hubId}/stocks", hubId).param(name, value))
+    mvc.perform(authenticatedGet("/api/hubs/{hubId}/stocks", hubId).param(name, value))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
-    mvc.perform(get("/api/products/{productId}/stocks", productId).param(name, value))
+    mvc.perform(authenticatedGet("/api/products/{productId}/stocks", productId).param(name, value))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     verifyNoInteractions(query);
@@ -231,10 +242,10 @@ class StockControllerTest {
   @Test
   void internalCreationIsNoLongerExposed() throws Exception {
     mvc.perform(
-            post("/internal/hubs/{hubId}/stocks", hubId)
+            authenticatedPost("/internal/hubs/{hubId}/stocks", hubId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(creationBody(1)))
-        .andExpect(status().isNotFound());
+        .andExpect(status().isForbidden());
     verifyNoInteractions(command);
   }
 
@@ -247,7 +258,7 @@ class StockControllerTest {
         "/internal/hubs/00000000-0000-0000-0000-000000000001/stocks/invalid"
       })
   void rejectsInvalidPathIdentifiers(String path) throws Exception {
-    mvc.perform(get(path))
+    mvc.perform(authenticatedGet(path))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     verifyNoInteractions(query);
@@ -268,14 +279,14 @@ class StockControllerTest {
     when(query.getStocks(hubId, null, page, size)).thenReturn(empty);
     when(query.getStocks(null, productId, page, size)).thenReturn(empty);
     mvc.perform(
-            get("/api/hubs/{hubId}/stocks", hubId)
+            authenticatedGet("/api/hubs/{hubId}/stocks", hubId)
                 .param("page", String.valueOf(page))
                 .param("size", String.valueOf(size)))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.page").value(page));
     mvc.perform(
-            get("/api/products/{productId}/stocks", productId)
+            authenticatedGet("/api/products/{productId}/stocks", productId)
                 .param("page", String.valueOf(page))
                 .param("size", String.valueOf(size)))
         .andExpect(status().isOk())
@@ -289,7 +300,7 @@ class StockControllerTest {
         .thenReturn(new StockResult(stockId, hubId, productId, 110));
 
     mvc.perform(
-            post("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
+            authenticatedPost("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"quantity\":10}"))
         .andExpect(status().isOk())
@@ -302,7 +313,7 @@ class StockControllerTest {
   @ValueSource(strings = {"0", "-1", "1.5", "\"10\"", "1e3", "null", "9223372036854775808"})
   void addStockRejectsInvalidQuantity(String quantity) throws Exception {
     mvc.perform(
-            post("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
+            authenticatedPost("/api/hubs/{hubId}/products/{productId}/stocks/add", hubId, productId)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"quantity\":" + quantity + "}"))
         .andExpect(status().isBadRequest())
@@ -330,7 +341,7 @@ class StockControllerTest {
             .formatted(orderId, hubId, productId);
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isCreated())
@@ -361,7 +372,7 @@ class StockControllerTest {
             .formatted(orderId, hubId, productId);
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isConflict())
@@ -388,7 +399,7 @@ class StockControllerTest {
         .thenThrow(new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(deductionBody(orderId, "10")))
         .andExpect(status().isNotFound())
@@ -417,7 +428,7 @@ class StockControllerTest {
     UUID orderId = UUID.randomUUID();
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(deductionBody(orderId, quantity)))
         .andExpect(status().isBadRequest())
@@ -476,7 +487,7 @@ class StockControllerTest {
         };
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isBadRequest())
@@ -507,7 +518,7 @@ class StockControllerTest {
               "\"" + field + "\": " + invalidValue);
 
       mvc.perform(
-              post("/internal/stocks/deductions")
+              authenticatedPost("/internal/stocks/deductions")
                   .contentType(MediaType.APPLICATION_JSON)
                   .content(invalidBody))
           .andExpect(status().isBadRequest())
@@ -525,7 +536,7 @@ class StockControllerTest {
         .thenReturn(new StockResult(stockId, hubId, productId, 0));
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(deductionBody(orderId, String.valueOf(Long.MAX_VALUE))))
         .andExpect(status().isCreated())
@@ -537,7 +548,7 @@ class StockControllerTest {
   @Test
   void deductStockRejectsMalformedJson() throws Exception {
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{invalid-json"))
         .andExpect(status().isBadRequest())

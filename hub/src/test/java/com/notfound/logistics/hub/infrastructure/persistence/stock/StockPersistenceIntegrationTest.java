@@ -1,8 +1,9 @@
 package com.notfound.logistics.hub.infrastructure.persistence.stock;
 
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedGet;
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedPost;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -14,6 +15,8 @@ import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
+import com.notfound.logistics.hub.support.HubSecurityTest;
+import com.notfound.logistics.hub.support.HubSecurityTestTokens;
 import jakarta.persistence.EntityManager;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -36,7 +39,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -61,6 +66,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @Testcontainers
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+@HubSecurityTest
 class StockPersistenceIntegrationTest {
   @Container
   static final PostgreSQLContainer<?> DATABASE =
@@ -87,17 +93,153 @@ class StockPersistenceIntegrationTest {
   private final UUID hubId = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
   @Test
+  void realAuthenticationControlsWritesAndPreservesOriginalAuditActor() throws Exception {
+    UUID product = UUID.randomUUID();
+    String creation =
+        "{\"hub_id\":\"" + hubId + "\",\"product_id\":\"" + product + "\",\"quantity\":100}";
+    String addition = "/api/hubs/" + hubId + "/products/" + product + "/stocks/add";
+    var userToken = HubSecurityTestTokens.token("customer", "USER");
+    var creatorToken = HubSecurityTestTokens.token("creator", "MASTER");
+    var managerToken = HubSecurityTestTokens.token("manager", "MASTER");
+    var missingUsernameToken =
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("creator", "MASTER")
+                .claims(values -> values.remove("username"))
+                .build(),
+            HubSecurityTestTokens.SECRET);
+    SecurityContextHolder.clearContext();
+    mvc.perform(post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(creation))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            post("/api/stocks")
+                .header("Authorization", "Bearer " + missingUsernameToken)
+                .header("X-Actor-Username", "forged")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creation))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            post("/api/stocks")
+                .header("Authorization", "Bearer " + userToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creation))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    assertThat(stocks.count()).isZero();
+    mvc.perform(
+            post("/api/stocks")
+                .header("Authorization", "Bearer " + creatorToken)
+                .header("X-Actor-Username", "forged")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(creation))
+        .andExpect(status().isCreated());
+    UUID stockId = query.getStock(hubId, product).id();
+    var created = jdbc.queryForMap("SELECT * FROM hub.p_stocks WHERE id = ?", stockId);
+    assertThat(created.get("created_by")).isEqualTo("creator");
+    assertThat(created.get("created_by"))
+        .isNotEqualTo(HubSecurityTestTokens.userId("creator").toString());
+    assertThat(created.get("updated_by")).isEqualTo("creator");
+    mvc.perform(
+            post(addition)
+                .header("Authorization", "Bearer " + userToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"quantity\":5}"))
+        .andExpect(status().isForbidden());
+    assertThat(query.getStock(hubId, product).quantity()).isEqualTo(100);
+    mvc.perform(
+            post(addition)
+                .header("Authorization", "Bearer " + managerToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"quantity\":5}"))
+        .andExpect(status().isOk());
+    String deduction =
+        "{\"order_id\":\""
+            + UUID.randomUUID()
+            + "\",\"hub_id\":\""
+            + hubId
+            + "\",\"product_id\":\""
+            + product
+            + "\",\"quantity\":10}";
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deduction))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .header("X-Service-Token", HubSecurityTestTokens.COMPANY)
+                .header("X-Actor-Username", "customer")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deduction))
+        .andExpect(status().isForbidden());
+    var added = jdbc.queryForMap("SELECT * FROM hub.p_stocks WHERE id = ?", stockId);
+    assertThat(added.get("quantity")).isEqualTo(105L);
+    assertThat(added.get("updated_by")).isEqualTo("manager");
+    String expiredUserJwt =
+        HubSecurityTestTokens.sign(
+            HubSecurityTestTokens.claims("creator", "MASTER")
+                .issuedAt(Instant.now().minusSeconds(120))
+                .expiresAt(Instant.now().minusSeconds(60))
+                .build(),
+            HubSecurityTestTokens.SECRET);
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .header("Authorization", "Bearer " + expiredUserJwt)
+                .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
+                .header("X-Actor-Username", "customer")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deduction))
+        .andExpect(status().isCreated());
+    var deducted = jdbc.queryForMap("SELECT * FROM hub.p_stocks WHERE id = ?", stockId);
+    assertThat(deducted.get("quantity")).isEqualTo(95L);
+    assertThat(deducted.get("created_by")).isEqualTo("creator");
+    assertThat(deducted.get("created_at")).isEqualTo(created.get("created_at"));
+    assertThat(deducted.get("updated_by")).isEqualTo("customer");
+    mvc.perform(
+            post("/internal/stocks/deductions")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(deduction))
+        .andExpect(status().isUnauthorized());
+    assertThat(query.getStock(hubId, product).quantity()).isEqualTo(95);
+    assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
+  }
+
+  @Test
+  void applicationMethodsEnforceUserAndServicePermissionsBeforeChangingStock() {
+    UUID product = UUID.randomUUID();
+    command.create(hubId, product, 10);
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(
+                "manager", null, List.of(new SimpleGrantedAuthority("ROLE_MASTER"))));
+    assertThatThrownBy(() -> command.deduct(hubId, product, 1))
+        .isInstanceOf(AccessDeniedException.class);
+    SecurityContextHolder.getContext()
+        .setAuthentication(
+            UsernamePasswordAuthenticationToken.authenticated(
+                "customer", null, List.of(new SimpleGrantedAuthority("SERVICE_ORDERS"))));
+    assertThatThrownBy(() -> command.add(hubId, product, 1))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThatThrownBy(() -> command.create(hubId, UUID.randomUUID(), 1))
+        .isInstanceOf(AccessDeniedException.class);
+    assertThat(query.getStock(hubId, product).quantity()).isEqualTo(10);
+    assertThat(stocks.count()).isEqualTo(1);
+  }
+
+  @Test
   void httpRejectsFractionalQuantityAndStoresMaximumIntegerExactly() throws Exception {
     UUID product = UUID.randomUUID();
     String prefix =
         "{\"hub_id\":\"" + hubId + "\",\"product_id\":\"" + product + "\",\"quantity\":";
     mvc.perform(
-            post("/api/stocks").contentType(MediaType.APPLICATION_JSON).content(prefix + "-0.9}"))
+            authenticatedPost("/api/stocks")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(prefix + "-0.9}"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
     assertThat(stocks.count()).isZero();
     mvc.perform(
-            post("/api/stocks")
+            authenticatedPost("/api/stocks")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(prefix + Long.MAX_VALUE + "}"))
         .andExpect(status().isCreated())
@@ -111,13 +253,14 @@ class StockPersistenceIntegrationTest {
     String external = "/api/hubs/" + hubId + "/products/" + product + "/stocks";
     String internal = "/internal/hubs/" + hubId + "/stocks/" + product;
     for (String path : List.of(external, internal)) {
-      mvc.perform(get(path))
+      mvc.perform(authenticatedGet(path))
           .andExpect(status().isNotFound())
           .andExpect(jsonPath("$.code").value("STOCK_NOT_FOUND"));
     }
+    authenticate();
     var created = command.create(hubId, product, 1);
     for (String path : List.of(external, internal)) {
-      mvc.perform(get(path))
+      mvc.perform(authenticatedGet(path))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.data.quantity").value(1));
     }
@@ -125,7 +268,7 @@ class StockPersistenceIntegrationTest {
         "UPDATE hub.p_stocks SET deleted_at = NOW(), deleted_by = 'stock-tester' WHERE id = ?",
         created.id());
     for (String path : List.of(external, internal)) {
-      mvc.perform(get(path))
+      mvc.perform(authenticatedGet(path))
           .andExpect(status().isNotFound())
           .andExpect(jsonPath("$.code").value("STOCK_NOT_FOUND"));
     }
@@ -148,7 +291,9 @@ class StockPersistenceIntegrationTest {
     for (String path :
         List.of("/api/hubs/" + hubId + "/stocks", "/api/products/" + product + "/stocks")) {
       mvc.perform(
-              get(path).param("page", Integer.toString(page)).param("size", Integer.toString(size)))
+              authenticatedGet(path)
+                  .param("page", Integer.toString(page))
+                  .param("size", Integer.toString(size)))
           .andExpect(status().isOk())
           .andExpect(jsonPath("$.data.content").isEmpty())
           .andExpect(jsonPath("$.data.page").value(page))
@@ -197,7 +342,12 @@ class StockPersistenceIntegrationTest {
   private void authenticate() {
     SecurityContextHolder.getContext()
         .setAuthentication(
-            new UsernamePasswordAuthenticationToken("stock-tester", null, List.of()));
+            new UsernamePasswordAuthenticationToken(
+                "stock-tester",
+                null,
+                List.of(
+                    new SimpleGrantedAuthority("ROLE_MASTER"),
+                    new SimpleGrantedAuthority("SERVICE_ORDERS"))));
   }
 
   @AfterEach
@@ -440,7 +590,8 @@ class StockPersistenceIntegrationTest {
 
     SecurityContextHolder.getContext()
         .setAuthentication(
-            new UsernamePasswordAuthenticationToken("deduction-actor", null, List.of()));
+            new UsernamePasswordAuthenticationToken(
+                "deduction-actor", null, List.of(new SimpleGrantedAuthority("SERVICE_ORDERS"))));
 
     command.deduct(hubId, productId, 10);
 
@@ -481,7 +632,7 @@ class StockPersistenceIntegrationTest {
             .formatted(orderId, hubId, productId);
 
     mvc.perform(
-            post("/internal/stocks/deductions")
+            authenticatedPost("/internal/stocks/deductions")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(body))
         .andExpect(status().isCreated())

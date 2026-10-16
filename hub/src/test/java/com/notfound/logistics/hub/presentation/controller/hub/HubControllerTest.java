@@ -1,7 +1,7 @@
 package com.notfound.logistics.hub.presentation.controller.hub;
 
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedGet;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,6 +11,7 @@ import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.hub.HubErrorCode;
 import com.notfound.logistics.hub.presentation.exception.GlobalExceptionHandler;
 import com.notfound.logistics.hub.presentation.exception.hub.HubExceptionHandler;
+import com.notfound.logistics.hub.support.HubSecurityTest;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(HubController.class)
 @Import({GlobalExceptionHandler.class, HubExceptionHandler.class})
+@HubSecurityTest
 class HubControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -40,7 +42,7 @@ class HubControllerTest {
         .thenReturn(new PageImpl<>(List.of(hub), PageRequest.of(0, 20), 1));
 
     mockMvc
-        .perform(get("/api/hubs"))
+        .perform(authenticatedGet("/api/hubs"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content[0].id").value(id.toString()))
         .andExpect(jsonPath("$.data.content[0].name").value("서울특별시 센터"))
@@ -56,7 +58,7 @@ class HubControllerTest {
     when(hubQueryService.getHub(id)).thenReturn(new HubResult(id, "서울특별시 센터", "서울특별시 송파구 송파대로 55"));
 
     mockMvc
-        .perform(get("/api/hubs/{id}", id))
+        .perform(authenticatedGet("/api/hubs/{id}", id))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.id").value(id.toString()))
         .andExpect(jsonPath("$.data.name").value("서울특별시 센터"));
@@ -70,20 +72,20 @@ class HubControllerTest {
         .thenThrow(new HubBusinessException(HubErrorCode.HUB_NOT_FOUND));
 
     mockMvc
-        .perform(get("/api/hubs/{id}", id))
+        .perform(authenticatedGet("/api/hubs/{id}", id))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
   }
 
   @Test
   void getHubInvalidUuid() throws Exception {
-    mockMvc.perform(get("/api/hubs/not-a-uuid")).andExpect(status().isBadRequest());
+    mockMvc.perform(authenticatedGet("/api/hubs/not-a-uuid")).andExpect(status().isBadRequest());
   }
 
   @Test
   void getHubsNegativePage() throws Exception {
     mockMvc
-        .perform(get("/api/hubs").param("page", "-1"))
+        .perform(authenticatedGet("/api/hubs").param("page", "-1"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("page"))
@@ -92,17 +94,23 @@ class HubControllerTest {
 
   @Test
   void getHubsZeroSize() throws Exception {
-    mockMvc.perform(get("/api/hubs").param("size", "0")).andExpect(status().isBadRequest());
+    mockMvc
+        .perform(authenticatedGet("/api/hubs").param("size", "0"))
+        .andExpect(status().isBadRequest());
   }
 
   @Test
   void getHubsSizeExceeded() throws Exception {
-    mockMvc.perform(get("/api/hubs").param("size", "101")).andExpect(status().isBadRequest());
+    mockMvc
+        .perform(authenticatedGet("/api/hubs").param("size", "101"))
+        .andExpect(status().isBadRequest());
   }
 
   @Test
   void getHubsInvalidDirection() throws Exception {
-    mockMvc.perform(get("/api/hubs").param("direction", "abc")).andExpect(status().isBadRequest());
+    mockMvc
+        .perform(authenticatedGet("/api/hubs").param("direction", "abc"))
+        .andExpect(status().isBadRequest());
   }
 
   @Test
@@ -111,7 +119,7 @@ class HubControllerTest {
         .thenReturn(new PageImpl<>(List.of(), PageRequest.of(5, 10), 17));
 
     mockMvc
-        .perform(get("/api/hubs").param("page", "5").param("size", "10"))
+        .perform(authenticatedGet("/api/hubs").param("page", "5").param("size", "10"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.total_elements").value(17));
@@ -127,7 +135,7 @@ class HubControllerTest {
 
     mockMvc
         .perform(
-            get("/api/hubs")
+            authenticatedGet("/api/hubs")
                 .param("page", String.valueOf(page))
                 .param("size", String.valueOf(size)))
         .andExpect(status().isOk())

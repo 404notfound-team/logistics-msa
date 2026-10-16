@@ -30,7 +30,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @Tag(name = "Stock", description = "허브별 상품 재고 조회 API")
 @RequestMapping("/api")
-// TODO(Users/Gateway): 인증 연동 후 모든 재고 조회의 로그인 요구와 생성 권한을 HTTP 통합 테스트한다.
 public class StockController {
 
   private final StockCommandService stockCommandService;

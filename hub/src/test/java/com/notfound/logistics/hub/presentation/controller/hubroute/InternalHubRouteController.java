@@ -1,8 +1,8 @@
 package com.notfound.logistics.hub.presentation.controller.hubroute;
 
+import static com.notfound.logistics.hub.support.HubSecurityTestRequests.authenticatedGet;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -12,6 +12,7 @@ import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteBusinessExce
 import com.notfound.logistics.hub.domain.exception.hubroute.HubRouteErrorCode;
 import com.notfound.logistics.hub.presentation.exception.GlobalExceptionHandler;
 import com.notfound.logistics.hub.presentation.exception.hubroute.HubRouteExceptionHandler;
+import com.notfound.logistics.hub.support.HubSecurityTest;
 import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(InternalHubRouteController.class)
 @Import({GlobalExceptionHandler.class, HubRouteExceptionHandler.class})
+@HubSecurityTest
 class InternalHubRouteControllerTest {
 
   @Autowired private MockMvc mockMvc;
@@ -44,7 +46,7 @@ class InternalHubRouteControllerTest {
     // when & then
     mockMvc
         .perform(
-            get("/internal/hub-routes")
+            authenticatedGet("/internal/hub-routes")
                 .param("departure_hub_id", departureHubId.toString())
                 .param("arrival_hub_id", arrivalHubId.toString()))
         .andExpect(status().isOk())
@@ -68,7 +70,7 @@ class InternalHubRouteControllerTest {
     // when & then
     mockMvc
         .perform(
-            get("/internal/hub-routes")
+            authenticatedGet("/internal/hub-routes")
                 .param("departure_hub_id", hubId.toString())
                 .param("arrival_hub_id", hubId.toString()))
         .andExpect(status().isOk())
@@ -90,7 +92,7 @@ class InternalHubRouteControllerTest {
     // when & then
     mockMvc
         .perform(
-            get("/internal/hub-routes")
+            authenticatedGet("/internal/hub-routes")
                 .param("departure_hub_id", departureHubId.toString())
                 .param("arrival_hub_id", arrivalHubId.toString()))
         .andExpect(status().isNotFound())
@@ -101,7 +103,9 @@ class InternalHubRouteControllerTest {
   void getInternalHubRouteMissingDepartureHubId() throws Exception {
 
     mockMvc
-        .perform(get("/internal/hub-routes").param("arrival_hub_id", UUID.randomUUID().toString()))
+        .perform(
+            authenticatedGet("/internal/hub-routes")
+                .param("arrival_hub_id", UUID.randomUUID().toString()))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
@@ -111,7 +115,8 @@ class InternalHubRouteControllerTest {
 
     mockMvc
         .perform(
-            get("/internal/hub-routes").param("departure_hub_id", UUID.randomUUID().toString()))
+            authenticatedGet("/internal/hub-routes")
+                .param("departure_hub_id", UUID.randomUUID().toString()))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }
@@ -121,7 +126,7 @@ class InternalHubRouteControllerTest {
 
     mockMvc
         .perform(
-            get("/internal/hub-routes")
+            authenticatedGet("/internal/hub-routes")
                 .param("departure_hub_id", "invalid-uuid")
                 .param("arrival_hub_id", UUID.randomUUID().toString()))
         .andExpect(status().isBadRequest())
@@ -133,7 +138,7 @@ class InternalHubRouteControllerTest {
 
     mockMvc
         .perform(
-            get("/internal/hub-routes")
+            authenticatedGet("/internal/hub-routes")
                 .param("departure_hub_id", UUID.randomUUID().toString())
                 .param("arrival_hub_id", "invalid-uuid"))
         .andExpect(status().isBadRequest())
@@ -144,7 +149,7 @@ class InternalHubRouteControllerTest {
   void getInternalHubRouteMissingBothParameters() throws Exception {
 
     mockMvc
-        .perform(get("/internal/hub-routes"))
+        .perform(authenticatedGet("/internal/hub-routes"))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
   }

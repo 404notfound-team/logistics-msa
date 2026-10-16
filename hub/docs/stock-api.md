@@ -27,15 +27,15 @@ Gateway와 공통 도메인 문서는 변경하지 않습니다. 공용 smoke는
 | Gateway·Company | `/api/products/{productId}/stocks`만 hub로 보내는 구체 라우트가 필요하다. 현재 `/api/products/**`는 company로 전달되므로 일반 상품 경로를 보존하면서 우선순위를 정한다. |
 | CI·공통 | smoke의 정확한 경로 허용 추가를 리뷰한다. `/api/products` 전체나 그 외 상품·하위 경로는 hub 문서에 허용하지 않는다. |
 | Company | 상품 내부 조회 API의 존재·삭제·연동 실패 응답과 공급업체·관리 허브 관계 검증 책임을 확정한다. |
-| Users·Gateway | 재고 생성·조회 권한, 검증된 username의 SecurityContext 전달, 내부 호출의 서비스 인증을 확정한다. |
+| Users·Gateway·Orders | [Hub 인증·감사](security.md)의 JWT·서비스 토큰 계약으로 헤더 전달과 환경변수를 연결한다. 재고 최초 등록·추가는 MASTER이며 조회는 로그인 사용자다. |
 | Orders | 최초 재고 등록은 외부 관리 API로 분리하고 내부 생성 계약을 제거하는 안을 SA에 반영한다. 내부 상세 조회는 허브·상품 ID로 호출한다. |
 | Orders·Hub·공통 | StockOperation 독립 Aggregate 제거 여부와 중복 차감·복원 및 실패 복구의 대체 방식을 합의한 뒤 공통 도메인 문서와 SA를 갱신한다. |
 | 공통·SA 담당 | 감사 작업자는 username 문자열, updated 필드는 생성 시에도 기록한다는 공통 규약을 SA와 일치시킨다. |
 
 ## 인증·감사 연동 경계
 
-감사 어댑터는 orders와 동일하게 인증 계층이 설정한 `SecurityContext`의 검증된 username을 사용합니다. 주체가 없거나 익명·미인증·유효하지 않은 이름이면 저장을 거부합니다. 요청 헤더·본문의 사용자를 직접 신뢰하거나 임의 시스템 사용자로 대체하지 않습니다.
+감사 어댑터는 `SecurityContext`의 검증된 username을 사용합니다. 외부 API는 Resource Server가 검증한 JWT의 `username` 클레임, 내부 API는 서비스 토큰 검증을 거친 `X-Actor-Username`을 사용합니다. 외부 JWT의 `sub`는 사용자 UUID이며 감사 username으로 대체하지 않습니다. 주체가 없거나 익명·미인증·유효하지 않은 이름이면 저장을 거부합니다. 임의 시스템 사용자로 대체하지 않습니다.
 
-Gateway 인증 전달, 로그인 사용자 권한 검사, 내부 서비스 인증은 별도 연동 작업입니다. 내부 URL은 Gateway 업무 라우트와 Swagger에서 제외하지만 URL 구분만으로 서비스 인증이 구현된 것은 아닙니다. 테스트의 인증 컨텍스트 주입은 실제 인증 연동을 검증하지 않습니다.
+Hub의 로그인·MASTER 권한 검사와 내부 서비스 인증 수신은 구현되어 있습니다. 내부 URL은 Gateway 업무 라우트와 Swagger에서 제외합니다. 호출 서비스의 실제 헤더 전달·환경변수 주입과 Gateway 연동은 별도 확인이 필요합니다. 인증 테스트의 범위와 설정은 [Hub 인증·감사](security.md)를 따릅니다.
 
 상품 존재·공급업체 관계를 어느 서비스에서 검증할지는 주문·업체 담당자와 확정해야 합니다. 현재 허브는 상품 UUID를 논리 참조하며 외부 상품 DB에 직접 접근하지 않습니다.

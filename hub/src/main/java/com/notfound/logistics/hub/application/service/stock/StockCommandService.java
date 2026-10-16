@@ -10,6 +10,7 @@ import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,9 +22,8 @@ public class StockCommandService {
   private final HubRepository hubRepository;
 
   @Transactional
+  @PreAuthorize("hasRole('MASTER')")
   public StockResult create(UUID hubId, UUID productId, long quantity) {
-
-    // TODO(Users/Gateway): 인증·권한 계약 확정 후 검증된 호출자의 재고 등록 권한을 확인한다.
 
     // 허브 존재 여부 검증
     hubRepository
@@ -43,9 +43,8 @@ public class StockCommandService {
   }
 
   @Transactional
+  @PreAuthorize("hasRole('MASTER')")
   public StockResult add(UUID hubId, UUID productId, long quantity) {
-
-    // TODO(Users/Gateway): MASTER 권한 확인
 
     Stock stock =
         stockRepository
@@ -58,6 +57,7 @@ public class StockCommandService {
   }
 
   @Transactional
+  @PreAuthorize("hasAuthority('SERVICE_ORDERS')")
   public StockResult deduct(UUID hubId, UUID productId, long quantity) {
     Stock stock =
         stockRepository
