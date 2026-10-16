@@ -1,6 +1,7 @@
 package com.notfound.logistics.hub.infrastructure.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -23,6 +24,7 @@ import com.notfound.logistics.hub.presentation.controller.hubroute.HubRouteContr
 import com.notfound.logistics.hub.presentation.controller.hubroute.InternalHubRouteController;
 import com.notfound.logistics.hub.presentation.controller.stock.InternalStockController;
 import com.notfound.logistics.hub.presentation.controller.stock.InternalStockDeductionController;
+import com.notfound.logistics.hub.presentation.controller.stock.InternalStockRestorationController;
 import com.notfound.logistics.hub.presentation.controller.stock.StockController;
 import com.notfound.logistics.hub.support.HubSecurityTest;
 import com.notfound.logistics.hub.support.HubSecurityTestTokens;
@@ -66,6 +68,7 @@ import org.springframework.web.bind.annotation.RestController;
   StockController.class,
   InternalStockController.class,
   InternalStockDeductionController.class,
+  InternalStockRestorationController.class,
   HubSecurityIntegrationTest.SecurityFixture.class
 })
 @HubSecurityTest
@@ -522,6 +525,89 @@ class HubSecurityIntegrationTest {
                   .header("X-Actor-Username", "alice"))
           .andExpect(status().isUnauthorized());
     }
+  }
+
+  @ParameterizedTest
+  @CsvSource({"users,401", "company,403", "delivery,403", "orders,200"})
+  void onlyOrdersCanRestoreStock(String caller, int expected) throws Exception {
+
+    String token =
+        switch (caller) {
+          case "users" -> HubSecurityTestTokens.USERS;
+          case "company" -> HubSecurityTestTokens.COMPANY;
+          case "delivery" -> HubSecurityTestTokens.DELIVERY;
+          default -> HubSecurityTestTokens.ORDERS;
+        };
+
+    UUID hubId = UUID.fromString(HUB);
+    UUID productId = UUID.fromString(PRODUCT);
+
+    when(commands.restore(hubId, productId, 10))
+        .thenReturn(new StockResult(UUID.randomUUID(), hubId, productId, 100));
+
+    var request =
+        post("/internal/stocks/restorations")
+            .header("X-Service-Token", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(restorationBody());
+
+    if (!caller.equals("users")) {
+      request.header("X-Actor-Username", "alice");
+    }
+
+    mvc.perform(request).andExpect(status().is(expected));
+
+    if (expected == 200) {
+      verify(commands).restore(hubId, productId, 10);
+    } else {
+      verifyNoInteractions(commands);
+    }
+  }
+
+  @Test
+  void restoreRequiresOrdersServiceAuthentication() throws Exception {
+
+    mvc.perform(
+            post("/internal/stocks/restorations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(restorationBody()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+    mvc.perform(
+            post("/internal/stocks/restorations")
+                .header("Authorization", "Bearer " + HubSecurityTestTokens.token("admin", "MASTER"))
+                .header("X-Actor-Username", "admin")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(restorationBody()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+    verifyNoInteractions(commands);
+  }
+
+  @Test
+  void restoreRequiresOriginalAuditActor() throws Exception {
+
+    mvc.perform(
+            post("/internal/stocks/restorations")
+                .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(restorationBody()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+    verifyNoInteractions(commands);
+  }
+
+  private String restorationBody() {
+    return "{\"order_id\":\""
+        + UUID.randomUUID()
+        + "\",\"hub_id\":\""
+        + HUB
+        + "\",\"product_id\":\""
+        + PRODUCT
+        + "\",\"quantity\":10}";
   }
 
   static class ProtectedFixture {

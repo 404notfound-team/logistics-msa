@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.notfound.logistics.hub.application.dto.stock.StockResult;
 import com.notfound.logistics.hub.domain.exception.hub.HubBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
@@ -176,5 +177,57 @@ class StockCommandServiceTest {
 
     assertThat(result.quantity()).isZero();
     assertThat(stock.getQuantity()).isZero();
+  }
+
+  @Test
+  void restoresStockQuantity() {
+    Stock stock = Stock.create(hubId, productId, 70);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    StockResult result = service.restore(hubId, productId, 30);
+
+    assertThat(result.quantity()).isEqualTo(100);
+    assertThat(stock.getQuantity()).isEqualTo(100);
+  }
+
+  @Test
+  void missingStockCannotBeRestored() {
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.restore(hubId, productId, 10))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
+  }
+
+  @Test
+  void invalidRestoreQuantityDoesNotChangeStock() {
+    Stock stock = Stock.create(hubId, productId, 10);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    for (long quantity : new long[] {0, -1, Long.MIN_VALUE}) {
+      assertThatThrownBy(() -> service.restore(hubId, productId, quantity))
+          .isInstanceOf(StockBusinessException.class)
+          .extracting(e -> ((StockBusinessException) e).getErrorCode())
+          .isEqualTo(StockErrorCode.INVALID_STOCK_QUANTITY);
+    }
+
+    assertThat(stock.getQuantity()).isEqualTo(10);
+  }
+
+  @Test
+  void restoreOverflowDoesNotChangeStock() {
+    Stock stock = Stock.create(hubId, productId, Long.MAX_VALUE);
+
+    when(stocks.findLockedByHubIdAndProductId(hubId, productId)).thenReturn(Optional.of(stock));
+
+    assertThatThrownBy(() -> service.restore(hubId, productId, 1))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
+
+    assertThat(stock.getQuantity()).isEqualTo(Long.MAX_VALUE);
   }
 }

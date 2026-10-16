@@ -765,4 +765,95 @@ class StockPersistenceIntegrationTest {
 
     assertThat(quantity).isEqualTo(30L);
   }
+
+  @Test
+  void restoreHttpRequestPersistsQuantityAndOriginalAuditActor() throws Exception {
+    UUID productId = UUID.randomUUID();
+    UUID orderId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 70);
+
+    String body =
+        """
+      {
+        "order_id": "%s",
+        "hub_id": "%s",
+        "product_id": "%s",
+        "quantity": 30
+      }
+      """
+            .formatted(orderId, hubId, productId);
+
+    mvc.perform(
+            post("/internal/stocks/restorations")
+                .header("X-Service-Token", HubSecurityTestTokens.ORDERS)
+                .header("X-Actor-Username", "orders-customer")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.id").value(created.id().toString()))
+        .andExpect(jsonPath("$.data.hub_id").value(hubId.toString()))
+        .andExpect(jsonPath("$.data.product_id").value(productId.toString()))
+        .andExpect(jsonPath("$.data.quantity").value(100));
+
+    var row =
+        jdbc.queryForMap(
+            "SELECT quantity, created_by, updated_by FROM hub.p_stocks WHERE id = ?", created.id());
+
+    assertThat(row.get("quantity")).isEqualTo(100L);
+    assertThat(row.get("created_by")).isEqualTo("stock-tester");
+    assertThat(row.get("updated_by")).isEqualTo("orders-customer");
+    assertThat(query.getStock(hubId, productId).quantity()).isEqualTo(100);
+  }
+
+  @Test
+  void restoreOverflowDoesNotChangeDatabase() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, Long.MAX_VALUE);
+
+    var before =
+        jdbc.queryForMap(
+            "SELECT quantity, updated_at, updated_by " + "FROM hub.p_stocks WHERE id = ?",
+            created.id());
+
+    assertThatThrownBy(() -> command.restore(hubId, productId, 1))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
+
+    var after =
+        jdbc.queryForMap(
+            "SELECT quantity, updated_at, updated_by " + "FROM hub.p_stocks WHERE id = ?",
+            created.id());
+
+    assertThat(after).isEqualTo(before);
+  }
+
+  @Test
+  void deletedStockCannotBeRestored() {
+    UUID productId = UUID.randomUUID();
+
+    var created = command.create(hubId, productId, 50);
+
+    jdbc.update(
+        """
+      UPDATE hub.p_stocks
+      SET deleted_at = NOW(),
+          deleted_by = 'stock-tester'
+      WHERE id = ?
+      """,
+        created.id());
+
+    assertThatThrownBy(() -> command.restore(hubId, productId, 10))
+        .isInstanceOf(StockBusinessException.class)
+        .extracting(e -> ((StockBusinessException) e).getErrorCode())
+        .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
+
+    Long quantity =
+        jdbc.queryForObject(
+            "SELECT quantity FROM hub.p_stocks WHERE id = ?", Long.class, created.id());
+
+    assertThat(quantity).isEqualTo(50L);
+  }
 }
