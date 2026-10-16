@@ -76,10 +76,32 @@ class JwtAuthenticationFilterTest {
   }
 
   @Test
-  void rejectsTokenWithoutUsername() {
+  void rejectsTokenWithoutSubject() {
     var result =
         run(
             authorized("/api/orders", token(SECRET, null, "USER", Instant.now())),
+            usersResponds(user(true, "USER")));
+
+    assertThat(result.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(usersCalls).hasValue(0);
+  }
+
+  @Test
+  void rejectsTokenWithoutUserId() {
+    var result =
+        run(
+            authorized("/api/orders", token(SECRET, USERNAME, null, "USER", Instant.now())),
+            usersResponds(user(true, "USER")));
+
+    assertThat(result.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    assertThat(usersCalls).hasValue(0);
+  }
+
+  @Test
+  void rejectsTokenWhoseUserIdIsNotUuid() {
+    var result =
+        run(
+            authorized("/api/orders", token(SECRET, USERNAME, "not-a-uuid", "USER", Instant.now())),
             usersResponds(user(true, "USER")));
 
     assertThat(result.status()).isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -272,18 +294,25 @@ class JwtAuthenticationFilterTest {
   }
 
   private String token(String secret, String username, String role, Instant issuedAt) {
+    return token(secret, username, USER_ID.toString(), role, issuedAt);
+  }
+
+  private String token(
+      String secret, String username, String userId, String role, Instant issuedAt) {
     var key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     var encoder = new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(key));
     var claims =
         JwtClaimsSet.builder()
             .issuer("logistics-users")
-            .subject(USER_ID.toString())
             .issuedAt(issuedAt)
             .expiresAt(issuedAt.plusSeconds(900))
             .claim("role", role)
             .claim("is_delivery_staff", false);
     if (username != null) {
-      claims.claim("username", username);
+      claims.subject(username);
+    }
+    if (userId != null) {
+      claims.claim("user_id", userId);
     }
     var header = JwsHeader.with(MacAlgorithm.HS256).build();
     return encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();

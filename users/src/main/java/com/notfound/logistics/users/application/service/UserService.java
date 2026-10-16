@@ -109,10 +109,10 @@ public class UserService {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .issuer("logistics-users")
-            .subject(user.getId().toString())
+            .subject(user.getUsername())
             .issuedAt(issuedAt)
             .expiresAt(expiresAt)
-            .claim("username", user.getUsername())
+            .claim("user_id", user.getId().toString())
             .claim("role", user.getRole().name())
             .claim("is_delivery_staff", user.isDeliveryStaff())
             .build();

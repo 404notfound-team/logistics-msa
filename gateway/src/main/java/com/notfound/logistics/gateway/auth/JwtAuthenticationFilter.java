@@ -69,11 +69,11 @@ public class JwtAuthenticationFilter implements GlobalFilter {
     }
     try {
       var jwt = jwtDecoder.decode(authorization.substring(7));
-      String subject = jwt.getSubject();
-      String tokenUsername = jwt.getClaimAsString("username");
+      String tokenUsername = jwt.getSubject();
+      String tokenUserId = jwt.getClaimAsString("user_id");
       String tokenRole = jwt.getClaimAsString("role");
       Object tokenDeliveryStaff = jwt.getClaims().get("is_delivery_staff");
-      if (subject == null
+      if (tokenUserId == null
           || tokenUsername == null
           || tokenUsername.isBlank()
           || tokenRole == null
@@ -81,7 +81,7 @@ public class JwtAuthenticationFilter implements GlobalFilter {
           || !isKnownRole(tokenRole)) {
         return unauthorized(exchange.getResponse());
       }
-      UUID userId = UUID.fromString(subject);
+      UUID userId = UUID.fromString(tokenUserId);
       return inspectCurrentUser(
               userId,
               tokenUsername,

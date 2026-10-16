@@ -138,10 +138,10 @@ class UserSecurityTest {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .issuer("logistics-users")
-            .subject(USER_ID.toString())
+            .subject("user01")
             .issuedAt(now)
             .expiresAt(now.plusSeconds(300))
-            .claim("username", "user01")
+            .claim("user_id", USER_ID.toString())
             .claim("role", role)
             .claim("is_delivery_staff", false)
             .build();
