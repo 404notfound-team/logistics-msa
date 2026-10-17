@@ -22,7 +22,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 서비스 간 호출 전용 배송 API. Gateway는 /api/** 만 라우팅하므로 외부에 노출되지 않는다.
  *
- * <p>X-Service-Token 인증과 호출 서비스별 허용 API 검사는 DeliverySecurityConfiguration이 맡는다(현재 orders의 배송 생성·주문별 조회만 허용).
+ * <p>X-Service-Token 인증과 호출 서비스별 허용 API 검사는 DeliverySecurityConfiguration이 맡는다(현재 orders의 배송 생성·주문별
+ * 조회만 허용).
  */
 @RestController
 @RequestMapping("/internal/deliveries")
@@ -60,8 +61,8 @@ class InternalDeliveryController {
    *   <li>404: 아직 조회되는 배송 없음(DELIVERY_NOT_FOUND)
    * </ul>
    *
-   * <p>호출 측 계약: 배송 생성 요청이 타임아웃된 직후에는 생성이 아직 끝나지 않았을 수 있으므로, 이 404만으로 배송 생성 실패를 확정하지 않는다.
-   * 다시 조회하거나 같은 내용으로 생성을 재요청(멱등)해 결과를 확인한다.
+   * <p>호출 측 계약: 배송 생성 요청이 타임아웃된 직후에는 생성이 아직 끝나지 않았을 수 있으므로, 이 404만으로 배송 생성 실패를 확정하지 않는다. 다시 조회하거나
+   * 같은 내용으로 생성을 재요청(멱등)해 결과를 확인한다.
    */
   @GetMapping("/by-order/{order_id}")
   ApiResponse<OrderDeliveryResponse> findByOrder(@PathVariable("order_id") UUID orderId) {

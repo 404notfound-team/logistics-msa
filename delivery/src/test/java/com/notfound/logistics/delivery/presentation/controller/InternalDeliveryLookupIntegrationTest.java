@@ -32,8 +32,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * GET /internal/deliveries/by-order/{order_id}를 실제 DB(PostgreSQL)와 서비스 인증까지 거쳐 실행해 응답 명세를 확인한다. 배송은 JDBC로
- * 직접 넣어 Hub 호출 없이 조회만 검증한다.
+ * GET /internal/deliveries/by-order/{order_id}를 실제 DB(PostgreSQL)와 서비스 인증까지 거쳐 실행해 응답 명세를 확인한다. 배송은
+ * JDBC로 직접 넣어 Hub 호출 없이 조회만 검증한다.
  */
 @SpringBootTest(
     properties = {
