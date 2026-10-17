@@ -19,6 +19,7 @@ import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import com.notfound.logistics.delivery.infrastructure.config.DeliverySecurityConfiguration;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -29,6 +30,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -38,6 +40,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(DeliveryController.class)
+@Import(DeliverySecurityConfiguration.class)
 class DeliveryControllerTest {
   private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
   private static final UUID DEPARTURE_HUB_ID =

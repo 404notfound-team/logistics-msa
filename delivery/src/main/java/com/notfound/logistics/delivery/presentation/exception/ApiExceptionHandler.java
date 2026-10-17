@@ -1,5 +1,6 @@
 package com.notfound.logistics.delivery.presentation.exception;
 
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.notfound.logistics.common.api.ApiErrorCode;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
@@ -14,7 +15,9 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.ErrorResponse;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,6 +28,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
 @RestControllerAdvice
 @RequiredArgsConstructor
 class ApiExceptionHandler {
+  // Java 필드명(orderId)을 요청 JSON의 이름(order_id)으로 바꾼다. spring.jackson의 SNAKE_CASE 설정과 같다.
+  private static final PropertyNamingStrategies.NamingBase SNAKE_CASE =
+      (PropertyNamingStrategies.NamingBase) PropertyNamingStrategies.SNAKE_CASE;
+
   private final ObjectProvider<Tracer> tracer;
 
   @ExceptionHandler(DeliveryBusinessException.class)
@@ -55,6 +62,25 @@ class ApiExceptionHandler {
                 })
             .toList();
     return validation(violations);
+  }
+
+  // @Valid @RequestBody 검증 실패. 어느 필드가 틀렸는지 요청 본문과 같은 snake_case 이름으로 알려준다.
+  @ExceptionHandler(MethodArgumentNotValidException.class)
+  ResponseEntity<ApiErrorResponse> bodyValidation(MethodArgumentNotValidException exception) {
+    List<FieldViolation> violations =
+        exception.getBindingResult().getFieldErrors().stream()
+            .map(
+                error ->
+                    new FieldViolation(
+                        SNAKE_CASE.translate(error.getField()), error.getDefaultMessage()))
+            .toList();
+    return validation(violations);
+  }
+
+  // 요청 본문을 읽을 수 없음(본문 없음, JSON 문법 오류, UUID 등 형식 오류). 500이 아니라 400으로 응답한다.
+  @ExceptionHandler(HttpMessageNotReadableException.class)
+  ResponseEntity<ApiErrorResponse> unreadableBody(HttpMessageNotReadableException exception) {
+    return error(400, HttpHeaders.EMPTY, CommonErrorCode.INVALID_REQUEST);
   }
 
   @ExceptionHandler(Exception.class)
