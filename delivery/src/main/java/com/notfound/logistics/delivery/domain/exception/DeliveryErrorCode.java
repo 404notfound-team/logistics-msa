@@ -9,6 +9,8 @@ public enum DeliveryErrorCode {
   CONCURRENT_MODIFICATION("다른 요청이 배송을 먼저 변경했습니다. 다시 조회한 뒤 요청해 주세요."),
   // 주문에 이미 다른 내용(허브·주소·수령인)의 배송이 있다.
   DELIVERY_ALREADY_EXISTS("주문에 이미 배송이 있습니다."),
+  // 출발 또는 목적지 허브가 Hub에 없다.
+  HUB_NOT_FOUND("허브를 찾을 수 없습니다."),
   // Hub에 출발 → 목적지 허브의 기준 경로가 없다.
   HUB_ROUTE_NOT_FOUND("허브 간 이동 경로를 찾을 수 없습니다."),
   // Hub 호출이 실패했다(연결 실패, 5xx, 인증 오류 등).

@@ -1,9 +1,10 @@
 package com.notfound.logistics.delivery.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.delivery.application.dto.DeliveryCreationResult;
 import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateRequest;
-import com.notfound.logistics.delivery.presentation.dto.DeliveryResponse;
+import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -25,15 +26,22 @@ class InternalDeliveryController {
   private final DeliveryCreationService deliveryCreationService;
 
   /**
-   * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 성공 시 201과 생성된 배송(경로 포함)을 응답한다. 같은 내용의 재요청은 기존 배송을 201로 그대로 응답하고,
-   * 같은 주문에 다른 내용이면 409 DELIVERY_ALREADY_EXISTS. 경로가 없으면 404 HUB_ROUTE_NOT_FOUND, Hub 호출 실패 시 503
-   * HUB_UNAVAILABLE.
+   * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status다.
+   *
+   * <ul>
+   *   <li>201: 새로 생성
+   *   <li>200: 같은 주문·같은 내용의 재요청이라 기존 배송을 반환
+   *   <li>400: 입력 오류
+   *   <li>404: 허브(HUB_NOT_FOUND) 또는 기준 경로(HUB_ROUTE_NOT_FOUND) 없음
+   *   <li>409: 같은 주문에 다른 내용의 배송이 이미 있음(DELIVERY_ALREADY_EXISTS)
+   * </ul>
    */
   @PostMapping
-  ResponseEntity<ApiResponse<DeliveryResponse>> create(
+  ResponseEntity<ApiResponse<DeliveryCreateResponse>> create(
       @Valid @RequestBody DeliveryCreateRequest request) {
-    DeliveryResponse response =
-        DeliveryResponse.from(deliveryCreationService.create(request.toCommand()));
-    return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(response));
+    DeliveryCreationResult result = deliveryCreationService.create(request.toCommand());
+    HttpStatus status = result.created() ? HttpStatus.CREATED : HttpStatus.OK;
+    return ResponseEntity.status(status)
+        .body(new ApiResponse<>(DeliveryCreateResponse.from(result.delivery())));
   }
 }

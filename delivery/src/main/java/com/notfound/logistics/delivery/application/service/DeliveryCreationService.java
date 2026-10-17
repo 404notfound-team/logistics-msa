@@ -1,6 +1,7 @@
 package com.notfound.logistics.delivery.application.service;
 
 import com.notfound.logistics.delivery.application.dto.DeliveryCreateCommand;
+import com.notfound.logistics.delivery.application.dto.DeliveryCreationResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
@@ -9,6 +10,7 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import com.notfound.logistics.delivery.infrastructure.client.HubClient;
+import com.notfound.logistics.delivery.infrastructure.client.HubClient.Hub;
 import com.notfound.logistics.delivery.infrastructure.client.HubClient.HubRoute;
 import feign.FeignException;
 import java.util.List;
@@ -44,20 +46,23 @@ public class DeliveryCreationService {
    * <p>원격 호출 동안 DB 커넥션을 잡지 않도록 Hub 조회는 트랜잭션 밖에서 먼저 수행한다.
    *
    * <p>주문 1건에는 배송 1건만 만든다. Orders는 응답을 받지 못한 생성 요청을 다시 보내므로, 같은 내용의 재요청이면 기존 배송을 그대로 돌려주고(멱등), 내용이
-   * 다르면 DELIVERY_ALREADY_EXISTS(409)로 거절한다.
+   * 다르면 DELIVERY_ALREADY_EXISTS(409)로 거절한다. 반환값의 created로 새로 만들었는지(true) 기존 배송인지(false) 구분한다.
    */
-  public DeliveryResult create(DeliveryCreateCommand command) {
+  public DeliveryCreationResult create(DeliveryCreateCommand command) {
     Optional<DeliveryResult> existing = findExisting(command);
     if (existing.isPresent()) {
-      return existing.get();
+      return new DeliveryCreationResult(existing.get(), false);
     }
 
+    verifyHubsExist(command.departureHubId(), command.destinationHubId());
     List<HubRoute> hubRoutes = findHubRoutes(command.departureHubId(), command.destinationHubId());
     try {
-      return transactionTemplate.execute(status -> save(command, hubRoutes));
+      DeliveryResult created = transactionTemplate.execute(status -> save(command, hubRoutes));
+      return new DeliveryCreationResult(created, true);
     } catch (DataIntegrityViolationException exception) {
       // 동시에 들어온 같은 주문의 요청이 먼저 저장되면 order_id 유니크 인덱스에 걸린다. 먼저 저장된 배송으로 다시 판단한다.
-      return findExisting(command).orElseThrow(() -> exception);
+      DeliveryResult saved = findExisting(command).orElseThrow(() -> exception);
+      return new DeliveryCreationResult(saved, false);
     }
   }
 
@@ -81,6 +86,25 @@ public class DeliveryCreationService {
         && delivery.getDestinationHubId().equals(command.destinationHubId())
         && delivery.getAddress().equals(command.address())
         && delivery.getRecipientName().equals(command.recipientName());
+  }
+
+  // 출발·목적지 허브가 Hub에 실제로 있는지 확인한다. 같은 허브면 한 번만 조회한다.
+  private void verifyHubsExist(UUID departureHubId, UUID destinationHubId) {
+    fetchHub(departureHubId);
+    if (!departureHubId.equals(destinationHubId)) {
+      fetchHub(destinationHubId);
+    }
+  }
+
+  // Hub 정보 1건을 조회한다. 404는 허브 없음, 그 외 실패(연결 실패·5xx·인증 오류)는 Hub 이용 불가로 변환한다.
+  private Hub fetchHub(UUID hubId) {
+    try {
+      return hubClient.getHub(hubId).data();
+    } catch (FeignException.NotFound exception) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.HUB_NOT_FOUND);
+    } catch (FeignException exception) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.HUB_UNAVAILABLE);
+    }
   }
 
   // 출발 허브와 목적지 허브가 같으면 허브 간 이동이 없으므로 경로를 조회하지 않는다.
