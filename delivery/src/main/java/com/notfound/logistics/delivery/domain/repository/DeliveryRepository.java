@@ -18,6 +18,9 @@ public interface DeliveryRepository {
   /** 상태를 바꾸기 위해 배송을 쓰기 잠금으로 읽는다. 같은 배송의 동시 상태 변경은 순서대로 처리된다. */
   Optional<Delivery> findByIdForUpdate(UUID id);
 
+  /** 논리 삭제된 배송까지 포함해 쓰기 잠금으로 읽는다. 삭제 재요청을 구분하는 데 쓴다. */
+  Optional<Delivery> findIncludingDeletedForUpdate(UUID id);
+
   /** 주문의 배송(삭제되지 않은 것)을 찾는다. 주문 1건에는 배송이 최대 1건이다. */
   Optional<Delivery> findByOrderId(UUID orderId);
 
