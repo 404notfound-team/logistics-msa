@@ -94,7 +94,7 @@ class DeliveryCreationServiceTest {
     Delivery delivery = mock(Delivery.class);
     given(delivery.getId()).willReturn(UUID.randomUUID());
     given(delivery.getOrderId()).willReturn(ORDER_ID);
-    given(delivery.getStatus()).willReturn(DeliveryStatus.HUB_WAITING);
+    given(delivery.getStatus()).willReturn(DeliveryStatus.WAITING);
     given(delivery.getDepartureHubId()).willReturn(DEPARTURE);
     given(delivery.getDestinationHubId()).willReturn(DESTINATION);
     given(delivery.getAddress()).willReturn(address);

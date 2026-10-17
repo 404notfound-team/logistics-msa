@@ -37,8 +37,8 @@ BEGIN
             SELECT (''c0ffee39-0007-4000-8000-'' || lpad((n * 10 + s.sequence)::text, 12, ''0''))::uuid AS id,
                    d.delivery_id, s.sequence, s.departure_hub_id, s.arrival_hub_id,
                    CASE WHEN n BETWEEN 21 AND 25 AND d.deleted_at IS NOT NULL THEN ''CANCELLED''
-                        WHEN d.status = ''HUB_WAITING'' THEN ''WAITING''
-                        WHEN d.status = ''HUB_MOVING'' AND s.sequence = CASE WHEN middle_hub_id IS NULL THEN 1 ELSE 2 END THEN ''IN_TRANSIT''
+                        WHEN d.status = ''WAITING'' THEN ''WAITING''
+                        WHEN d.status = ''HUB_TRANSIT'' AND s.sequence = CASE WHEN middle_hub_id IS NULL THEN 1 ELSE 2 END THEN ''IN_TRANSIT''
                         ELSE ''ARRIVED'' END AS route_status,
                    d.delivery_manager_id, d.created_at, d.updated_at, d.deleted_at, d.deleted_by
             FROM samples d

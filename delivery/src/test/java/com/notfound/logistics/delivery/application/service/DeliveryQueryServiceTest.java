@@ -73,7 +73,7 @@ class DeliveryQueryServiceTest {
     UUID orderId = UUID.randomUUID();
     Delivery delivery = delivery(deliveryId);
     given(delivery.getOrderId()).willReturn(orderId);
-    given(delivery.getStatus()).willReturn(DeliveryStatus.HUB_WAITING);
+    given(delivery.getStatus()).willReturn(DeliveryStatus.WAITING);
     given(delivery.getRecipientName()).willReturn("홍길동");
     DeliveryRoute route = route(delivery, 1);
     given(deliveryRepository.findById(deliveryId)).willReturn(Optional.of(delivery));
@@ -83,7 +83,7 @@ class DeliveryQueryServiceTest {
 
     assertThat(result.deliveryId()).isEqualTo(deliveryId);
     assertThat(result.orderId()).isEqualTo(orderId);
-    assertThat(result.status()).isEqualTo(DeliveryStatus.HUB_WAITING);
+    assertThat(result.status()).isEqualTo(DeliveryStatus.WAITING);
     assertThat(result.recipientName()).isEqualTo("홍길동");
     assertThat(result.routes()).containsExactly(DeliveryRouteResult.from(route));
   }
@@ -130,7 +130,7 @@ class DeliveryQueryServiceTest {
     UUID orderId = UUID.randomUUID();
     Delivery delivery = delivery(deliveryId);
     given(delivery.getOrderId()).willReturn(orderId);
-    given(delivery.getStatus()).willReturn(DeliveryStatus.HUB_MOVING);
+    given(delivery.getStatus()).willReturn(DeliveryStatus.HUB_TRANSIT);
     DeliveryRoute route = route(delivery, 1);
     given(deliveryRepository.findByOrderId(orderId)).willReturn(Optional.of(delivery));
     given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of(route));
@@ -139,7 +139,7 @@ class DeliveryQueryServiceTest {
 
     assertThat(result.deliveryId()).isEqualTo(deliveryId);
     assertThat(result.orderId()).isEqualTo(orderId);
-    assertThat(result.status()).isEqualTo(DeliveryStatus.HUB_MOVING);
+    assertThat(result.status()).isEqualTo(DeliveryStatus.HUB_TRANSIT);
     assertThat(result.routes()).containsExactly(DeliveryRouteResult.from(route));
   }
 

@@ -107,7 +107,7 @@ class DeliveryRouteEntitySchemaTest {
         INSERT INTO p_deliveries (
             delivery_id, order_id, status, departure_hub_id, destination_hub_id, address,
             recipient_name, created_at, created_by, updated_at, updated_by)
-        VALUES (?, ?, 'HUB_WAITING', ?, ?, '서울특별시 송파구 송파대로 55', '홍길동', ?, 'tester', ?, 'tester')
+        VALUES (?, ?, 'WAITING', ?, ?, '서울특별시 송파구 송파대로 55', '홍길동', ?, 'tester', ?, 'tester')
         """,
         id,
         UUID.randomUUID(),

@@ -83,16 +83,16 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void respondsWithOnlyTheSpecifiedFieldsOfTheDeliveryOfTheOrder() throws Exception {
     UUID orderId = UUID.randomUUID();
-    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_MOVING, null);
+    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_TRANSIT, null);
     // 다른 주문의 배송은 응답에 섞이지 않는다.
-    insertDelivery(UUID.randomUUID(), DeliveryStatus.DELIVERED, null);
+    insertDelivery(UUID.randomUUID(), DeliveryStatus.COMPLETED, null);
 
     lookup(orderId)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.*", hasSize(3)))
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"));
+        .andExpect(jsonPath("$.data.status").value("HUB_TRANSIT"));
   }
 
   @ParameterizedTest
@@ -108,7 +108,7 @@ class InternalDeliveryLookupIntegrationTest {
 
   @Test
   void orderWithoutADeliveryIsNotFound() throws Exception {
-    insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
+    insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
 
     lookup(UUID.randomUUID())
         .andExpect(status().isNotFound())
@@ -120,7 +120,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void deletedDeliveryIsNotFound() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, BASE);
+    insertDelivery(orderId, DeliveryStatus.WAITING, BASE);
 
     lookup(orderId)
         .andExpect(status().isNotFound())
@@ -130,19 +130,19 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void deletedDeliveryIsIgnoredWhenTheOrderHasANewDelivery() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, BASE);
-    UUID current = insertDelivery(orderId, DeliveryStatus.HUB_MOVING, null);
+    insertDelivery(orderId, DeliveryStatus.WAITING, BASE);
+    UUID current = insertDelivery(orderId, DeliveryStatus.HUB_TRANSIT, null);
 
     lookup(orderId)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.delivery_id").value(current.toString()))
-        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"));
+        .andExpect(jsonPath("$.data.status").value("HUB_TRANSIT"));
   }
 
   @Test
   void upperCaseOrderIdIsTheSameOrder() throws Exception {
     UUID orderId = UUID.randomUUID();
-    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     perform(get(PATH, orderId.toString().toUpperCase(Locale.ROOT)), ORDERS_TOKEN)
         .andExpect(status().isOk())
@@ -170,7 +170,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void actorHeaderIsNotRequiredForALookup() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     // perform()은 X-Actor-Username을 붙이지 않는다. 조회는 감사 필드를 쓰지 않으므로 원 요청자 없이도 응답한다.
     lookup(orderId).andExpect(status().isOk());
@@ -179,7 +179,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void lookupDoesNotChangeTheDelivery() throws Exception {
     UUID orderId = UUID.randomUUID();
-    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     lookup(orderId).andExpect(status().isOk());
 
@@ -194,7 +194,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void missingServiceTokenIsUnauthorized() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     perform(get(PATH, orderId), null)
         .andExpect(status().isUnauthorized())
@@ -204,7 +204,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void unknownServiceTokenIsUnauthorized() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     perform(get(PATH, orderId), "unknown-service-token")
         .andExpect(status().isUnauthorized())
@@ -214,7 +214,7 @@ class InternalDeliveryLookupIntegrationTest {
   @Test
   void serviceWithoutPermissionIsForbidden() throws Exception {
     UUID orderId = UUID.randomUUID();
-    insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
+    insertDelivery(orderId, DeliveryStatus.WAITING, null);
 
     perform(get(PATH, orderId), COMPANY_TOKEN)
         .andExpect(status().isForbidden())

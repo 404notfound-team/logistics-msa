@@ -73,12 +73,11 @@ class DeliveryRepositoryAdapterTest {
 
   @BeforeEach
   void insertFixtures() {
-    first =
-        insert(HUB_A, HUB_B, "서울특별시 송파구 송파대로 55", "김철수", MANAGER_A, DeliveryStatus.HUB_WAITING, 1);
+    first = insert(HUB_A, HUB_B, "서울특별시 송파구 송파대로 55", "김철수", MANAGER_A, DeliveryStatus.WAITING, 1);
     second =
-        insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", MANAGER_B, DeliveryStatus.HUB_MOVING, 2);
-    third = insert(HUB_B, HUB_C, "대전광역시 서구 둔산로 100", "Hong", null, DeliveryStatus.DELIVERED, 3);
-    deleted = insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", MANAGER_A, DeliveryStatus.HUB_WAITING, 4);
+        insert(HUB_A, HUB_C, "부산광역시 해운대구 100%로", "홍길동", MANAGER_B, DeliveryStatus.HUB_TRANSIT, 2);
+    third = insert(HUB_B, HUB_C, "대전광역시 서구 둔산로 100", "Hong", null, DeliveryStatus.COMPLETED, 3);
+    deleted = insert(HUB_A, HUB_B, "서울특별시 강남구", "삭제됨", MANAGER_A, DeliveryStatus.WAITING, 4);
     jdbc.update(
         "UPDATE p_deliveries SET deleted_at = ?, deleted_by = 'deleter' WHERE delivery_id = ?",
         Timestamp.from(BASE.plusSeconds(5)),
@@ -92,7 +91,7 @@ class DeliveryRepositoryAdapterTest {
 
     assertThat(page.getContent()).extracting(Delivery::getId).containsExactly(third, second);
     assertThat(page.getTotalElements()).isEqualTo(3);
-    assertThat(page.getContent().getFirst().getStatus()).isEqualTo(DeliveryStatus.DELIVERED);
+    assertThat(page.getContent().getFirst().getStatus()).isEqualTo(DeliveryStatus.COMPLETED);
     assertThat(page.getContent().getFirst().getCreatedAt()).isEqualTo(BASE.plusSeconds(3));
   }
 
@@ -102,7 +101,7 @@ class DeliveryRepositoryAdapterTest {
         .containsExactly(second, first);
     assertThat(ids(condition(null, null, null, HUB_C, null, null, null)))
         .containsExactly(third, second);
-    assertThat(ids(condition(null, DeliveryStatus.HUB_MOVING, null, null, null, null, null)))
+    assertThat(ids(condition(null, DeliveryStatus.HUB_TRANSIT, null, null, null, null, null)))
         .containsExactly(second);
     assertThat(ids(condition(null, null, null, null, null, null, MANAGER_A)))
         .containsExactly(first);
@@ -153,7 +152,7 @@ class DeliveryRepositoryAdapterTest {
         .satisfies(
             delivery -> {
               assertThat(delivery.getId()).isEqualTo(second);
-              assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
+              assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_TRANSIT);
               assertThat(delivery.getRecipientName()).isEqualTo("홍길동");
             });
     assertThat(repository.findById(deleted)).isEmpty();

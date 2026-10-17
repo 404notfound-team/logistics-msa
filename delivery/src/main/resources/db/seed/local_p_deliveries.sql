@@ -24,8 +24,8 @@ INSERT INTO delivery.p_deliveries (
 )
 SELECT ('c0ffee39-0004-4000-8000-' || lpad(n::text, 12, '0'))::uuid,
        ('c0ffee39-0003-4000-8000-' || lpad(n::text, 12, '0'))::uuid,
-       CASE WHEN n BETWEEN 21 AND 25 THEN 'HUB_WAITING'
-            ELSE (ARRAY['HUB_WAITING', 'HUB_MOVING', 'DESTINATION_HUB_ARRIVED', 'COMPANY_MOVING', 'DELIVERED'])[(n - 1) % 5 + 1] END,
+       CASE WHEN n BETWEEN 21 AND 25 THEN 'WAITING'
+            ELSE (ARRAY['WAITING', 'HUB_TRANSIT', 'DESTINATION_HUB_ARRIVED', 'COMPANY_TRANSIT', 'COMPLETED'])[(n - 1) % 5 + 1] END,
        ('00000000-0000-0000-0000-' || lpad(departure_number::text, 12, '0'))::uuid,
        ('00000000-0000-0000-0000-' || lpad(destination_number::text, 12, '0'))::uuid,
        '[개발샘플] 가상 배송지 ' || CASE WHEN n % 2 = 0 THEN (departure_number - 1) * 2 + 2 ELSE (departure_number * 2) % 34 + 1 END,
