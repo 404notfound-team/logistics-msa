@@ -2,9 +2,8 @@ package com.notfound.logistics.delivery.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryCreationResult;
-import com.notfound.logistics.delivery.application.service.DeliveryCancellationService;
+import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
-import com.notfound.logistics.delivery.application.service.DeliveryDeletionService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateRequest;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateResponse;
@@ -34,8 +33,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InternalDeliveryController {
   private final DeliveryCreationService deliveryCreationService;
   private final DeliveryQueryService deliveryQueryService;
-  private final DeliveryCancellationService deliveryCancellationService;
-  private final DeliveryDeletionService deliveryDeletionService;
+  private final DeliveryCommandService deliveryCommandService;
 
   /**
    * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status다.
@@ -87,7 +85,7 @@ class InternalDeliveryController {
    */
   @PostMapping("/{id}/cancel")
   ApiResponse<OrderDeliveryResponse> cancel(@PathVariable("id") UUID id) {
-    return new ApiResponse<>(OrderDeliveryResponse.from(deliveryCancellationService.cancel(id)));
+    return new ApiResponse<>(OrderDeliveryResponse.from(deliveryCommandService.cancel(id)));
   }
 
   /**
@@ -104,7 +102,7 @@ class InternalDeliveryController {
    */
   @DeleteMapping("/{id}")
   ResponseEntity<Void> delete(@PathVariable("id") UUID id) {
-    deliveryDeletionService.delete(id);
+    deliveryCommandService.delete(id);
     return ResponseEntity.noContent().build();
   }
 }

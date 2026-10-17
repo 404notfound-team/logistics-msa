@@ -17,28 +17,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /** 주문에 대한 배송과 허브 간 이동 경로(DeliveryRoute)를 생성한다. */
 @Service
+@RequiredArgsConstructor
 public class DeliveryCreationService {
   private static final long SECONDS_PER_MINUTE = 60;
 
   private final DeliveryRepository deliveryRepository;
   private final HubClient hubClient;
+  // Spring Boot가 만드는 기본 TransactionTemplate. Hub 호출 뒤 저장만 트랜잭션으로 묶는 데 쓴다.
   private final TransactionTemplate transactionTemplate;
-
-  public DeliveryCreationService(
-      DeliveryRepository deliveryRepository,
-      HubClient hubClient,
-      PlatformTransactionManager transactionManager) {
-    this.deliveryRepository = deliveryRepository;
-    this.hubClient = hubClient;
-    this.transactionTemplate = new TransactionTemplate(transactionManager);
-  }
 
   /**
    * 1) Hub에서 출발 → 목적지 허브의 기준 경로를 조회하고 2) 배송과 이동 구간을 한 트랜잭션으로 저장한다.
