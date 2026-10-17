@@ -37,6 +37,31 @@ class DeliveryRepositoryAdapter implements DeliveryRepository {
   }
 
   @Override
+  public Optional<Delivery> findByIdForUpdate(UUID id) {
+    return jpaRepository.findByIdForUpdate(id);
+  }
+
+  @Override
+  public Optional<Delivery> findIncludingDeletedForUpdate(UUID id) {
+    return jpaRepository.findIncludingDeletedForUpdate(id);
+  }
+
+  @Override
+  public Optional<Delivery> findByOrderId(UUID orderId) {
+    return jpaRepository.findByOrderId(orderId);
+  }
+
+  @Override
+  public Delivery save(Delivery delivery) {
+    return jpaRepository.save(delivery);
+  }
+
+  @Override
+  public List<DeliveryRoute> saveRoutes(List<DeliveryRoute> routes) {
+    return routeJpaRepository.saveAll(routes);
+  }
+
+  @Override
   public List<DeliveryRoute> findRoutesByDeliveryId(UUID deliveryId) {
     return routeJpaRepository.findAllByDeliveryIdOrderBySequenceAsc(deliveryId);
   }

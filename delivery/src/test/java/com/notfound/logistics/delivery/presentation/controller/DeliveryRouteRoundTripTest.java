@@ -32,6 +32,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     properties = {
       "eureka.client.enabled=false",
       "management.tracing.enabled=false",
+      // Hub Feign 클라이언트는 서비스 토큰이 비어 있으면 기동하지 않는다.
+      "delivery.internal-auth.service-token=test-delivery-service-token",
       "spring.jpa.hibernate.ddl-auto=validate",
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
