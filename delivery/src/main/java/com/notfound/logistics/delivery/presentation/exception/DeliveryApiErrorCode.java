@@ -22,7 +22,7 @@ record DeliveryApiErrorCode(DeliveryErrorCode errorCode) implements ApiErrorCode
       case ASSIGNMENT_NOT_ALLOWED,
           INVALID_STATUS_TRANSITION,
           CONCURRENT_MODIFICATION,
-          DELIVERY_ALREADY_EXISTS ->
+          DELIVERY_ALREADY_EXISTS, DELIVERY_ALREADY_STARTED ->
           409;
       case HUB_UNAVAILABLE -> 503;
     };

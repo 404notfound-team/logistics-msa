@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 서비스 간 호출 전용 배송 API. Gateway는 /api/** 만 라우팅하므로 외부에 노출되지 않는다.
  *
  * <p>X-Service-Token 인증과 호출 서비스별 허용 API 검사는 DeliverySecurityConfiguration이 맡는다(현재 orders의 배송 생성·주문별
- * 조회만 허용).
+ * 조회·취소만 허용).
  */
 @RestController
 @RequestMapping("/internal/deliveries")

@@ -118,6 +118,21 @@ public class Delivery extends AuditEntity {
     return assigneeId != null && assigneeId.equals(userId);
   }
 
+  /**
+   * 출발 전(HUB_WAITING) 배송을 취소한다. 이미 취소된 배송이면 그대로 둔다(재요청 멱등).
+   *
+   * @throws DeliveryBusinessException 그 밖의 상태면 DELIVERY_ALREADY_STARTED
+   */
+  public void cancel() {
+    if (status == DeliveryStatus.CANCELLED) {
+      return;
+    }
+    if (status != DeliveryStatus.HUB_WAITING) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_ALREADY_STARTED);
+    }
+    status = DeliveryStatus.CANCELLED;
+  }
+
   private static String requireText(String value, String name) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(name + " must not be blank");
