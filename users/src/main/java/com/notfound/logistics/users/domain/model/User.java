@@ -85,6 +85,39 @@ public class User extends AuditEntity {
     return new User(username, name, passwordHash, role, slackId, companyId, hubId, false);
   }
 
+  /** MASTER가 관리 기능으로 사용자를 만듭니다. MASTER는 소속 없이 만들 수 있습니다. */
+  public static User create(
+      String username,
+      String name,
+      String passwordHash,
+      String slackId,
+      UserRoleEnum role,
+      UUID companyId,
+      UUID hubId,
+      boolean deliveryStaff) {
+    return new User(username, name, passwordHash, role, slackId, companyId, hubId, deliveryStaff);
+  }
+
+  /** 변경 후의 전체 값을 받아 함께 검증하므로, 역할과 소속을 동시에 바꿔도 불변식이 유지됩니다. username은 JWT 주체라 바꾸지 않습니다. */
+  public void update(
+      String name,
+      String slackId,
+      String passwordHash,
+      UserRoleEnum role,
+      boolean deliveryStaff,
+      UUID companyId,
+      UUID hubId) {
+    Objects.requireNonNull(role, "role");
+    validateAffiliation(role, companyId, hubId);
+    this.name = requireText(name, "name");
+    this.slackId = requireText(slackId, "slackId");
+    this.passwordHash = requireText(passwordHash, "passwordHash");
+    this.role = role;
+    this.deliveryStaff = deliveryStaff;
+    this.companyId = companyId;
+    this.hubId = hubId;
+  }
+
   private static String requireText(String value, String fieldName) {
     Objects.requireNonNull(value, fieldName);
     if (value.isBlank()) {
@@ -102,12 +135,18 @@ public class User extends AuditEntity {
     return username;
   }
 
-  private static void validateAffiliation(UserRoleEnum role, UUID companyId, UUID hubId) {
+  /** USER는 업체·허브 중 정확히 하나, MASTER는 하나 이하에 소속됩니다. */
+  public static boolean isValidAffiliation(UserRoleEnum role, UUID companyId, UUID hubId) {
     if (companyId != null && hubId != null) {
-      throw new IllegalArgumentException("A user cannot belong to both a company and a hub");
+      return false;
     }
-    if (role == UserRoleEnum.USER && companyId == null && hubId == null) {
-      throw new IllegalArgumentException("A regular user must belong to a company or a hub");
+    return role != UserRoleEnum.USER || companyId != null || hubId != null;
+  }
+
+  private static void validateAffiliation(UserRoleEnum role, UUID companyId, UUID hubId) {
+    if (!isValidAffiliation(role, companyId, hubId)) {
+      throw new IllegalArgumentException(
+          "A user belongs to at most one of company or hub, and a regular user to exactly one");
     }
   }
 }
