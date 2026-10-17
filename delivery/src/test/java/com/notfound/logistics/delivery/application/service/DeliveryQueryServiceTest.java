@@ -124,6 +124,37 @@ class DeliveryQueryServiceTest {
     then(deliveryRepository).should(never()).findRoutesByDeliveryId(any());
   }
 
+  @Test
+  void searchByOrderIdReturnsTheDeliveryOfTheOrderWithItsRoutes() {
+    UUID deliveryId = UUID.randomUUID();
+    UUID orderId = UUID.randomUUID();
+    Delivery delivery = delivery(deliveryId);
+    given(delivery.getOrderId()).willReturn(orderId);
+    given(delivery.getStatus()).willReturn(DeliveryStatus.HUB_MOVING);
+    DeliveryRoute route = route(delivery, 1);
+    given(deliveryRepository.findByOrderId(orderId)).willReturn(Optional.of(delivery));
+    given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of(route));
+
+    DeliveryResult result = service.searchByOrderId(orderId);
+
+    assertThat(result.deliveryId()).isEqualTo(deliveryId);
+    assertThat(result.orderId()).isEqualTo(orderId);
+    assertThat(result.status()).isEqualTo(DeliveryStatus.HUB_MOVING);
+    assertThat(result.routes()).containsExactly(DeliveryRouteResult.from(route));
+  }
+
+  @Test
+  void searchByOrderIdWithoutADeliveryFailsWithDeliveryNotFoundWithoutReadingRoutes() {
+    UUID orderId = UUID.randomUUID();
+    given(deliveryRepository.findByOrderId(orderId)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> service.searchByOrderId(orderId))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
+    then(deliveryRepository).should(never()).findRoutesByDeliveryId(any());
+  }
+
   private static Delivery delivery(UUID id) {
     Delivery delivery = mock(Delivery.class);
     given(delivery.getId()).willReturn(id);

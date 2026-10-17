@@ -3,6 +3,7 @@ package com.notfound.logistics.delivery.presentation.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -235,6 +236,85 @@ class InternalDeliveryCreationIntegrationTest {
   }
 
   @Test
+  void createdDeliveryIsReturnedByTheOrderLookupWithTheSameFields() throws Exception {
+    UUID orderId = UUID.randomUUID();
+    String created =
+        create(request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    String found =
+        lookup(orderId)
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    assertThat(dataOf(found)).isEqualTo(dataOf(created));
+  }
+
+  @Test
+  void lookupDuringAnUnfinishedCreationIsNotFoundButTheDeliveryAppearsOnceItCompletes()
+      throws Exception {
+    UUID orderId = UUID.randomUUID();
+    // 생성 요청이 Hub 경로 응답을 기다리는 동안은 아직 저장 전이다(호출 측이 타임아웃을 겪는 구간).
+    hub.holdRoutesUntil(2);
+
+    ExecutorService executor = Executors.newSingleThreadExecutor();
+    try {
+      Future<Integer> creation =
+          executor.submit(
+              () -> statusOf(request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동")));
+      awaitRouteRequest();
+
+      // 이 404는 "아직 조회되는 배송 없음"일 뿐 생성 실패가 아니다.
+      lookup(orderId)
+          .andExpect(status().isNotFound())
+          .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"));
+
+      hub.releaseRoutes();
+      assertThat(creation.get(10, TimeUnit.SECONDS)).isEqualTo(201);
+    } finally {
+      executor.shutdownNow();
+    }
+
+    lookup(orderId)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
+        .andExpect(jsonPath("$.data.status").value("HUB_WAITING"));
+  }
+
+  @Test
+  void lookupAfterAFailedCreationIsNotFoundAndARetryMakesTheDeliveryVisible() throws Exception {
+    UUID orderId = UUID.randomUUID();
+    String request = request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동");
+    hub.failWithServerError();
+
+    create(request).andExpect(status().isServiceUnavailable());
+    lookup(orderId)
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"));
+
+    // 404를 확정 실패로 보지 않고 같은 내용으로 다시 요청하면 배송이 생성된다.
+    hub.recover();
+    String created =
+        create(request)
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    String found =
+        lookup(orderId)
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    assertThat(dataOf(found)).isEqualTo(dataOf(created));
+  }
+
+  @Test
   void sameOrderWithDifferentContentIsConflict() throws Exception {
     UUID orderId = UUID.randomUUID();
     create(request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
@@ -378,6 +458,24 @@ class InternalDeliveryCreationIntegrationTest {
     return mockMvc.perform(request);
   }
 
+  private ResultActions lookup(UUID orderId) throws Exception {
+    return mockMvc.perform(
+        get("/internal/deliveries/by-order/{order_id}", orderId)
+            .header("X-Service-Token", ORDERS_TOKEN));
+  }
+
+  // 생성 요청이 Hub 경로 조회까지 도달할 때까지 기다린다.
+  private void awaitRouteRequest() throws InterruptedException {
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+    while (hub.requests().stream()
+        .noneMatch(request -> request.path().startsWith("/internal/hub-routes"))) {
+      if (System.nanoTime() > deadline) {
+        throw new AssertionError("Creation did not reach the hub route lookup");
+      }
+      Thread.sleep(10);
+    }
+  }
+
   private int statusOf(String body) throws Exception {
     return create(body).andReturn().getResponse().getStatus();
   }
@@ -452,6 +550,14 @@ class InternalDeliveryCreationIntegrationTest {
       routeGate = new CountDownLatch(count);
     }
 
+    // 보류 중인 경로 응답을 바로 내보낸다.
+    void releaseRoutes() {
+      CountDownLatch gate = routeGate;
+      while (gate.getCount() > 0) {
+        gate.countDown();
+      }
+    }
+
     void addHub(UUID id, String name) {
       hubs.put(id, name);
     }
@@ -468,6 +574,10 @@ class InternalDeliveryCreationIntegrationTest {
 
     void failWithServerError() {
       serverError = true;
+    }
+
+    void recover() {
+      serverError = false;
     }
 
     List<HubRequest> requests() {
