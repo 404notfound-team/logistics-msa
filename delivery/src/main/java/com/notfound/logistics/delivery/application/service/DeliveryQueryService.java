@@ -41,6 +41,15 @@ public class DeliveryQueryService {
     return DeliveryResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(deliveryId));
   }
 
+  /** 주문의 배송을 읽는다. 아직 생성되지 않았거나 삭제된 배송이면 DELIVERY_NOT_FOUND다. */
+  public DeliveryResult searchByOrderId(UUID orderId) {
+    Delivery delivery =
+        deliveryRepository
+            .findByOrderId(orderId)
+            .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+    return DeliveryResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(delivery.getId()));
+  }
+
   // 페이지의 배송 구간을 한 번에 읽어 배송별로 묶는다. 구간 순서(sequence)는 쿼리 순서를 따른다.
   private Map<UUID, List<DeliveryRoute>> routesOf(List<Delivery> deliveries) {
     if (deliveries.isEmpty()) {

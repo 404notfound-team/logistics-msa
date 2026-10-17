@@ -12,6 +12,7 @@ delivery:
         token: ${ORDERS_SERVICE_TOKEN:}
         allowed:
           - POST /internal/deliveries
+          - GET /internal/deliveries/by-order/*
 springdoc:
   api-docs:
     enabled: false
