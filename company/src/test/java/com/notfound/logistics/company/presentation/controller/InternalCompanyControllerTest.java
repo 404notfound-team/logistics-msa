@@ -17,6 +17,8 @@ import com.notfound.logistics.company.support.CompanySecurityTestTokens;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -89,6 +91,21 @@ class InternalCompanyControllerTest {
                 .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", " ", "   "})
+  void getCompaniesWithBlankNameReturnsFieldError(String name) throws Exception {
+    // 빈 이름은 조회 결과가 없는 것과 구분해 요청 오류로 돌려준다.
+    mvc.perform(
+            get("/internal/companies")
+                .param("name", name)
+                .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("name"));
+
+    verify(companyService, never()).findCompaniesByName(any());
   }
 
   @Test
