@@ -6,6 +6,8 @@ public enum DeliveryErrorCode {
   DELIVERY_ALREADY_EXISTS("주문에 이미 배송이 있습니다."),
   // 배송이 이미 출발해(HUB_WAITING·CANCELLED가 아님) 취소할 수 없다.
   DELIVERY_ALREADY_STARTED("이미 출발한 배송은 취소할 수 없습니다."),
+  // 배송이 끝나지 않아(DELIVERED·CANCELLED가 아님) 삭제할 수 없다.
+  DELIVERY_IN_PROGRESS("진행 중인 배송은 삭제할 수 없습니다."),
   // 출발 또는 목적지 허브가 Hub에 없다.
   HUB_NOT_FOUND("허브를 찾을 수 없습니다."),
   // Hub에 출발 → 목적지 허브의 기준 경로가 없다.

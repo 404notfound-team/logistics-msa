@@ -42,6 +42,11 @@ class DeliveryRepositoryAdapter implements DeliveryRepository {
   }
 
   @Override
+  public Optional<Delivery> findIncludingDeletedForUpdate(UUID id) {
+    return jpaRepository.findIncludingDeletedForUpdate(id);
+  }
+
+  @Override
   public Optional<Delivery> findByOrderId(UUID orderId) {
     return jpaRepository.findByOrderId(orderId);
   }

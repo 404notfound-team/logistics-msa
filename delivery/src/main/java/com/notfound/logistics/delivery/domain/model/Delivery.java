@@ -11,6 +11,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -89,6 +90,21 @@ public class Delivery extends AuditEntity {
       throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_ALREADY_STARTED);
     }
     status = DeliveryStatus.CANCELLED;
+  }
+
+  /**
+   * 끝난(DELIVERED·CANCELLED) 배송을 논리 삭제한다. 이미 삭제된 배송이면 그대로 둔다(재요청 멱등).
+   *
+   * @throws DeliveryBusinessException 그 밖의 상태면 DELIVERY_IN_PROGRESS
+   */
+  public void delete(String username, Instant deletedAt) {
+    if (getDeletedAt() != null) {
+      return;
+    }
+    if (status != DeliveryStatus.DELIVERED && status != DeliveryStatus.CANCELLED) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_IN_PROGRESS);
+    }
+    markDeleted(username, deletedAt);
   }
 
   private static String requireText(String value, String name) {
