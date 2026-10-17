@@ -18,4 +18,10 @@ interface DeliveryJpaRepository
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select d from Delivery d where d.id = :id")
   Optional<Delivery> findByIdForUpdate(@Param("id") UUID id);
+
+  // 네이티브 쿼리에는 @SQLRestriction이 적용되지 않아 삭제된 배송도 읽힌다.
+  @Query(
+      value = "SELECT * FROM p_deliveries WHERE delivery_id = :id FOR UPDATE",
+      nativeQuery = true)
+  Optional<Delivery> findIncludingDeletedForUpdate(@Param("id") UUID id);
 }

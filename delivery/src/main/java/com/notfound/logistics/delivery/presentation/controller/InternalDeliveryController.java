@@ -26,7 +26,7 @@ import org.springframework.web.bind.annotation.RestController;
  * 서비스 간 호출 전용 배송 API. Gateway는 /api/** 만 라우팅하므로 외부에 노출되지 않는다.
  *
  * <p>X-Service-Token 인증과 호출 서비스별 허용 API 검사는 DeliverySecurityConfiguration이 맡는다(현재 orders의 배송 생성·주문별
- * 조회·취소만 허용).
+ * 조회·취소·삭제만 허용).
  */
 @RestController
 @RequestMapping("/internal/deliveries")
@@ -93,7 +93,14 @@ class InternalDeliveryController {
   /**
    * 배송과 배송의 모든 경로를 논리 삭제한다. 요청 본문은 없다.
    *
-   * <p>TODO: 응답 명세 확정 전까지 204(본문 없음)로 응답한다.
+   * <ul>
+   *   <li>204: 삭제됨. 이미 삭제된 배송의 재요청도 204
+   *   <li>400: id가 UUID가 아님
+   *   <li>404: 배송 없음(DELIVERY_NOT_FOUND)
+   *   <li>409: 배송이 끝나지 않음(DELIVERY_IN_PROGRESS). DELIVERED·CANCELLED만 삭제할 수 있다.
+   * </ul>
+   *
+   * <p>호출 측 계약: 배송이 생성되지 않은 주문은 삭제를 호출하지 않는다.
    */
   @DeleteMapping("/{id}")
   ResponseEntity<Void> delete(@PathVariable("id") UUID id) {

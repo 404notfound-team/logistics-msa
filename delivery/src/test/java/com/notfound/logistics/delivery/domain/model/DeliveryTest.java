@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
+import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -173,6 +174,8 @@ class DeliveryTest {
     return Delivery.create(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "서울특별시 송파구 송파대로 55", "홍길동");
   }
+  private static final String ACTOR = "orders-user";
+  private static final Instant DELETED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
   @Test
   void waitingDeliveryIsCancelled() {
@@ -207,6 +210,49 @@ class DeliveryTest {
                 assertThat(exception.getErrorCode())
                     .isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_STARTED));
     assertThat(delivery.getStatus()).isEqualTo(status);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = DeliveryStatus.class,
+      names = {"DELIVERED", "CANCELLED"})
+  void finishedDeliveryIsDeletedWithTheActorAndTime(DeliveryStatus status) {
+    Delivery delivery = delivery(status);
+
+    delivery.delete(ACTOR, DELETED_AT);
+
+    assertThat(delivery.getDeletedAt()).isEqualTo(DELETED_AT);
+    assertThat(delivery.getDeletedBy()).isEqualTo(ACTOR);
+    assertThat(delivery.getStatus()).isEqualTo(status);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = DeliveryStatus.class,
+      names = {"DELIVERED", "CANCELLED"},
+      mode = EnumSource.Mode.EXCLUDE)
+  void deliveryInProgressCannotBeDeleted(DeliveryStatus status) {
+    Delivery delivery = delivery(status);
+
+    assertThatThrownBy(() -> delivery.delete(ACTOR, DELETED_AT))
+        .isInstanceOfSatisfying(
+            DeliveryBusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(DeliveryErrorCode.DELIVERY_IN_PROGRESS));
+    assertThat(delivery.getDeletedAt()).isNull();
+    assertThat(delivery.getDeletedBy()).isNull();
+  }
+
+  @Test
+  void deletingADeletedDeliveryAgainKeepsTheFirstDeletion() {
+    Delivery delivery = delivery(DeliveryStatus.DELIVERED);
+    delivery.delete(ACTOR, DELETED_AT);
+
+    delivery.delete("other-user", DELETED_AT.plusSeconds(60));
+
+    assertThat(delivery.getDeletedAt()).isEqualTo(DELETED_AT);
+    assertThat(delivery.getDeletedBy()).isEqualTo(ACTOR);
   }
 
   private static Delivery delivery(DeliveryStatus status) {
