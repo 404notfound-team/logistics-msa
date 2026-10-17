@@ -3,11 +3,14 @@ package com.notfound.logistics.delivery.presentation.controller;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import com.notfound.logistics.delivery.presentation.dto.DeliveryModifyRequest;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryResponse;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryRouteResponse;
+import com.notfound.logistics.delivery.presentation.exception.InvalidRequestException;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,7 +23,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,6 +36,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 class DeliveryController {
   private final DeliveryQueryService deliveryQueryService;
+  private final DeliveryCommandService deliveryCommandService;
 
   @Operation(summary = "배송 목록 조회·검색", description = "지정한 조건을 모두 만족하는 배송을 페이지로 조회합니다.")
   @GetMapping
@@ -94,5 +100,20 @@ class DeliveryController {
     // TODO: 권한 검사하기
     return new ApiResponse<>(
         deliveryQueryService.searchRoutes(id).stream().map(DeliveryRouteResponse::from).toList());
+  }
+
+  @Operation(summary = "배송 정보 수정·수동 배정", description = "id에 해당하는 배송의 상태 또는 담당자를 수정합니다.")
+  @PatchMapping("/{delivery_id}")
+  ApiResponse<DeliveryResponse> modify(
+      @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId,
+      @RequestBody DeliveryModifyRequest request) {
+    DeliveryStatus status = request.status();
+    UUID assigneeId = request.assigneeId();
+    if (status == null && assigneeId == null) {
+      throw new InvalidRequestException("$", "status 또는 assignee_id 중 하나 이상을 입력해야 합니다.");
+    }
+    // TODO: 권한 검사하기
+    return new ApiResponse<>(
+        DeliveryResponse.from(deliveryCommandService.modify(deliveryId, status, assigneeId)));
   }
 }

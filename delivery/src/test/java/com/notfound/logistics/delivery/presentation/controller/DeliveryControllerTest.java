@@ -6,6 +6,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -34,6 +37,7 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -48,6 +52,7 @@ class DeliveryControllerTest {
 
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DeliveryQueryService deliveryQueryService;
+  @MockitoBean private DeliveryCommandService deliveryCommandService;
 
   @Test
   void defaultSearchUsesFirstPageAndNewestFirstWithPrimaryKeyTieBreaker() throws Exception {
@@ -365,5 +370,172 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.field_errors[0].field").value(field))
         .andExpect(jsonPath("$.field_errors.length()").value(1));
     then(deliveryQueryService).should(never()).search(any(), any());
+  }
+
+  @Test
+  void modifyPassesTheSnakeCaseBodyToTheServiceAndReturnsTheModifiedDelivery() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID))
+        .willReturn(
+            new DeliveryResult(
+                deliveryId,
+                ORDER_ID,
+                DeliveryStatus.HUB_MOVING,
+                DEPARTURE_HUB_ID,
+                DESTINATION_HUB_ID,
+                "서울특별시 송파구 송파대로 55",
+                "홍길동",
+                ASSIGNEE_ID,
+                List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z")));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"status": "HUB_MOVING", "assignee_id": "%s"}
+                    """
+                        .formatted(ASSIGNEE_ID)))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
+        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"))
+        .andExpect(jsonPath("$.data.assignee_id").value(ASSIGNEE_ID.toString()))
+        .andExpect(jsonPath("$.data.routes").isEmpty());
+    then(deliveryCommandService)
+        .should()
+        .modify(deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID);
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "{\"status\": \"DELIVERED\"} | DELIVERED | ",
+        "{\"assignee_id\": \"00000000-0000-0000-0000-000000000007\"} | | 00000000-0000-0000-0000-000000000007"
+      })
+  void modifyPassesOnlyTheGivenValueAndLeavesTheOtherNull(
+      String body, DeliveryStatus status, UUID assigneeId) throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(any(), any(), any()))
+        .willReturn(
+            new DeliveryResult(
+                deliveryId,
+                ORDER_ID,
+                DeliveryStatus.HUB_WAITING,
+                DEPARTURE_HUB_ID,
+                DESTINATION_HUB_ID,
+                "서울특별시 송파구 송파대로 55",
+                "홍길동",
+                null,
+                List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z")));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk());
+    then(deliveryCommandService).should().modify(deliveryId, status, assigneeId);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"{}", "{\"status\": null, \"assignee_id\": null}"})
+  void modifyWithoutStatusAndAssigneeIsRejected(String body) throws Exception {
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("$"))
+        .andExpect(jsonPath("$.field_errors.length()").value(1));
+    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @CsvSource(
+      delimiter = '|',
+      value = {
+        "{\"status\": \"UNKNOWN\"} | status",
+        "{\"assignee_id\": \"not-a-uuid\"} | assignee_id",
+        "{\"assignee_id\": 7} | assignee_id"
+      })
+  void modifyWithAMalformedValueIsRejectedWithItsField(String body, String field) throws Exception {
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value(field))
+        .andExpect(jsonPath("$.field_errors.length()").value(1));
+    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", "{\"status\": "})
+  void modifyWithAMissingOrBrokenBodyIsRejected(String body) throws Exception {
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+  }
+
+  @Test
+  void modifyWithAMalformedDeliveryIdIsRejected() throws Exception {
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", "not-a-uuid")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
+        .andExpect(jsonPath("$.field_errors[0].field").value("delivery_id"));
+    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+  }
+
+  @Test
+  void reassigningADeliveryThatLeftHubWaitingIsAConflict() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(deliveryId, null, ASSIGNEE_ID))
+        .willThrow(new DeliveryBusinessException(DeliveryErrorCode.ASSIGNMENT_NOT_ALLOWED));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"assignee_id\": \"%s\"}".formatted(ASSIGNEE_ID)))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("ASSIGNMENT_NOT_ALLOWED"))
+        .andExpect(jsonPath("$.message").value("허브 대기중인 배송만 담당자를 배정할 수 있습니다."))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void modifyOfAnUnknownDeliveryIsNotFound() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null))
+        .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
   }
 }
