@@ -8,6 +8,7 @@ import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 class DeliveryRouteTest {
@@ -56,7 +57,38 @@ class DeliveryRouteTest {
         .hasMessageContaining("expectedDurationSeconds");
   }
 
+  @Test
+  void waitingRouteIsCancelled() {
+    DeliveryRoute route = route(DeliveryRouteStatus.WAITING);
+
+    route.cancel();
+
+    assertThat(route.getStatus()).isEqualTo(DeliveryRouteStatus.CANCELLED);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = DeliveryRouteStatus.class,
+      names = {"WAITING"},
+      mode = EnumSource.Mode.EXCLUDE)
+  void routeThatIsNotWaitingKeepsItsStatusWhenCancelled(DeliveryRouteStatus status) {
+    DeliveryRoute route = route(status);
+
+    route.cancel();
+
+    assertThat(route.getStatus()).isEqualTo(status);
+  }
+
   private static DeliveryRoute route(int sequence, BigDecimal distanceKm, long durationSeconds) {
+    return route(sequence, distanceKm, durationSeconds, DeliveryRouteStatus.WAITING);
+  }
+
+  private static DeliveryRoute route(DeliveryRouteStatus status) {
+    return route(1, DISTANCE, DURATION, status);
+  }
+
+  private static DeliveryRoute route(
+      int sequence, BigDecimal distanceKm, long durationSeconds, DeliveryRouteStatus status) {
     return new DeliveryRoute(
         UUID.randomUUID(),
         mock(Delivery.class),
@@ -65,7 +97,7 @@ class DeliveryRouteTest {
         UUID.randomUUID(),
         distanceKm,
         durationSeconds,
-        DeliveryRouteStatus.WAITING,
+        status,
         null);
   }
 }
