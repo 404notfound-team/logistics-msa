@@ -9,14 +9,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
+import jakarta.servlet.http.HttpServletRequest;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
-import java.net.InetSocketAddress;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.net.ServerSocket;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,35 +24,48 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 /**
- * POST /internal/deliveries를 실제 DB(PostgreSQL)와 가짜 Hub HTTP 서버로 끝까지 실행해 응답 명세와 저장 결과를 확인한다.
+ * POST /internal/deliveries를 실제 DB(PostgreSQL)와 가짜 Hub로 끝까지 실행해 응답 명세와 저장 결과를 확인한다.
  *
- * <p>HubClient는 목으로 바꾸지 않는다. Feign이 Eureka 대신 simple discovery로 가짜 Hub를 찾아 실제 HTTP로 호출하므로 인증 헤더,
- * snake_case 응답 변환, 404/5xx 처리까지 함께 검증된다.
+ * <p>HubClient는 목으로 바꾸지 않는다. 가짜 Hub 컨트롤러를 테스트 서버에 함께 띄우고, Feign이 Eureka 대신 simple discovery로 그 서버를
+ * 찾아 실제 HTTP로 호출하므로 인증 헤더, snake_case 응답 변환, 404/5xx 처리까지 함께 검증된다.
  */
 @SpringBootTest(
+    webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT,
     properties = {
       "eureka.client.enabled=false",
       "management.tracing.enabled=false",
       "delivery.internal-auth.service-token="
           + InternalDeliveryCreationIntegrationTest.SERVICE_TOKEN,
+      // 수신 측 인증: orders만 배송 생성이 허용되고, company는 인증은 되지만 허용 API가 없다.
+      "delivery.internal-auth.clients.orders.token="
+          + InternalDeliveryCreationIntegrationTest.ORDERS_TOKEN,
+      "delivery.internal-auth.clients.company.token="
+          + InternalDeliveryCreationIntegrationTest.COMPANY_TOKEN,
       "spring.jpa.hibernate.ddl-auto=validate",
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
@@ -67,6 +77,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class InternalDeliveryCreationIntegrationTest {
   static final String SERVICE_TOKEN = "test-delivery-service-token";
+  static final String ORDERS_TOKEN = "test-orders-service-token";
+  static final String COMPANY_TOKEN = "test-company-service-token";
   private static final String ACTOR = "orders-user";
 
   private static final UUID SEOUL_HUB = UUID.fromString("00000000-0000-0000-0000-00000000a001");
@@ -76,8 +88,10 @@ class InternalDeliveryCreationIntegrationTest {
   @Container
   static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
 
-  private static final FakeHub HUB = FakeHub.start();
+  // 컨텍스트가 뜨기 전에 서버 포트를 정해야 discovery 주소에 넣을 수 있으므로 빈 포트를 미리 고른다.
+  private static final int PORT = freePort();
 
+  @Autowired private FakeHub hub;
   @Autowired private MockMvc mockMvc;
   @Autowired private JdbcTemplate jdbc;
   @Autowired private ObjectMapper objectMapper;
@@ -87,23 +101,29 @@ class InternalDeliveryCreationIntegrationTest {
     registry.add("spring.datasource.url", () -> DATABASE.getJdbcUrl() + "&currentSchema=delivery");
     registry.add("spring.datasource.username", DATABASE::getUsername);
     registry.add("spring.datasource.password", DATABASE::getPassword);
-    // Eureka 대신 이 주소를 hub 서비스 인스턴스로 쓴다.
-    registry.add("spring.cloud.discovery.client.simple.instances.hub[0].uri", HUB::baseUrl);
+    registry.add("server.port", () -> PORT);
+    // Eureka 대신 테스트 서버(가짜 Hub 컨트롤러)를 hub 서비스 인스턴스로 쓴다.
+    registry.add(
+        "spring.cloud.discovery.client.simple.instances.hub[0].uri",
+        () -> "http://localhost:" + PORT);
   }
 
-  @AfterAll
-  static void stopHub() {
-    HUB.stop();
+  private static int freePort() {
+    try (ServerSocket socket = new ServerSocket(0)) {
+      return socket.getLocalPort();
+    } catch (IOException exception) {
+      throw new UncheckedIOException(exception);
+    }
   }
 
   @BeforeEach
   void reset() {
     jdbc.update("DELETE FROM p_delivery_routes");
     jdbc.update("DELETE FROM p_deliveries");
-    HUB.reset();
-    HUB.addHub(SEOUL_HUB, "서울 허브");
-    HUB.addHub(BUSAN_HUB, "부산 허브");
-    HUB.addRoute(SEOUL_HUB, BUSAN_HUB, 90, new BigDecimal("325.123"));
+    hub.reset();
+    hub.addHub(SEOUL_HUB, "서울 허브");
+    hub.addHub(BUSAN_HUB, "부산 허브");
+    hub.addRoute(SEOUL_HUB, BUSAN_HUB, 90, new BigDecimal("325.123"));
   }
 
   @Test
@@ -151,13 +171,13 @@ class InternalDeliveryCreationIntegrationTest {
     create(request(UUID.randomUUID(), SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
         .andExpect(status().isCreated());
 
-    assertThat(HUB.requests())
+    assertThat(hub.requests())
         .extracting(HubRequest::path)
         .containsExactly(
             "/internal/hubs/" + SEOUL_HUB,
             "/internal/hubs/" + BUSAN_HUB,
             "/internal/hub-routes?departure_hub_id=" + SEOUL_HUB + "&arrival_hub_id=" + BUSAN_HUB);
-    assertThat(HUB.requests())
+    assertThat(hub.requests())
         .allSatisfy(
             request -> {
               assertThat(request.serviceToken()).isEqualTo(SERVICE_TOKEN);
@@ -175,7 +195,7 @@ class InternalDeliveryCreationIntegrationTest {
             .andReturn()
             .getResponse()
             .getContentAsString();
-    int hubCallsAfterFirst = HUB.requests().size();
+    int hubCallsAfterFirst = hub.requests().size();
 
     String second =
         create(request)
@@ -188,7 +208,7 @@ class InternalDeliveryCreationIntegrationTest {
     assertThat(dataOf(second)).isEqualTo(dataOf(first));
     assertThat(countDeliveries(orderId)).isEqualTo(1);
     // 재요청은 Hub를 다시 호출하지 않는다.
-    assertThat(HUB.requests()).hasSize(hubCallsAfterFirst);
+    assertThat(hub.requests()).hasSize(hubCallsAfterFirst);
   }
 
   @Test
@@ -196,7 +216,7 @@ class InternalDeliveryCreationIntegrationTest {
     UUID orderId = UUID.randomUUID();
     String request = request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동");
     // 두 요청이 모두 중복 확인을 통과한 뒤 저장하도록, 경로 응답을 두 요청이 도착할 때까지 붙잡아 둔다.
-    HUB.holdRoutesUntil(2);
+    hub.holdRoutesUntil(2);
 
     ExecutorService executor = Executors.newFixedThreadPool(2);
     try {
@@ -272,9 +292,39 @@ class InternalDeliveryCreationIntegrationTest {
         .andExpect(jsonPath("$.code").value("HUB_NOT_FOUND"));
 
     assertThat(countAllDeliveries()).isZero();
-    assertThat(HUB.requests())
+    assertThat(hub.requests())
         .extracting(HubRequest::path)
         .noneMatch(path -> path.startsWith("/internal/hub-routes"));
+  }
+
+  @Test
+  void missingServiceTokenIsUnauthorizedAndNothingHappens() throws Exception {
+    createWithToken(null, request(UUID.randomUUID(), SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+    assertNothingHappened();
+  }
+
+  @Test
+  void unknownServiceTokenIsUnauthorizedAndNothingHappens() throws Exception {
+    createWithToken(
+            "unknown-service-token",
+            request(UUID.randomUUID(), SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+    assertNothingHappened();
+  }
+
+  @Test
+  void serviceWithoutPermissionIsForbiddenAndNothingHappens() throws Exception {
+    createWithToken(
+            COMPANY_TOKEN, request(UUID.randomUUID(), SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+    assertNothingHappened();
   }
 
   @Test
@@ -288,7 +338,7 @@ class InternalDeliveryCreationIntegrationTest {
 
   @Test
   void hubFailureIsServiceUnavailableAndNothingIsSaved() throws Exception {
-    HUB.failWithServerError();
+    hub.failWithServerError();
 
     create(request(UUID.randomUUID(), SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
         .andExpect(status().isServiceUnavailable())
@@ -307,17 +357,25 @@ class InternalDeliveryCreationIntegrationTest {
     assertThat(countDeliveries(orderId)).isEqualTo(1);
     assertThat(jdbc.queryForObject("SELECT count(*) FROM p_delivery_routes", Long.class)).isZero();
     // 허브 존재 확인은 한 번만 하고, 경로는 조회하지 않는다.
-    assertThat(HUB.requests())
+    assertThat(hub.requests())
         .extracting(HubRequest::path)
         .containsExactly("/internal/hubs/" + SEOUL_HUB);
   }
 
   private ResultActions create(String body) throws Exception {
-    return mockMvc.perform(
+    return createWithToken(ORDERS_TOKEN, body);
+  }
+
+  private ResultActions createWithToken(String token, String body) throws Exception {
+    MockHttpServletRequestBuilder request =
         post("/internal/deliveries")
             .header("X-Actor-Username", ACTOR)
             .contentType(MediaType.APPLICATION_JSON)
-            .content(body));
+            .content(body);
+    if (token != null) {
+      request.header("X-Service-Token", token);
+    }
+    return mockMvc.perform(request);
   }
 
   private int statusOf(String body) throws Exception {
@@ -354,49 +412,32 @@ class InternalDeliveryCreationIntegrationTest {
   // 입력 오류는 Hub 호출이나 저장 전에 거절된다.
   private void assertNothingHappened() {
     assertThat(countAllDeliveries()).isZero();
-    assertThat(HUB.requests()).isEmpty();
+    assertThat(hub.requests()).isEmpty();
   }
 
   /** 가짜 Hub가 받은 요청. path는 쿼리 문자열을 포함한다. */
   record HubRequest(String path, String serviceToken, String actor) {}
 
+  // 테스트 컨텍스트에 가짜 Hub 컨트롤러를 등록한다. Delivery 앱과 같은 서버(포트)에서 응답한다.
+  @TestConfiguration
+  static class FakeHubConfiguration {
+    @Bean
+    FakeHub fakeHub() {
+      return new FakeHub();
+    }
+  }
+
   /**
-   * 테스트용 Hub 서버. GET /internal/hubs/{id}와 GET /internal/hub-routes를 등록된 데이터로 응답하고, 없으면 실제 Hub처럼
-   * 404를 응답한다. 받은 요청을 기록해 헤더와 호출 순서를 검증할 수 있게 한다.
+   * 테스트용 Hub. GET /internal/hubs/{id}와 GET /internal/hub-routes를 등록된 데이터로 응답하고, 없으면 실제 Hub처럼 404를
+   * 응답한다. 받은 요청을 기록해 헤더와 호출 순서를 검증할 수 있게 한다.
    */
-  static final class FakeHub {
-    private final HttpServer server;
+  @RestController
+  static class FakeHub {
     private final Map<UUID, String> hubs = new ConcurrentHashMap<>();
     private final Map<String, String> routes = new ConcurrentHashMap<>();
     private final List<HubRequest> requests = new CopyOnWriteArrayList<>();
     private volatile boolean serverError;
     private volatile CountDownLatch routeGate = new CountDownLatch(0);
-
-    private FakeHub(HttpServer server) {
-      this.server = server;
-    }
-
-    static FakeHub start() {
-      try {
-        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        FakeHub hub = new FakeHub(server);
-        server.createContext("/", hub::handle);
-        // 기본 실행기는 단일 스레드라, 경로 응답을 보류하면 동시 요청을 받지 못한다.
-        server.setExecutor(Executors.newCachedThreadPool());
-        server.start();
-        return hub;
-      } catch (IOException exception) {
-        throw new IllegalStateException(exception);
-      }
-    }
-
-    String baseUrl() {
-      return "http://127.0.0.1:" + server.getAddress().getPort();
-    }
-
-    void stop() {
-      server.stop(0);
-    }
 
     void reset() {
       hubs.clear();
@@ -433,65 +474,51 @@ class InternalDeliveryCreationIntegrationTest {
       return List.copyOf(requests);
     }
 
-    private void handle(HttpExchange exchange) throws IOException {
-      URI uri = exchange.getRequestURI();
-      String path = uri.getPath();
+    @GetMapping("/internal/hubs/{id}")
+    ResponseEntity<String> hub(@PathVariable("id") UUID id, HttpServletRequest request) {
+      record(request);
+      if (serverError) {
+        return json(500, "{\"code\":\"INTERNAL_ERROR\",\"message\":\"error\"}");
+      }
+      String name = hubs.get(id);
+      if (name == null) {
+        return json(404, "{\"code\":\"HUB_NOT_FOUND\",\"message\":\"not found\"}");
+      }
+      return json(
+          200, "{\"data\":{\"id\":\"%s\",\"name\":\"%s\",\"address\":\"주소\"}}".formatted(id, name));
+    }
+
+    @GetMapping("/internal/hub-routes")
+    ResponseEntity<String> route(
+        @RequestParam("departure_hub_id") UUID departure,
+        @RequestParam("arrival_hub_id") UUID arrival,
+        HttpServletRequest request)
+        throws InterruptedException {
+      record(request);
+      if (serverError) {
+        return json(500, "{\"code\":\"INTERNAL_ERROR\",\"message\":\"error\"}");
+      }
+      CountDownLatch gate = routeGate;
+      gate.countDown();
+      gate.await(5, TimeUnit.SECONDS);
+      String route = routes.get(departure + ">" + arrival);
+      if (route == null) {
+        return json(404, "{\"code\":\"HUB_ROUTE_NOT_FOUND\",\"message\":\"not found\"}");
+      }
+      return json(200, route);
+    }
+
+    private void record(HttpServletRequest request) {
+      String query = request.getQueryString();
       requests.add(
           new HubRequest(
-              uri.getRawQuery() == null ? path : path + "?" + uri.getRawQuery(),
-              exchange.getRequestHeaders().getFirst("X-Service-Token"),
-              exchange.getRequestHeaders().getFirst("X-Actor-Username")));
-
-      if (serverError) {
-        respond(exchange, 500, "{\"code\":\"INTERNAL_ERROR\",\"message\":\"error\"}");
-      } else if (path.startsWith("/internal/hubs/")) {
-        UUID id = UUID.fromString(path.substring("/internal/hubs/".length()));
-        String name = hubs.get(id);
-        if (name == null) {
-          respond(exchange, 404, "{\"code\":\"HUB_NOT_FOUND\",\"message\":\"not found\"}");
-        } else {
-          respond(
-              exchange,
-              200,
-              "{\"data\":{\"id\":\"%s\",\"name\":\"%s\",\"address\":\"주소\"}}".formatted(id, name));
-        }
-      } else if (path.equals("/internal/hub-routes")) {
-        CountDownLatch gate = routeGate;
-        gate.countDown();
-        try {
-          gate.await(5, TimeUnit.SECONDS);
-        } catch (InterruptedException exception) {
-          Thread.currentThread().interrupt();
-        }
-        Map<String, String> query = query(uri.getRawQuery());
-        String route =
-            routes.get(query.get("departure_hub_id") + ">" + query.get("arrival_hub_id"));
-        if (route == null) {
-          respond(exchange, 404, "{\"code\":\"HUB_ROUTE_NOT_FOUND\",\"message\":\"not found\"}");
-        } else {
-          respond(exchange, 200, route);
-        }
-      } else {
-        respond(exchange, 404, "{\"code\":\"NOT_FOUND\",\"message\":\"not found\"}");
-      }
+              query == null ? request.getRequestURI() : request.getRequestURI() + "?" + query,
+              request.getHeader("X-Service-Token"),
+              request.getHeader("X-Actor-Username")));
     }
 
-    private static Map<String, String> query(String rawQuery) {
-      Map<String, String> values = new ConcurrentHashMap<>();
-      for (String pair : rawQuery == null ? new String[0] : rawQuery.split("&")) {
-        String[] parts = pair.split("=", 2);
-        values.put(parts[0], parts.length > 1 ? parts[1] : "");
-      }
-      return values;
-    }
-
-    private static void respond(HttpExchange exchange, int status, String body) throws IOException {
-      byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
-      exchange.getResponseHeaders().add("Content-Type", "application/json");
-      exchange.sendResponseHeaders(status, bytes.length);
-      try (OutputStream output = exchange.getResponseBody()) {
-        output.write(bytes);
-      }
+    private static ResponseEntity<String> json(int status, String body) {
+      return ResponseEntity.status(status).contentType(MediaType.APPLICATION_JSON).body(body);
     }
   }
 }
