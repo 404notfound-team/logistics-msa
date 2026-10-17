@@ -249,11 +249,7 @@ class InternalDeliveryCreationIntegrationTest {
             .getContentAsString();
 
     String found =
-        lookup(orderId)
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+        lookup(orderId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
 
     assertThat(dataOf(found)).isEqualTo(dataOf(created));
   }
@@ -309,11 +305,7 @@ class InternalDeliveryCreationIntegrationTest {
             .getResponse()
             .getContentAsString();
     String found =
-        lookup(orderId)
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse()
-            .getContentAsString();
+        lookup(orderId).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
     assertThat(dataOf(found)).isEqualTo(dataOf(created));
   }
 
