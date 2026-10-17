@@ -1,10 +1,11 @@
 package com.notfound.logistics.delivery.infrastructure.client;
 
+import com.notfound.logistics.delivery.infrastructure.security.ServiceAuthentication;
 import feign.RequestInterceptor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 /**
  * 다른 서비스의 내부 API를 호출할 때 Delivery 서비스 인증값과 원 요청자를 헤더에 붙인다. 모든 Feign 클라이언트에 적용되지 않도록
@@ -24,7 +25,7 @@ public class InternalServiceFeignConfiguration {
     }
     return template -> {
       template.header(SERVICE_TOKEN_HEADER, serviceToken);
-      // Hub는 원 요청자 헤더를 필수로 요구한다. 받은 요청에 있으면 그대로 전달한다.
+      // Hub는 원 요청자 헤더를 필수로 요구한다. 인증된 요청에 있으면 그대로 전달한다.
       String actor = currentActor();
       if (actor != null) {
         template.header(ACTOR_USERNAME_HEADER, actor);
@@ -32,14 +33,11 @@ public class InternalServiceFeignConfiguration {
     };
   }
 
-  // 현재 처리 중인 HTTP 요청의 X-Actor-Username을 읽는다. 요청 스레드가 아니거나 헤더가 없으면 null.
-  // TODO: 수신 측 서비스 인증을 구현하면 인증을 통과한 SecurityContext의 주체로 바꾸기
+  // 서비스 인증을 통과한 현재 요청의 원 요청자를 읽는다. 인증된 서비스 호출이 아니거나 원 요청자가 없으면 null.
   private static String currentActor() {
-    if (!(RequestContextHolder.getRequestAttributes()
-        instanceof ServletRequestAttributes attributes)) {
-      return null;
-    }
-    String actor = attributes.getRequest().getHeader(ACTOR_USERNAME_HEADER);
-    return actor == null || actor.isBlank() ? null : actor;
+    Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+    return authentication instanceof ServiceAuthentication service
+        ? service.getActorUsername()
+        : null;
   }
 }
