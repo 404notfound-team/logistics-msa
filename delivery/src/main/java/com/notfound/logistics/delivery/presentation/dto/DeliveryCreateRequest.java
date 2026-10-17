@@ -1,5 +1,6 @@
 package com.notfound.logistics.delivery.presentation.dto;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryCreateCommand;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -13,4 +14,11 @@ public record DeliveryCreateRequest(
     @Schema(description = "출발 허브 ID") @NotNull UUID departureHubId,
     @Schema(description = "목적지 허브 ID") @NotNull UUID destinationHubId,
     @Schema(description = "배송지 주소") @NotBlank @Size(max = 255) String address,
-    @Schema(description = "수령인") @NotBlank @Size(max = 100) String recipientName) {}
+    @Schema(description = "수령인") @NotBlank @Size(max = 100) String recipientName) {
+
+  /** 요청을 application 계층 입력값으로 변환한다. */
+  public DeliveryCreateCommand toCommand() {
+    return new DeliveryCreateCommand(
+        orderId, departureHubId, destinationHubId, address, recipientName);
+  }
+}
