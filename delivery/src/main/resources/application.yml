@@ -11,6 +11,7 @@ delivery:
         allowed:
           - POST /internal/deliveries
           - GET /internal/deliveries/by-order/*
+          - POST /internal/deliveries/*/cancel
 springdoc:
   api-docs:
     enabled: false

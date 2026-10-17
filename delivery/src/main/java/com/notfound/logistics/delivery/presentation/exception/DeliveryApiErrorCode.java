@@ -18,7 +18,7 @@ record DeliveryApiErrorCode(DeliveryErrorCode errorCode) implements ApiErrorCode
   public int httpStatus() {
     return switch (errorCode) {
       case DELIVERY_NOT_FOUND, HUB_NOT_FOUND, HUB_ROUTE_NOT_FOUND -> 404;
-      case DELIVERY_ALREADY_EXISTS -> 409;
+      case DELIVERY_ALREADY_EXISTS, DELIVERY_ALREADY_STARTED -> 409;
       case HUB_UNAVAILABLE -> 503;
     };
   }

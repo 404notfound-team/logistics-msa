@@ -1,6 +1,8 @@
 package com.notfound.logistics.delivery.domain.model;
 
 import com.notfound.logistics.common.audit.AuditEntity;
+import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
+import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -72,6 +74,21 @@ public class Delivery extends AuditEntity {
       String address,
       String recipientName) {
     return new Delivery(orderId, departureHubId, destinationHubId, address, recipientName);
+  }
+
+  /**
+   * 출발 전(HUB_WAITING) 배송을 취소한다. 이미 취소된 배송이면 그대로 둔다(재요청 멱등).
+   *
+   * @throws DeliveryBusinessException 그 밖의 상태면 DELIVERY_ALREADY_STARTED
+   */
+  public void cancel() {
+    if (status == DeliveryStatus.CANCELLED) {
+      return;
+    }
+    if (status != DeliveryStatus.HUB_WAITING) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_ALREADY_STARTED);
+    }
+    status = DeliveryStatus.CANCELLED;
   }
 
   private static String requireText(String value, String name) {

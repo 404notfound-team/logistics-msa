@@ -103,6 +103,13 @@ public class DeliveryRoute extends AuditEntity {
     this.assigneeId = assigneeId;
   }
 
+  /** 출발 전(WAITING) 구간을 취소한다. 이미 취소된 구간은 그대로 둔다. */
+  public void cancel() {
+    if (status == DeliveryRouteStatus.WAITING) {
+      status = DeliveryRouteStatus.CANCELLED;
+    }
+  }
+
   private static Integer requireAtLeastOne(Integer value, String name) {
     Objects.requireNonNull(value, name);
     if (value < 1) {
