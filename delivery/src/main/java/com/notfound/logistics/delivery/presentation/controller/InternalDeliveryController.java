@@ -4,6 +4,7 @@ import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryCreationResult;
 import com.notfound.logistics.delivery.application.service.DeliveryCancellationService;
 import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
+import com.notfound.logistics.delivery.application.service.DeliveryDeletionService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateRequest;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateResponse;
@@ -13,6 +14,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,6 +35,7 @@ class InternalDeliveryController {
   private final DeliveryCreationService deliveryCreationService;
   private final DeliveryQueryService deliveryQueryService;
   private final DeliveryCancellationService deliveryCancellationService;
+  private final DeliveryDeletionService deliveryDeletionService;
 
   /**
    * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status다.
@@ -85,5 +88,16 @@ class InternalDeliveryController {
   @PostMapping("/{id}/cancel")
   ApiResponse<OrderDeliveryResponse> cancel(@PathVariable("id") UUID id) {
     return new ApiResponse<>(OrderDeliveryResponse.from(deliveryCancellationService.cancel(id)));
+  }
+
+  /**
+   * 배송과 배송의 모든 경로를 논리 삭제한다. 요청 본문은 없다.
+   *
+   * <p>TODO: 응답 명세 확정 전까지 204(본문 없음)로 응답한다.
+   */
+  @DeleteMapping("/{id}")
+  ResponseEntity<Void> delete(@PathVariable("id") UUID id) {
+    deliveryDeletionService.delete(id);
+    return ResponseEntity.noContent().build();
   }
 }
