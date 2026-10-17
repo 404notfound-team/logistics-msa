@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class DeliveryTest {
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
@@ -158,5 +159,49 @@ class DeliveryTest {
   private static Delivery delivery() {
     return Delivery.create(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "서울특별시 송파구 송파대로 55", "홍길동");
+  }
+
+
+  @Test
+  void waitingDeliveryIsCancelled() {
+    Delivery delivery = delivery(DeliveryStatus.HUB_WAITING);
+
+    delivery.cancel();
+
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.CANCELLED);
+  }
+
+  @Test
+  void cancellingACancelledDeliveryAgainKeepsItCancelled() {
+    Delivery delivery = delivery(DeliveryStatus.CANCELLED);
+
+    delivery.cancel();
+
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.CANCELLED);
+  }
+
+  @ParameterizedTest
+  @EnumSource(
+      value = DeliveryStatus.class,
+      names = {"HUB_WAITING", "CANCELLED"},
+      mode = EnumSource.Mode.EXCLUDE)
+  void startedDeliveryCannotBeCancelledAndKeepsItsStatus(DeliveryStatus status) {
+    Delivery delivery = delivery(status);
+
+    assertThatThrownBy(delivery::cancel)
+        .isInstanceOfSatisfying(
+            DeliveryBusinessException.class,
+            exception ->
+                assertThat(exception.getErrorCode())
+                    .isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_STARTED));
+    assertThat(delivery.getStatus()).isEqualTo(status);
+  }
+
+  private static Delivery delivery(DeliveryStatus status) {
+    Delivery delivery =
+        Delivery.create(
+            UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "부산시 해운대구 1", "홍길동");
+    ReflectionTestUtils.setField(delivery, "status", status);
+    return delivery;
   }
 }
