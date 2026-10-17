@@ -25,6 +25,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /** 저장 중 order_id 유니크 인덱스 위반(동시 요청)이 났을 때의 판단을 확인한다. */
 class DeliveryCreationServiceTest {
@@ -38,7 +39,9 @@ class DeliveryCreationServiceTest {
   private final HubClient hubClient = mock(HubClient.class);
   private final DeliveryCreationService service =
       new DeliveryCreationService(
-          deliveryRepository, hubClient, mock(PlatformTransactionManager.class));
+          deliveryRepository,
+          hubClient,
+          new TransactionTemplate(mock(PlatformTransactionManager.class)));
 
   @BeforeEach
   void hubResponds() {
