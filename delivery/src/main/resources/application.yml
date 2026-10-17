@@ -3,6 +3,15 @@ server:
 delivery:
   jwt:
     secret: ${JWT_SECRET:}
+  internal-auth:
+    # Delivery가 다른 서비스 내부 API를 호출할 때 보내는 X-Service-Token 값. 비어 있으면 기동에 실패한다.
+    service-token: ${DELIVERY_SERVICE_TOKEN:}
+    # Delivery 내부 API를 호출할 수 있는 서비스와 허용 API(`METHOD /path-pattern`). 토큰이 비어 있는 서비스는 인증되지 않는다.
+    clients:
+      orders:
+        token: ${ORDERS_SERVICE_TOKEN:}
+        allowed:
+          - POST /internal/deliveries
 springdoc:
   api-docs:
     enabled: false

@@ -3,22 +3,21 @@ package com.notfound.logistics.delivery.infrastructure.client;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.notfound.logistics.delivery.infrastructure.security.ServiceAuthentication;
 import feign.RequestInterceptor;
 import feign.RequestTemplate;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletRequest;
-import org.springframework.web.context.request.RequestContextHolder;
-import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.security.core.context.SecurityContextHolder;
 
-/** 내부 호출 인증 헤더 규칙: 토큰은 항상, 원 요청자는 받은 요청에 있을 때만 붙이고, 토큰이 비면 기동하지 않는다. */
+/** 내부 호출 인증 헤더 규칙: 토큰은 항상, 원 요청자는 인증된 요청에 있을 때만 붙이고, 토큰이 비면 기동하지 않는다. */
 class InternalServiceFeignConfigurationTest {
   private final InternalServiceFeignConfiguration configuration =
       new InternalServiceFeignConfiguration();
 
   @AfterEach
-  void clearRequest() {
-    RequestContextHolder.resetRequestAttributes();
+  void clearAuthentication() {
+    SecurityContextHolder.clearContext();
   }
 
   @Test
@@ -29,10 +28,9 @@ class InternalServiceFeignConfigurationTest {
   }
 
   @Test
-  void addsTokenAndRelaysTheActorOfTheCurrentRequest() {
-    MockHttpServletRequest incoming = new MockHttpServletRequest();
-    incoming.addHeader("X-Actor-Username", "orders-user");
-    RequestContextHolder.setRequestAttributes(new ServletRequestAttributes(incoming));
+  void addsTokenAndRelaysTheActorOfTheAuthenticatedRequest() {
+    SecurityContextHolder.getContext()
+        .setAuthentication(new ServiceAuthentication("orders", "orders-user"));
 
     RequestTemplate template = apply("token-value");
 
@@ -41,10 +39,19 @@ class InternalServiceFeignConfigurationTest {
   }
 
   @Test
-  void omitsTheActorOutsideAnHttpRequest() {
+  void omitsTheActorOutsideAnAuthenticatedServiceCall() {
     RequestTemplate template = apply("token-value");
 
     assertThat(template.headers().get("X-Service-Token")).containsExactly("token-value");
+    assertThat(template.headers()).doesNotContainKey("X-Actor-Username");
+  }
+
+  @Test
+  void omitsTheActorWhenTheCallingServiceSentNone() {
+    SecurityContextHolder.getContext().setAuthentication(new ServiceAuthentication("orders", null));
+
+    RequestTemplate template = apply("token-value");
+
     assertThat(template.headers()).doesNotContainKey("X-Actor-Username");
   }
 
