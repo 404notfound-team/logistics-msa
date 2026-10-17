@@ -62,7 +62,7 @@ curl -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/api/hubs/00000000-
 
 기본 로그인 주체는 `devmaster` / `MASTER`입니다. `--role USER`는 `devseed`의 주문 15건만 보고,
 `--username devseed2 --role USER`는 나머지 15건만 봅니다. 다른 작성자의 주문 상세는 403입니다.
-배송 목록 `/api/deliveries?status=WAITING`은 4건이며 나머지 네 상태도 각각 4건입니다.
+배송 목록 `/api/deliveries?status=HUB_WAITING`은 4건이며 나머지 네 상태도 각각 4건입니다.
 목록과 상세 `/api/deliveries/c0ffee39-0004-4000-8000-000000000001`의 `routes`에 구간이 순서대로 나옵니다. 1번은 두 대기 구간, 17번은 도착한 첫 구간과 이동 중인 두 번째 구간이며, 같은 허브인 2번은 거리·시간이 0인 한 구간입니다.
 논리 삭제 주문 31번은 상세 404이고, 논리 삭제 배송은 검색 결과에서 제외됩니다.
 업체 관리자 UUID `c0ffee39-0000-4000-8000-000000000099`는 `devseed`, 배송 담당자 UUID `...000000000098`은 `devseed2`와 연결됩니다. 개발 계정의 비밀번호·권한·논리 삭제는 재시작해도 바꾸지 않습니다. 예약 ID나 username을 다른 생성자가 사용하면 적재를 중단합니다.

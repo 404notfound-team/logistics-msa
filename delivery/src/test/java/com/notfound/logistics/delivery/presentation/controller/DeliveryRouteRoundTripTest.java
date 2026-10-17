@@ -62,7 +62,7 @@ class DeliveryRouteRoundTripTest {
 
   @Test
   void fractionalDistancesAndLongDurationsSurviveFromDatabaseToJsonResponse() throws Exception {
-    UUID deliveryId = insertDelivery(DeliveryStatus.HUB_TRANSIT);
+    UUID deliveryId = insertDelivery(DeliveryStatus.HUB_MOVING);
     insertRoute(
         deliveryId,
         1,
@@ -110,7 +110,7 @@ class DeliveryRouteRoundTripTest {
 
   @Test
   void arrivedRouteStaysArrivedWhileTheDeliveryMovesOnToTheCompany() throws Exception {
-    UUID deliveryId = insertDelivery(DeliveryStatus.COMPANY_TRANSIT);
+    UUID deliveryId = insertDelivery(DeliveryStatus.COMPANY_MOVING);
     insertRoute(
         deliveryId,
         1,
@@ -123,7 +123,7 @@ class DeliveryRouteRoundTripTest {
     mockMvc
         .perform(get("/api/deliveries/{delivery_id}", deliveryId))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.status").value("COMPANY_TRANSIT"))
+        .andExpect(jsonPath("$.data.status").value("COMPANY_MOVING"))
         .andExpect(jsonPath("$.data.routes[0].status").value("ARRIVED"));
   }
 

@@ -95,7 +95,7 @@ class DeliveryControllerTest {
         new DeliveryResult(
             UUID.fromString("00000000-0000-0000-0000-0000000000aa"),
             ORDER_ID,
-            DeliveryStatus.HUB_TRANSIT,
+            DeliveryStatus.HUB_MOVING,
             DEPARTURE_HUB_ID,
             DESTINATION_HUB_ID,
             "서울특별시 송파구 송파대로 55",
@@ -122,7 +122,7 @@ class DeliveryControllerTest {
         .perform(
             get("/api/deliveries")
                 .param("order_id", ORDER_ID.toString())
-                .param("status", "HUB_TRANSIT")
+                .param("status", "HUB_MOVING")
                 .param("departure_hub_id", DEPARTURE_HUB_ID.toString())
                 .param("destination_hub_id", DESTINATION_HUB_ID.toString())
                 .param("address", " 송파 ")
@@ -134,7 +134,7 @@ class DeliveryControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content[0].delivery_id").value(result.deliveryId().toString()))
         .andExpect(jsonPath("$.data.content[0].order_id").value(ORDER_ID.toString()))
-        .andExpect(jsonPath("$.data.content[0].status").value("HUB_TRANSIT"))
+        .andExpect(jsonPath("$.data.content[0].status").value("HUB_MOVING"))
         .andExpect(
             jsonPath("$.data.content[0].departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
         .andExpect(
@@ -161,7 +161,7 @@ class DeliveryControllerTest {
         .isEqualTo(
             new DeliverySearchCondition(
                 ORDER_ID,
-                DeliveryStatus.HUB_TRANSIT,
+                DeliveryStatus.HUB_MOVING,
                 DEPARTURE_HUB_ID,
                 DESTINATION_HUB_ID,
                 "송파",
@@ -193,7 +193,7 @@ class DeliveryControllerTest {
             new DeliveryResult(
                 deliveryId,
                 ORDER_ID,
-                DeliveryStatus.HUB_TRANSIT,
+                DeliveryStatus.HUB_MOVING,
                 DEPARTURE_HUB_ID,
                 DESTINATION_HUB_ID,
                 "서울특별시 송파구 송파대로 55",
@@ -230,7 +230,7 @@ class DeliveryControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.order_id").value(ORDER_ID.toString()))
-        .andExpect(jsonPath("$.data.status").value("HUB_TRANSIT"))
+        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"))
         .andExpect(jsonPath("$.data.departure_hub_id").value(DEPARTURE_HUB_ID.toString()))
         .andExpect(jsonPath("$.data.destination_hub_id").value(DESTINATION_HUB_ID.toString()))
         .andExpect(jsonPath("$.data.address").value("서울특별시 송파구 송파대로 55"))

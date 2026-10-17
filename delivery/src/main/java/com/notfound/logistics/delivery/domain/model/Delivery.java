@@ -64,7 +64,7 @@ public class Delivery extends AuditEntity {
     this.destinationHubId = Objects.requireNonNull(destinationHubId, "destinationHubId");
     this.address = requireText(address, "address");
     this.recipientName = requireText(recipientName, "recipientName");
-    this.status = DeliveryStatus.WAITING;
+    this.status = DeliveryStatus.HUB_WAITING;
   }
 
   public static Delivery create(
@@ -77,7 +77,7 @@ public class Delivery extends AuditEntity {
   }
 
   /**
-   * 출발 전(WAITING) 배송을 취소한다. 이미 취소된 배송이면 그대로 둔다(재요청 멱등).
+   * 출발 전(HUB_WAITING) 배송을 취소한다. 이미 취소된 배송이면 그대로 둔다(재요청 멱등).
    *
    * @throws DeliveryBusinessException 그 밖의 상태면 DELIVERY_ALREADY_STARTED
    */
@@ -85,7 +85,7 @@ public class Delivery extends AuditEntity {
     if (status == DeliveryStatus.CANCELLED) {
       return;
     }
-    if (status != DeliveryStatus.WAITING) {
+    if (status != DeliveryStatus.HUB_WAITING) {
       throw new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_ALREADY_STARTED);
     }
     status = DeliveryStatus.CANCELLED;

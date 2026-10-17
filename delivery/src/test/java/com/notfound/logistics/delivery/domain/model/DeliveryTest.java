@@ -15,7 +15,7 @@ class DeliveryTest {
 
   @Test
   void waitingDeliveryIsCancelled() {
-    Delivery delivery = delivery(DeliveryStatus.WAITING);
+    Delivery delivery = delivery(DeliveryStatus.HUB_WAITING);
 
     delivery.cancel();
 
@@ -34,7 +34,7 @@ class DeliveryTest {
   @ParameterizedTest
   @EnumSource(
       value = DeliveryStatus.class,
-      names = {"WAITING", "CANCELLED"},
+      names = {"HUB_WAITING", "CANCELLED"},
       mode = EnumSource.Mode.EXCLUDE)
   void startedDeliveryCannotBeCancelledAndKeepsItsStatus(DeliveryStatus status) {
     Delivery delivery = delivery(status);

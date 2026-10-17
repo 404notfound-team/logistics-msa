@@ -92,7 +92,7 @@ class InternalDeliveryCancellationIntegrationTest {
   @Test
   void cancelsTheWaitingDeliveryAndRespondsWithOnlyTheSpecifiedFields() throws Exception {
     UUID orderId = UUID.randomUUID();
-    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
 
     cancel(deliveryId)
         .andExpect(status().isOk())
@@ -111,7 +111,7 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void cancelsAllWaitingRoutesOfTheDelivery() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
     insertRoute(deliveryId, 1, DeliveryRouteStatus.WAITING, null);
     insertRoute(deliveryId, 2, DeliveryRouteStatus.WAITING, null);
 
@@ -129,7 +129,7 @@ class InternalDeliveryCancellationIntegrationTest {
   @Test
   void deliveryWithoutRoutesIsCancelled() throws Exception {
     // 출발·목적지 허브가 같은 배송은 경로가 없다.
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     cancel(deliveryId)
         .andExpect(status().isOk())
@@ -139,15 +139,15 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void otherDeliveriesAndDeletedRoutesAreNotChanged() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
     insertRoute(deliveryId, 1, DeliveryRouteStatus.WAITING, BASE);
-    UUID other = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID other = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
     insertRoute(other, 1, DeliveryRouteStatus.WAITING, null);
 
     cancel(deliveryId).andExpect(status().isOk());
 
     assertThat(routeStatuses(deliveryId)).containsExactly("WAITING");
-    assertThat(deliveryRow(other).get("status")).isEqualTo("WAITING");
+    assertThat(deliveryRow(other).get("status")).isEqualTo("HUB_WAITING");
     assertThat(routeStatuses(other)).containsExactly("WAITING");
   }
 
@@ -168,7 +168,7 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void repeatedCancelReturnsTheSameResult() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
     insertRoute(deliveryId, 1, DeliveryRouteStatus.WAITING, null);
 
     String first =
@@ -191,7 +191,7 @@ class InternalDeliveryCancellationIntegrationTest {
   @Test
   void concurrentCancelRequestsAllSucceed() throws Exception {
     // 쓰기 잠금으로 순서대로 처리되어, 먼저 끝난 요청이 취소하고 나머지는 이미 취소된 배송을 받는다.
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
     insertRoute(deliveryId, 1, DeliveryRouteStatus.WAITING, null);
     int requests = 5;
     CountDownLatch start = new CountDownLatch(1);
@@ -221,7 +221,7 @@ class InternalDeliveryCancellationIntegrationTest {
   @ParameterizedTest
   @EnumSource(
       value = DeliveryStatus.class,
-      names = {"WAITING", "CANCELLED"},
+      names = {"HUB_WAITING", "CANCELLED"},
       mode = EnumSource.Mode.EXCLUDE)
   void startedDeliveryIsConflictAndNothingChanges(DeliveryStatus deliveryStatus) throws Exception {
     UUID deliveryId = insertDelivery(UUID.randomUUID(), deliveryStatus, null);
@@ -240,7 +240,7 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void unknownDeliveryIsNotFound() throws Exception {
-    insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     cancel(UUID.randomUUID())
         .andExpect(status().isNotFound())
@@ -250,12 +250,12 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void deletedDeliveryIsNotFoundAndNotChanged() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, BASE);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, BASE);
 
     cancel(deliveryId)
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"));
-    assertUnchanged(deliveryId, "WAITING");
+    assertUnchanged(deliveryId, "HUB_WAITING");
   }
 
   @ParameterizedTest
@@ -270,12 +270,12 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void requestBodyIsIgnored() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     perform(
             post(PATH, deliveryId)
                 .contentType("application/json")
-                .content("{\"status\":\"COMPLETED\"}"),
+                .content("{\"status\":\"DELIVERED\"}"),
             ORDERS_TOKEN,
             ACTOR)
         .andExpect(status().isOk())
@@ -284,32 +284,32 @@ class InternalDeliveryCancellationIntegrationTest {
 
   @Test
   void missingServiceTokenIsUnauthorizedAndNothingChanges() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     perform(post(PATH, deliveryId), null, ACTOR)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    assertUnchanged(deliveryId, "WAITING");
+    assertUnchanged(deliveryId, "HUB_WAITING");
   }
 
   @Test
   void unknownServiceTokenIsUnauthorizedAndNothingChanges() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     perform(post(PATH, deliveryId), "unknown-service-token", ACTOR)
         .andExpect(status().isUnauthorized())
         .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
-    assertUnchanged(deliveryId, "WAITING");
+    assertUnchanged(deliveryId, "HUB_WAITING");
   }
 
   @Test
   void serviceWithoutPermissionIsForbiddenAndNothingChanges() throws Exception {
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.WAITING, null);
+    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
 
     perform(post(PATH, deliveryId), COMPANY_TOKEN, ACTOR)
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.code").value("FORBIDDEN"));
-    assertUnchanged(deliveryId, "WAITING");
+    assertUnchanged(deliveryId, "HUB_WAITING");
   }
 
   @Test

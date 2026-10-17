@@ -32,7 +32,7 @@ class DeliveryCancellationServiceTest {
   @Test
   void cancelsTheWaitingDeliveryAndAllOfItsRoutes() {
     UUID deliveryId = UUID.randomUUID();
-    Delivery delivery = delivery(deliveryId, DeliveryStatus.WAITING);
+    Delivery delivery = delivery(deliveryId, DeliveryStatus.HUB_WAITING);
     DeliveryRoute first = route(delivery, 1);
     DeliveryRoute second = route(delivery, 2);
     given(deliveryRepository.findByIdForUpdate(deliveryId)).willReturn(Optional.of(delivery));
@@ -67,7 +67,7 @@ class DeliveryCancellationServiceTest {
   @Test
   void startedDeliveryIsRejectedWithoutTouchingItsRoutes() {
     UUID deliveryId = UUID.randomUUID();
-    Delivery delivery = delivery(deliveryId, DeliveryStatus.HUB_TRANSIT);
+    Delivery delivery = delivery(deliveryId, DeliveryStatus.HUB_MOVING);
     given(deliveryRepository.findByIdForUpdate(deliveryId)).willReturn(Optional.of(delivery));
 
     assertThatThrownBy(() -> service.cancel(deliveryId))
@@ -76,7 +76,7 @@ class DeliveryCancellationServiceTest {
             exception ->
                 assertThat(exception.getErrorCode())
                     .isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_STARTED));
-    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_TRANSIT);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
     then(deliveryRepository).should(never()).findRoutesByDeliveryId(any());
   }
 
@@ -98,7 +98,7 @@ class DeliveryCancellationServiceTest {
   void deliveryIsReadWithAWriteLock() {
     UUID deliveryId = UUID.randomUUID();
     given(deliveryRepository.findByIdForUpdate(deliveryId))
-        .willReturn(Optional.of(delivery(deliveryId, DeliveryStatus.WAITING)));
+        .willReturn(Optional.of(delivery(deliveryId, DeliveryStatus.HUB_WAITING)));
     given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of());
 
     service.cancel(deliveryId);

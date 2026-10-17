@@ -136,7 +136,7 @@ class InternalDeliveryCreationIntegrationTest {
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.data.*", hasSize(3)))
             .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-            .andExpect(jsonPath("$.data.status").value("WAITING"))
+            .andExpect(jsonPath("$.data.status").value("HUB_WAITING"))
             .andReturn()
             .getResponse()
             .getContentAsString();
@@ -145,7 +145,7 @@ class InternalDeliveryCreationIntegrationTest {
     Map<String, Object> delivery =
         jdbc.queryForMap("SELECT * FROM p_deliveries WHERE delivery_id = ?", deliveryId);
     assertThat(delivery.get("order_id")).isEqualTo(orderId);
-    assertThat(delivery.get("status")).isEqualTo("WAITING");
+    assertThat(delivery.get("status")).isEqualTo("HUB_WAITING");
     assertThat(delivery.get("address")).isEqualTo("부산시 해운대구 1");
     // Auditing: 작업자는 X-Actor-Username, 시각은 자동으로 채워진다.
     assertThat(delivery.get("created_by")).isEqualTo(ACTOR);
@@ -279,7 +279,7 @@ class InternalDeliveryCreationIntegrationTest {
     lookup(orderId)
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-        .andExpect(jsonPath("$.data.status").value("WAITING"));
+        .andExpect(jsonPath("$.data.status").value("HUB_WAITING"));
   }
 
   @Test
