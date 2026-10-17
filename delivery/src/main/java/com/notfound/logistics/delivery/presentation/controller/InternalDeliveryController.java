@@ -2,6 +2,7 @@ package com.notfound.logistics.delivery.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryCreationResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCancellationService;
 import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.presentation.dto.DeliveryCreateRequest;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 class InternalDeliveryController {
   private final DeliveryCreationService deliveryCreationService;
   private final DeliveryQueryService deliveryQueryService;
+  private final DeliveryCancellationService deliveryCancellationService;
 
   /**
    * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status다.
@@ -68,5 +70,20 @@ class InternalDeliveryController {
   ApiResponse<OrderDeliveryResponse> findByOrder(@PathVariable("order_id") UUID orderId) {
     return new ApiResponse<>(
         OrderDeliveryResponse.from(deliveryQueryService.searchByOrderId(orderId)));
+  }
+
+  /**
+   * 배송과 배송의 모든 경로를 취소한다. 응답 본문은 delivery_id, order_id, status다.
+   *
+   * <ul>
+   *   <li>200: 취소된 배송
+   *   <li>400: id가 UUID가 아님
+   *   <li>404: 배송 없음(DELIVERY_NOT_FOUND)
+   *   <li>409: 이미 출발해 취소할 수 없음(DELIVERY_ALREADY_STARTED)
+   * </ul>
+   */
+  @PostMapping("/{id}/cancel")
+  ApiResponse<OrderDeliveryResponse> cancel(@PathVariable("id") UUID id) {
+    return new ApiResponse<>(OrderDeliveryResponse.from(deliveryCancellationService.cancel(id)));
   }
 }
