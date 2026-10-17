@@ -3,6 +3,7 @@ package com.notfound.logistics.company.presentation.controller;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.presentation.dto.InternalCompanyResponse;
+import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -21,11 +22,12 @@ public class InternalCompanyController {
   private final CompanyService companyService;
 
   /**
-   * users: 회원가입 시 소속 업체명을 업체 ID로 바꾼다. 이름이 정확히 같은 업체를 모두 돌려주며, 없으면 빈 목록이다. 0개·여러 개의 판단은 users가 한다.
+   * users: 회원가입 시 소속 업체명을 업체 ID로 바꾼다. 이름이 정확히 같은 업체를 모두 돌려주며, 없으면 빈 목록이다. 0개·여러 개의 판단은 users가 한다. 빈
+   * 값·공백만 있는 이름은 조회하지 않고 400으로 응답한다.
    */
   @GetMapping
   public ApiResponse<List<InternalCompanyResponse>> getCompaniesByName(
-      @RequestParam("name") String name) {
+      @RequestParam("name") @NotBlank String name) {
     return new ApiResponse<>(
         companyService.findCompaniesByName(name).stream()
             .map(InternalCompanyResponse::from)
