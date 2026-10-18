@@ -3,7 +3,7 @@ package com.notfound.logistics.delivery.domain.model;
 /**
  * 허브 간 이동(HUB_*)을 거쳐 목적지 허브에서 업체로 배송(COMPANY_MOVING)되는 흐름이다.
  *
- * <p>선언 순서가 곧 진행 순서이며, 바로 다음 상태로만 한 단계씩 나아간다. 되돌리거나 건너뛸 수 없고 DELIVERED는 마지막 상태다.
+ * <p>바로 다음 배송 상태로만 진행한다. 취소는 출발 전 주문 취소 API에서만 처리하며 완료·취소는 종료 상태다.
  */
 public enum DeliveryStatus {
   HUB_WAITING("허브 대기중"),
@@ -25,6 +25,12 @@ public enum DeliveryStatus {
 
   /** 현재 상태에서 next로 바로 바꿀 수 있는지. 바로 다음 단계만 허용한다. */
   public boolean canTransitionTo(DeliveryStatus next) {
-    return next.ordinal() == ordinal() + 1;
+    return switch (this) {
+      case HUB_WAITING -> next == HUB_MOVING;
+      case HUB_MOVING -> next == DESTINATION_HUB_ARRIVED;
+      case DESTINATION_HUB_ARRIVED -> next == COMPANY_MOVING;
+      case COMPANY_MOVING -> next == DELIVERED;
+      case DELIVERED, CANCELLED -> false;
+    };
   }
 }

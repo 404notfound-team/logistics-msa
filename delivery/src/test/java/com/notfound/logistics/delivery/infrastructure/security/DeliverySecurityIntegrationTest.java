@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
+import com.notfound.logistics.delivery.application.service.DeliveryCancellationService;
 import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
@@ -50,6 +51,7 @@ class DeliverySecurityIntegrationTest {
   @MockitoBean private DeliveryQueryService deliveryQueryService;
   @MockitoBean private DeliveryCommandService deliveryCommandService;
   @MockitoBean private DeliveryCreationService deliveryCreationService;
+  @MockitoBean private DeliveryCancellationService deliveryCancellationService;
 
   @BeforeEach
   void stubModify() {
