@@ -1,10 +1,10 @@
 # 404 Not Found · Logistics MSA
 
-물류 MSA 팀 프로젝트의 초기 인프라 저장소입니다. 도메인 앱 5개, Gateway, Eureka,
+물류 MSA 팀 프로젝트입니다. 도메인 앱 5개, Gateway, Eureka,
 PostgreSQL, Zipkin을 Docker Compose로 함께 실행합니다.
 
-현재 범위는 앱 기동·서비스 탐색·DB 연결·라우팅·분산 추적·서비스별 API 문서입니다.
-업무 API, JWT 인증/권한, 엔티티·초기 데이터, 주문 보상 처리와 Slack 알림은 아직 구현하지 않았습니다.
+업무 API·JWT 인증/권한·개발용 샘플과 서비스 탐색·라우팅·분산 추적·API 문서를 제공합니다.
+주문의 복구·보상 범위는 [주문 서비스](orders/README.md)를 따릅니다.
 로컬 개발용 구성으로, 외부 서버 배포에 사용하지 않습니다.
 
 ## 구성
@@ -79,8 +79,7 @@ Spring Boot 3.5와 호환되는 [springdoc 2.8 계열](https://springdoc.org/v2/
 문서와 UI는 기본 비활성이고, Compose가 사용하는 `local` 프로필에서 활성화합니다.
 서비스별 공개 API 접두사만 문서에 포함하며 `/internal/**`·Actuator·인프라 점검 경로는 제외합니다.
 응답 DTO의 필드명은 기존 Jackson 설정과 같은 `snake_case`로 표시합니다.
-현재는 업무 API가 없어서 **`No operations defined in spec!`가 정상**입니다.
-각 서비스에 공개 경로의 컨트롤러를 구현하고 앱을 다시 빌드·실행하면 문서에 나타납니다.
+각 서비스의 공개 업무 API가 문서에 나타납니다. 새 공개 컨트롤러를 추가하면 앱을 다시 빌드·실행해 확인합니다.
 
 ## 개발 DB 스키마
 
@@ -117,10 +116,10 @@ SH
 로컬 JDK 21을 설치하고 Gradle 실행 JDK도 21로 설정합니다(IntelliJ의 Gradle JVM 또는 `JAVA_HOME`).
 Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도구는 사용하지 않습니다.
 `build`는 Spotless 포맷 검사, Checkstyle, Java 컴파일, JUnit 테스트와 패키징을 수행합니다.
-Gateway·사용자 모듈의 OpenAPI/응답 계약 테스트와 공통 API·감사 테스트를 실행합니다.
-감사 및 개발 스키마 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로컬에서도 Docker가 필요합니다.
+각 모듈의 업무·권한·응답 계약·저장·동시성·복구 테스트와 공통 API·감사 테스트를 실행합니다.
+DB 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로컬에서도 Docker가 필요합니다.
 업무 테스트는 각 모듈의 `src/test/java`에 추가합니다.
-실제 서비스 연동 검증은 `scripts/smoke.py`가 수행합니다.
+인프라 연동은 `scripts/smoke.py`, 실제 주문 흐름은 [개발 데이터 연동 검사](infra/dev-data/README.md#검증-범위와-남은-연동)로 검증합니다.
 
 ```bash
 ./gradlew spotlessApply            # Java 포맷 자동 수정
@@ -158,6 +157,6 @@ CI에서는 Eureka 서버 응답 캐시와 클라이언트 목록을 5초마다 
   다른 DB 접속·public 스키마 생성·관리 권한은 없습니다.
   엔티티 변경과 기존 볼륨의 권한 반영은 [개발 DB 스키마](#개발-db-스키마)를 따릅니다.
 - 다른 서비스 데이터는 Feign으로 조회합니다. 다른 DB 직접 SQL·물리 FK·업무 엔티티 공유를 하지 않습니다.
-- Slack은 외부 Webhook 연동 대상입니다. 현재 컨테이너나 호출 코드를 만들지 않았습니다.
+- Slack은 Orders가 외부 Webhook으로 호출하며 기본 비활성입니다. 설정과 실패 처리는 [주문 서비스](orders/README.md)를 따릅니다.
 
 브랜치·커밋·PR 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따릅니다.

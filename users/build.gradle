@@ -31,12 +31,4 @@ tasks.named('test') {
         .withPropertyName('clearCompanyDevDataSql')
         .withPathSensitivity(PathSensitivity.RELATIVE)
     systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
-    inputs.files(
-        rootProject.file('infra/dev-data/seed-delivery-routes.sh'),
-        rootProject.file('hub/src/main/resources/db/seed/hub-routes.sql'),
-        rootProject.file('delivery/src/main/resources/db/migration/V1__create_p_deliveries.sql'),
-        rootProject.file('delivery/src/main/resources/db/migration/V2__create_p_delivery_routes.sql'),
-        rootProject.file('delivery/src/main/resources/db/seed/local_p_deliveries.sql'),
-        rootProject.file('delivery/src/main/resources/db/seed/local_p_delivery_routes.sql')
-    ).withPropertyName('deliveryRoutesDevData').withPathSensitivity(PathSensitivity.RELATIVE)
 }

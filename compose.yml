@@ -190,7 +190,7 @@ services:
       DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
     volumes:
       - ./infra/dev-data/seed-delivery-routes.sh:/workspace/infra/dev-data/seed-delivery-routes.sh:ro
-      - ./delivery/src/main/resources/db/seed/local_p_delivery_routes.sql:/workspace/delivery/src/main/resources/db/seed/local_p_delivery_routes.sql:ro
+      - ./delivery/src/main/resources/db/seed/local-delivery-routes.sql:/workspace/delivery/src/main/resources/db/seed/local-delivery-routes.sql:ro
     networks: [backend]
     depends_on:
       hub:

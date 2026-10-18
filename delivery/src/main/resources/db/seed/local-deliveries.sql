@@ -1,9 +1,6 @@
 -- local 프로필의 상태별 조회용 스냅샷. 취소 주문의 배송과 삭제 주문의 배송은 논리 삭제 상태다.
 BEGIN;
 LOCK TABLE delivery.p_deliveries IN SHARE ROW EXCLUSIVE MODE;
--- ddl-auto:update는 부분 UNIQUE 인덱스를 만들지 않으므로 로컬 스키마에도 적용한다.
-CREATE UNIQUE INDEX IF NOT EXISTS uk_p_deliveries_order_id
-    ON delivery.p_deliveries (order_id) WHERE deleted_at IS NULL;
 DO 'BEGIN
     IF EXISTS (
         SELECT 1 FROM delivery.p_deliveries

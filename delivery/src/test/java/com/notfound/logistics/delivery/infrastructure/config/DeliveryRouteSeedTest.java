@@ -1,10 +1,16 @@
-package com.notfound.logistics.infra;
+package com.notfound.logistics.delivery.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.notfound.logistics.delivery.DeliveryApplication;
 import java.nio.file.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.Container.ExecResult;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -12,7 +18,17 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.MountableFile;
 
 /** 실제 Hub DB에서 내보낸 경로를 Delivery DB에 적재하는 로컬 도구의 계산·보존·실패 원자성을 검증한다. */
+@SpringBootTest(
+    classes = DeliveryApplication.class,
+    properties = {
+      "eureka.client.enabled=false",
+      "management.tracing.enabled=false",
+      "springdoc.api-docs.enabled=false",
+      "delivery.internal-auth.service-token=test-delivery-service-token"
+    })
+@ActiveProfiles("local")
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DeliveryRouteSeedTest {
   private static final Path ROOT = Path.of(System.getProperty("logistics.repo-root"));
   private static final String FIRST_ROUTE = "c0ffee39-0007-4000-8000-000000000011";
@@ -39,10 +55,8 @@ class DeliveryRouteSeedTest {
         new String[] {
           "infra/dev-data/seed-delivery-routes.sh",
           "hub/src/main/resources/db/seed/hub-routes.sql",
-          SQL_ROOT + "migration/V1__create_p_deliveries.sql",
-          SQL_ROOT + "migration/V2__create_p_delivery_routes.sql",
-          SQL_ROOT + "seed/local_p_deliveries.sql",
-          SQL_ROOT + "seed/local_p_delivery_routes.sql"
+          SQL_ROOT + "seed/local-deliveries.sql",
+          SQL_ROOT + "seed/local-delivery-routes.sql"
         }) {
       database.withCopyFileToContainer(
           MountableFile.forHostPath(ROOT.resolve(path)), "/workspace/" + path);
@@ -50,8 +64,22 @@ class DeliveryRouteSeedTest {
     return database;
   }
 
+  @DynamicPropertySource
+  static void databaseProperties(DynamicPropertyRegistry registry) {
+    registry.add(
+        "spring.datasource.url",
+        () ->
+            "jdbc:postgresql://"
+                + DATABASE.getHost()
+                + ":"
+                + DATABASE.getMappedPort(5432)
+                + "/delivery_db?currentSchema=delivery");
+    registry.add("spring.datasource.username", () -> "delivery_app");
+    registry.add("spring.datasource.password", () -> "delivery-test-only");
+  }
+
   @BeforeEach
-  void prepareActualSeedsAndDeliverySchema() throws Exception {
+  void prepareActualSeeds() throws Exception {
     query(
         "hub",
         "DROP TABLE IF EXISTS hub.p_hub_routes;"
@@ -61,10 +89,8 @@ class DeliveryRouteSeedTest {
             + " created_at timestamptz, created_by text, updated_at timestamptz, updated_by text,"
             + " deleted_at timestamptz, deleted_by text, UNIQUE(departure_hub_id, arrival_hub_id))");
     file("hub", "hub/src/main/resources/db/seed/hub-routes.sql");
-    query("delivery", "DROP TABLE IF EXISTS delivery.p_delivery_routes, delivery.p_deliveries");
-    file("delivery", SQL_ROOT + "migration/V1__create_p_deliveries.sql");
-    file("delivery", SQL_ROOT + "migration/V2__create_p_delivery_routes.sql");
-    file("delivery", SQL_ROOT + "seed/local_p_deliveries.sql");
+    query("delivery", "TRUNCATE TABLE delivery.p_delivery_routes, delivery.p_deliveries");
+    file("delivery", SQL_ROOT + "seed/local-deliveries.sql");
   }
 
   @Test

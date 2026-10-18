@@ -38,6 +38,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -68,16 +69,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "delivery.internal-auth.clients.orders.token="
           + InternalDeliveryCreationIntegrationTest.ORDERS_TOKEN,
       "delivery.internal-auth.clients.company.token="
-          + InternalDeliveryCreationIntegrationTest.COMPANY_TOKEN,
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
+          + InternalDeliveryCreationIntegrationTest.COMPANY_TOKEN
     })
 @AutoConfigureMockMvc
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class InternalDeliveryCreationIntegrationTest {
   static final String SERVICE_TOKEN = "test-delivery-service-token";
@@ -90,7 +86,8 @@ class InternalDeliveryCreationIntegrationTest {
   private static final UUID ROUTE_ID = UUID.fromString("00000000-0000-0000-0000-00000000b001");
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   // 컨텍스트가 뜨기 전에 서버 포트를 정해야 discovery 주소에 넣을 수 있으므로 빈 포트를 미리 고른다.
   private static final int PORT = freePort();

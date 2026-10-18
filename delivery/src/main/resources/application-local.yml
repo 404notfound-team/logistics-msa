@@ -9,4 +9,5 @@ spring:
   sql:
     init:
       mode: always
-      data-locations: classpath:db/seed/local_p_deliveries.sql
+      schema-locations: classpath:db/indexes.sql
+      data-locations: classpath:db/seed/local-deliveries.sql
