@@ -6,7 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.orders.OrdersApplication;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
-import com.notfound.logistics.orders.support.LocalOrderStub;
+import com.notfound.logistics.orders.support.OrderClientFixture;
+import com.notfound.logistics.orders.support.OrderClientTestConfiguration;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -37,21 +38,21 @@ class OrderRestartIntegrationTest {
   @Test
   void aNewApplicationInstanceAutomaticallyRecoversPersistedInputAndIgnoresLiveProcessing()
       throws Exception {
-    try (var stub = new LocalOrderStub();
+    try (var fixture = new OrderClientFixture();
         var http = HttpClient.newHttpClient()) {
-      String stubUrl = stub.start();
-      String jwt = stub.token("alice", "USER");
+      fixture.timeout(300);
+      String jwt = fixture.token("alice", "USER");
       UUID key = UUID.randomUUID();
       String body =
           new ObjectMapper()
               .writeValueAsString(
                   Map.of(
                       "receiver_company_id",
-                      LocalOrderStub.RECEIVER,
+                      OrderClientFixture.RECEIVER,
                       "supplier_company_id",
-                      LocalOrderStub.SUPPLIER,
+                      OrderClientFixture.SUPPLIER,
                       "product_id",
-                      LocalOrderStub.PRODUCT,
+                      OrderClientFixture.PRODUCT,
                       "quantity",
                       3,
                       "delivery_address",
@@ -59,9 +60,9 @@ class OrderRestartIntegrationTest {
                       "recipient_name",
                       "수령인"));
       UUID id;
-      try (var first = application(stubUrl, "create", false)) {
+      try (var first = application(fixture, "create", false)) {
         int port = first.getWebServer().getPort();
-        stub.control(
+        fixture.control(
             Map.of(
                 "action",
                 "fault",
@@ -87,17 +88,17 @@ class OrderRestartIntegrationTest {
         assertThat(first.getBean(OrderRepository.class).findById(id).orElseThrow().getStatus())
             .isEqualTo(OrderStatus.RECOVERY_REQUIRED);
       }
-      stub.awaitIdle();
-      stub.control(
+      fixture.awaitIdle();
+      fixture.control(
           Map.of(
               "action",
               "company_hub",
               "company_id",
-              LocalOrderStub.SUPPLIER,
+              OrderClientFixture.SUPPLIER,
               "hub_id",
               "00000000-0000-0000-0000-000000000099"));
-      stub.control(Map.of("action", "product", "name", "바뀐 상품", "price", "30000.00"));
-      try (var restarted = application(stubUrl, "validate", true)) {
+      fixture.control(Map.of("action", "product", "name", "바뀐 상품", "price", "30000.00"));
+      try (var restarted = application(fixture, "validate", true)) {
         var repository = restarted.getBean(OrderRepository.class);
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < deadline
@@ -110,12 +111,12 @@ class OrderRestartIntegrationTest {
         assertThat(order.getDepartureHubId().toString()).endsWith("000000000002");
         assertThat(order.getCreatedBy()).isEqualTo("alice");
         assertThat(order.getUpdatedBy()).isEqualTo("alice");
-        assertThat(stub.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
-        assertThat(stub.state().path("deliveries")).hasSize(1);
-        assertThat(stub.state().path("notifications")).hasSize(1);
+        assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+        assertThat(fixture.state().path("deliveries")).hasSize(1);
+        assertThat(fixture.state().path("notifications")).hasSize(1);
         // While a request owns a CONFIRMED -> CANCELLING transition, automatic recovery must skip
         // it.
-        stub.control(
+        fixture.control(
             Map.of(
                 "action",
                 "fault",
@@ -148,8 +149,8 @@ class OrderRestartIntegrationTest {
                     })
                 .get(10, TimeUnit.SECONDS);
         assertThat(cancelled.statusCode()).as(cancelled.body()).isEqualTo(200);
-        assertThat(stub.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
-        assertThat(stub.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+        assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+        assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
       }
     }
   }
@@ -158,20 +159,14 @@ class OrderRestartIntegrationTest {
   @ValueSource(booleans = {true, false})
   void restartRecoversAfterLostRestorationResponseOrFailedFinalOrderCommit(boolean lostResponse)
       throws Exception {
-    try (var stub = new LocalOrderStub();
+    try (var fixture = new OrderClientFixture();
         var http = HttpClient.newHttpClient()) {
-      String url = stub.start();
-      String user = stub.token("alice", "USER");
-      String admin = stub.token("admin", "MASTER");
-      String expired =
-          stub.call(
-                  "POST",
-                  "/__stub/token",
-                  Map.of("username", "admin", "role", "MASTER", "lifetime", -3600))
-              .path("access_token")
-              .asText();
+      fixture.timeout(300);
+      String user = fixture.token("alice", "USER");
+      String admin = fixture.token("admin", "MASTER");
+      String expired = OrderClientFixture.token("admin", "MASTER", -3600);
       UUID id;
-      try (var first = application(url, "create", false)) {
+      try (var first = application(fixture, "create", false)) {
         String base = "http://127.0.0.1:" + first.getWebServer().getPort();
         var created =
             http.send(
@@ -185,11 +180,11 @@ class OrderRestartIntegrationTest {
                                 .writeValueAsString(
                                     Map.of(
                                         "receiver_company_id",
-                                        LocalOrderStub.RECEIVER,
+                                        OrderClientFixture.RECEIVER,
                                         "supplier_company_id",
-                                        LocalOrderStub.SUPPLIER,
+                                        OrderClientFixture.SUPPLIER,
                                         "product_id",
-                                        LocalOrderStub.PRODUCT,
+                                        OrderClientFixture.PRODUCT,
                                         "quantity",
                                         3,
                                         "delivery_address",
@@ -204,7 +199,7 @@ class OrderRestartIntegrationTest {
                 new ObjectMapper().readTree(created.body()).at("/data/order_id").asText());
         var jdbc = first.getBean(JdbcTemplate.class);
         if (lostResponse) {
-          stub.control(
+          fixture.control(
               Map.of(
                   "action",
                   "fault",
@@ -234,8 +229,8 @@ class OrderRestartIntegrationTest {
               .isEqualTo(lostResponse ? OrderStatus.RECOVERY_REQUIRED : OrderStatus.CANCELLING);
           assertThat(pending.awaitingStockRestoration()).isTrue();
           assertThat(pending.getUpdatedBy()).isEqualTo("admin");
-          assertThat(stub.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
-          assertThat(stub.state().path("restorations")).hasSize(1);
+          assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
+          assertThat(fixture.state().path("restorations")).hasSize(1);
           var deletion =
               http.send(
                   HttpRequest.newBuilder(URI.create(base + "/api/orders/" + id))
@@ -251,8 +246,8 @@ class OrderRestartIntegrationTest {
           }
         }
       }
-      stub.awaitIdle();
-      try (var restarted = application(url, "validate", true)) {
+      fixture.awaitIdle();
+      try (var restarted = application(fixture, "validate", true)) {
         var repository = restarted.getBean(OrderRepository.class);
         long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < deadline
@@ -262,12 +257,12 @@ class OrderRestartIntegrationTest {
         assertThat(cancelled.getStatus()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(cancelled.getCreatedBy()).isEqualTo("alice");
         assertThat(cancelled.getUpdatedBy()).isEqualTo("admin");
-        assertThat(stub.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
-        assertThat(stub.state().at("/counts/stock.restore").asInt()).isEqualTo(2);
-        assertThat(stub.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-        assertThat(stub.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
-        assertThat(stub.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
-        assertThat(stub.state().path("restorations")).hasSize(1);
+        assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
+        assertThat(fixture.state().at("/counts/stock.restore").asInt()).isEqualTo(2);
+        assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+        assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);
+        assertThat(fixture.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
+        assertThat(fixture.state().path("restorations")).hasSize(1);
         var unauthorized =
             http.send(
                 HttpRequest.newBuilder(
@@ -285,7 +280,8 @@ class OrderRestartIntegrationTest {
     }
   }
 
-  private ServletWebServerApplicationContext application(String url, String ddl, boolean recover) {
+  private ServletWebServerApplicationContext application(
+      OrderClientFixture fixture, String ddl, boolean recover) {
     var arguments = new ArrayList<String>();
     Map.ofEntries(
             Map.entry("server.port", "0"),
@@ -296,18 +292,17 @@ class OrderRestartIntegrationTest {
             Map.entry("spring.datasource.password", DATABASE.getPassword()),
             Map.entry("spring.jpa.hibernate.ddl-auto", ddl),
             Map.entry("spring.jpa.properties.hibernate.default_schema", "public"),
-            Map.entry("orders.jwt.secret", LocalOrderStub.SECRET),
-            Map.entry("orders.clients.company-url", url),
-            Map.entry("orders.clients.stock-url", url),
-            Map.entry("orders.clients.delivery-url", url),
-            Map.entry("orders.clients.service-token", LocalOrderStub.SERVICE_TOKEN),
+            Map.entry("orders.jwt.secret", OrderClientFixture.SECRET),
+            Map.entry("orders.clients.service-token", OrderClientFixture.SERVICE_TOKEN),
             Map.entry("orders.clients.read-timeout-ms", "300"),
             Map.entry("orders.recovery.enabled", Boolean.toString(recover)),
-            Map.entry("orders.recovery.delay-ms", "50"),
-            Map.entry("slack.enabled", "true"),
-            Map.entry("slack.webhook-url", url + "/__stub/slack"))
+            Map.entry("orders.recovery.delay-ms", "50"))
         .forEach((name, value) -> arguments.add("--" + name + "=" + value));
     return (ServletWebServerApplicationContext)
-        new SpringApplicationBuilder(OrdersApplication.class).run(arguments.toArray(String[]::new));
+        new SpringApplicationBuilder(OrdersApplication.class, OrderClientTestConfiguration.class)
+            .initializers(
+                context ->
+                    context.getBeanFactory().registerSingleton("orderClientFixture", fixture))
+            .run(arguments.toArray(String[]::new));
   }
 }
