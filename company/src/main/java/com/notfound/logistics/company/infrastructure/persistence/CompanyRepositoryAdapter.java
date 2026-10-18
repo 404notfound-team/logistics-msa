@@ -36,6 +36,11 @@ class CompanyRepositoryAdapter implements CompanyRepository {
   }
 
   @Override
+  public Optional<UUID> findManagerUserId(UUID id) {
+    return jpaRepository.findManagerUserId(id);
+  }
+
+  @Override
   public Page<Company> search(CompanySearchCondition condition, Pageable pageable) {
     Specification<Company> specification = CompanySpecifications.matching(condition);
     // JPA는 offset(page × size)을 int로 넘겨 범위를 넘으면 예외가 난다.

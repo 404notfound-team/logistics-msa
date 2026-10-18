@@ -63,10 +63,12 @@ public class CompanyService {
   @Transactional
   public Company updateCompany(
       Requester requester, UUID id, String name, UUID hubId, String address, UUID managerUserId) {
-    // hub 호출을 기다리는 동안 업체 행을 잠그지 않도록, 허브 확인은 업체를 잠그기 전에 한다.
     if (hubId != null) {
+      // 업체 없음(404)·권한 없음(403)이 허브 오류보다 먼저다. 이 확인은 잠금 없이 해서 hub 호출 동안 업체 행을 잠그지 않는다.
+      checkManages(requester, managerOf(id));
       hubVerifier.verifyExists(hubId);
     }
+    // 잠근 뒤 다시 확인한다. 그사이 업체가 삭제됐거나 관리자가 바뀌었을 수 있다.
     Company company = findManagedCompany(requester, id);
     if (name != null) {
       company.changeName(name);
@@ -145,6 +147,12 @@ public class CompanyService {
             .orElseThrow(() -> new CompanyException(CompanyError.COMPANY_NOT_FOUND));
     checkManages(requester, company.getManagerUserId());
     return company;
+  }
+
+  private UUID managerOf(UUID companyId) {
+    return companyRepository
+        .findManagerUserId(companyId)
+        .orElseThrow(() -> new CompanyException(CompanyError.COMPANY_NOT_FOUND));
   }
 
   private static void checkManages(Requester requester, UUID managerUserId) {

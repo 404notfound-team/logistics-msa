@@ -154,6 +154,18 @@ class CompanyRepositoryAdapterTest {
   }
 
   @Test
+  void findManagerUserIdExcludesDeletedCompany() {
+    Company kept = persist("유지 업체", HUB_ID);
+    Company deleted = persist("삭제 업체", HUB_ID);
+    deleted.markDeleted("test-user", Instant.parse("2026-10-18T00:00:00Z"));
+    entityManager.flush();
+    entityManager.clear();
+
+    assertThat(repository.findManagerUserId(kept.getId())).contains(MANAGER_ID);
+    assertThat(repository.findManagerUserId(deleted.getId())).isEmpty();
+  }
+
+  @Test
   void searchBeyondIntOffsetReturnsEmptyPageWithTotal() {
     persist("업체 A", HUB_ID);
     persist("업체 B", HUB_ID);
