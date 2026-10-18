@@ -140,6 +140,15 @@ class DeliveryTest {
     assertThat(delivery.getAssigneeId()).isEqualTo(ASSIGNEE_ID);
   }
 
+  @ParameterizedTest
+  @EnumSource(value = DeliveryStatus.class, names = "CANCELLED", mode = EnumSource.Mode.EXCLUDE)
+  void statusPatchCannotCancelADelivery(DeliveryStatus status) {
+    Delivery delivery = deliveryIn(status);
+    assertThatThrownBy(() -> delivery.changeStatus(DeliveryStatus.CANCELLED))
+        .isInstanceOf(DeliveryBusinessException.class);
+    assertThat(delivery.getStatus()).isEqualTo(status);
+  }
+
   private static Delivery deliveryIn(DeliveryStatus status) {
     Delivery delivery = delivery();
     advance(delivery, status);
@@ -148,6 +157,10 @@ class DeliveryTest {
 
   /** 허용된 전이만 거쳐 target 상태까지 진행한다. */
   private static void advance(Delivery delivery, DeliveryStatus target) {
+    if (target == DeliveryStatus.CANCELLED) {
+      delivery.cancel();
+      return;
+    }
     for (DeliveryStatus status : DeliveryStatus.values()) {
       if (status.ordinal() > target.ordinal()) {
         return;
@@ -160,7 +173,6 @@ class DeliveryTest {
     return Delivery.create(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "서울특별시 송파구 송파대로 55", "홍길동");
   }
-
 
   @Test
   void waitingDeliveryIsCancelled() {

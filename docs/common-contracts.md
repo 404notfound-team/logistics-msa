@@ -90,6 +90,7 @@ users:
 | Company | `GET /internal/companies/{id}` | Orders | 필수 | 적용 |
 | Company | `GET /internal/products/{id}` | Orders | 필수 | 적용 |
 | Delivery | `GET /internal/deliveries/by-order/{order_id}` | Orders | 필수 | 현재 배송 ID·주문 ID·상태 조회. 없거나 삭제된 배송은 404 |
+| Delivery | `POST /internal/deliveries/{id}/cancel` | Orders | 필수 | 출발 전 취소와 재요청 200, 출발 후 409. 배송·경로를 함께 변경 |
 | Delivery | `POST /internal/deliveries` | Orders | 필수 | 배송·경로 생성. 최초 201, 동일 주문·내용 재요청 200, 다른 내용 409 |
 | Hub | `POST /internal/stocks/deductions` | Orders | 필수 | 서비스 인증 적용. `order_id`는 추적용이며 재차감 금지 |
 | Hub | `POST /internal/stocks/restorations` | Orders | 필수 | 서비스 인증 적용. 주문별 멱등 복원 |
