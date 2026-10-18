@@ -34,7 +34,7 @@ import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 
 /**
- * Gateway가 전달한 사용자 JWT를 다시 검증한다(docs/jwt-contracts.md). 공개 배송 API는 인증만 요구하고, 역할·담당자 같은 업무 권한은
+ * Gateway가 전달한 사용자 JWT를 다시 검증한다(docs/authentication.md). 공개 배송 API는 인증만 요구하고, 역할·담당자 같은 업무 권한은
  * application 계층이 검사한다.
  */
 @Configuration(proxyBeanMethods = false)

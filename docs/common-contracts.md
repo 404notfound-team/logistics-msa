@@ -1,104 +1,54 @@
-# 공통 API·감사 규칙
+# 공통 개발 계약
 
-## 모듈
+## API·감사 계약
 
-| 라이브러리 | 용도 | 사용 앱 |
+| 항목 | 공통 규칙 |
+| --- | --- |
+| 이름·입력 | Java `camelCase`, JSON·쿼리 `snake_case`. 포장 없는 DTO·`@Valid`, 잘못된 형식·검증은 400 |
+| 성공 | `ApiResponse<T>.data`. 조회·수정 200, 생성 201(가능하면 Location), 본문 없음 204 |
+| 오류 | 직접 `ApiErrorResponse`: `code`, `message`, `trace_id`, `field_errors`. HTTP 상태도 4xx/5xx |
+| 오류 필드 | trace_id는 추적 ID 또는 null, field_errors는 `{field, message}` 목록 또는 빈 배열. 객체 오류의 field는 `$` |
+| 목록 | page ≥ 0, size 1~100, 기본 page=0·size=20. 허용 필드만 정렬, 기본 `created_at,desc`에 PK 정렬 추가 |
+| 페이지 | `data: {content, page, size, total_elements, total_pages}`. 빈 결과·마지막 페이지 초과는 200·빈 content |
+| 감사 | `AuditEntity` 상속, `p_` 테이블, `created/updated/deleted_at`·`created/updated/deleted_by`. 시각은 UTC Instant, 작업자는 username |
+| 논리 삭제 | 인증·소유권 확인 후 트랜잭션에서 `markDeleted`. 최초 생성·삭제 기록 보존, `repository.delete*` 물리 삭제 금지 |
+| 조회 제외 | 각 구체 엔티티에 `@SQLRestriction("deleted_at IS NULL")`. 상속만으로는 제외되지 않음 |
+
+업무 오류는 `domain.exception`, HTTP 상태·`ApiErrorCode`·변환은 `presentation.exception`에 둡니다.
+감사는 `@EnableJpaAuditing`·`AuditorAware<String>`로 검증된 사용자/정해진 시스템 주체를 사용합니다. 주체가 없으면 실패하며 임의 system 대체는 금지합니다.
+오류에 비밀값·내부 예외를 노출하지 않습니다. 예상 밖 오류는 `INTERNAL_ERROR`, 상세는 서버 로그에 남깁니다.
+Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에서 제외합니다.
+
+## 서비스 간 내부 API 계약
+
+`/internal/**`는 Gateway 외부 라우트·Swagger에 공개하지 않습니다. 새 API는 수신 서비스의 허용 목록과 함께 갱신합니다.
+
+| 수신자 | 메서드·경로 (`/internal` 이하) | 허용 발신자 |
 | --- | --- | --- |
-| `common:api` | 응답·오류 규약 | 업무 서비스 5개, Gateway |
-| `common:audit` | JPA 감사 엔티티 | 업무 서비스 5개 |
+| Users | `GET /users/{id}/authorization` | Gateway |
+| Company | `GET /companies?name=` | Users |
+| Company | `GET /companies/{id}` | Orders, Users |
+| Company | `GET /products/{id}` | Orders, Hub |
+| Hub | `GET /hubs?name=` | Users |
+| Hub | `GET /hubs/{id}` | Users, Company, Delivery |
+| Hub | `GET /hub-routes?departure_hub_id=&arrival_hub_id=` | Delivery |
+| Hub | `GET /hubs/{hubId}/stocks/{productId}` | Orders |
+| Hub | `POST /stocks/deductions`, `POST /stocks/restorations` | Orders |
+| Delivery | `POST /deliveries`, `GET /deliveries/by-order/{order_id}` | Orders |
+| Delivery | `POST /deliveries/{id}/cancel`, `DELETE /deliveries/{id}` | Orders |
 
-업무별 Request/Response DTO·업무 오류·PK·인증은 각 서비스가 소유합니다. Eureka는 공통 모듈을 사용하지 않습니다.
+배송 생성은 최초 201·같은 주문/내용 200·다른 내용 409, 취소는 최초·반복 200·출발 후 409입니다.
+배송 삭제는 최초·반복 204·진행 중 409, 주문별 배송 조회는 없거나 삭제됐으면 404입니다.
+차감의 `order_id`는 추적용이며 멱등 키가 아닙니다. 복원은 `{order_id, hub_id, product_id, quantity}`를 받아
+200·`data: {id, hub_id, product_id, quantity}`를 반환합니다. 응답 quantity는 최초 복원 직후 잔량입니다.
+대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.
 
-## 요청·응답
+## 개발 DB 스키마
 
-- Java는 `camelCase`, JSON·쿼리는 `snake_case`를 사용합니다. 엔티티 대신 DTO를 주고받습니다.
-- 요청은 별도 포장 없이 `@Valid`로 검증합니다. 잘못된 JSON·타입·검증 오류는 400입니다.
-- 성공: `ApiResponse<T>`의 `data`에 응답 DTO를 담습니다. 조회·수정은 200, 생성은 201(가능하면 `Location` 포함), 본문 없는 성공은 204입니다.
-- 오류: `ApiErrorResponse`를 직접 반환하고 HTTP 상태도 4xx/5xx로 맞춥니다. 필드는 `code`, `message`, `trace_id`, `field_errors`입니다.
-- 공통 오류는 `CommonErrorCode`, 업무 오류는 서비스별 `ApiErrorCode` 구현으로 정의합니다.
-- `trace_id`는 서버 추적 ID 또는 null, `field_errors`는 `{field, message}` 목록 또는 빈 배열입니다. `field`는 외부 필드 경로, 객체 전체 오류는 `$`를 사용합니다.
-- 오류에 비밀번호·토큰·거절된 입력값·내부 예외를 노출하지 않습니다. 예상하지 못한 오류는 `INTERNAL_ERROR`로 응답하고 상세 내용은 로그에 남깁니다.
-- Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에서 제외합니다.
-- 각 서비스가 예외·인증 오류 처리기를 연결합니다. Gateway는 서비스 오류의 상태·본문을 보존하고 자체 오류에도 같은 형식을 사용합니다.
+`local`은 엔티티로 자기 스키마를 `ddl-auto: update`, 기본 프로필은 `validate`합니다.
+공유 초기화 SQL은 DB·스키마·계정만 준비합니다. 엔티티·테스트는 담당 모듈에서 변경합니다.
+앱은 자기 DB·스키마만 사용하며 직접 만든 테이블만 자동 변경할 수 있습니다. 관리자 소유 테이블의 소유권은 별도 조정이 필요합니다.
+운영용 마이그레이션 체계를 갖춘 구성은 아니며 외부 서버 배포에 사용하지 않습니다.
+Delivery의 부분 UNIQUE 인덱스는 [indexes.sql](../delivery/src/main/resources/db/indexes.sql)로 만들고, 엔티티·인덱스 준비 후 개발 샘플을 적재합니다.
 
-## 목록·검색
-
-- 요청: `page`는 0부터(기본 0), `size`는 1~100(기본 20). 범위를 벗어나면 400입니다.
-- 정렬: 기본 `created_at,desc`에 PK 정렬을 추가합니다. 허용한 정렬 필드만 엔티티 속성으로 변환합니다.
-- 응답: `ApiResponse<PageResponse<T>>` — `content`, `page`, `size`, `total_elements`, `total_pages`. 결과가 없거나 마지막 페이지를 넘기면 200과 빈 `content`를 반환합니다.
-- 목록과 전체 개수는 같은 검색·삭제 제외 조건을 적용합니다.
-
-## 감사·삭제
-
-업무 엔티티는 PK 없는 `AuditEntity`를 상속합니다. 업무 PK는 UUID를 기본으로 하되 사용자 PK는 사용자 명세를 따릅니다. 테이블은 `p_` 접두사를 사용합니다. 스키마 생성·갱신은 [개발 DB 스키마 정책](../README.md#개발-db-스키마)을 따릅니다.
-
-| 필드 | 규칙 |
-| --- | --- |
-| `created_at`, `created_by` | 최초 생성 기록, 변경 불가 |
-| `updated_at`, `updated_by` | 마지막 수정 기록, 생성 시에도 기록 |
-| `deleted_at`, `deleted_by` | 최초 삭제 기록, 삭제 전에는 null |
-
-- 시각은 UTC `Instant`/`timestamptz`, 작업자는 username `String`/`varchar(100)`입니다. 외부 시각은 ISO 8601 UTC로 표현합니다.
-- 업무 서비스에 `@EnableJpaAuditing`·`AuditorAware<String>`을 등록합니다. 인증된 사용자 또는 정해진 시스템 작업자를 사용하고, 주체가 없으면 예외를 발생시킵니다. 임의 `system` 대체나 `Optional.empty()` 반환은 금지합니다.
-- 인증·소유권 확인 후 트랜잭션 안에서 `markDeleted(username, 삭제시각)`를 호출합니다. 감사 주체·권한은 요청값을 신뢰하지 않으며 `repository.delete*`로 물리 삭제하지 않습니다.
-- **각 구체 엔티티에** `@SQLRestriction("deleted_at IS NULL")`를 선언합니다. `AuditEntity` 상속만으로 삭제 데이터가 조회에서 제외되지는 않습니다.
-
-## 인증
-
-외부 API의 사용자 인증은 [JWT 규약](jwt-contracts.md)을 따릅니다. Gateway가 현재 사용자 상태를 확인한 뒤 `Authorization: Bearer <JWT>`를 그대로 전달하고, 각 서비스는 OAuth2 Resource Server로 JWT를 검증해 `SecurityContext`를 구성합니다.
-
-### 서비스 간 내부 API
-
-`/internal/**` API는 서비스 인증으로 보호합니다. 사용자 JWT는 내부 호출의 필수 조건이 아닙니다.
-
-| 헤더 | 규칙 |
-| --- | --- |
-| `X-Service-Token` | 호출 서비스의 인증값입니다. 서비스별 값을 실행 환경(`<SERVICE>_SERVICE_TOKEN`)에 설정하며 코드·저장소에 커밋하지 않습니다. 서비스마다 서로 다른 값을 사용합니다. |
-| `X-Actor-Username` | 원 요청자의 username입니다. 감사 필드의 작업자 기준과 같으며, 외부 요청에서는 JWT의 `sub`(`Authentication#getName()`)을 사용합니다. |
-
-- 수신 서비스는 `X-Service-Token`으로 호출 서비스를 식별하고, 그 서비스에 허용한 API인지 확인합니다. 토큰이 없거나 틀리면 401, 허용하지 않은 API면 403입니다.
-- 원 요청자가 있는 호출은 `X-Actor-Username`을 보냅니다. 로그인 전 회원가입의 업체·허브 조회처럼 원 요청자가 없는 호출은 생략할 수 있습니다.
-- 이미 접수된 작업의 후속 처리·자동 복구도 같은 서비스 인증을 사용하고, 원 요청자는 저장된 작업 정보에서 가져옵니다.
-- 외부에서 넣은 두 헤더는 Gateway가 제거합니다. 수신 서비스는 서비스 인증을 통과한 요청의 `X-Actor-Username`만 신뢰합니다.
-- 인증값 비교는 상수 시간 비교(`MessageDigest.isEqual`)를 사용하고, 발신 서비스는 인증값이 비어 있으면 기동하지 않습니다.
-
-#### 수신 측 설정
-
-수신 서비스는 호출 서비스별 인증값과 허용 API(`METHOD /path-pattern`)를 설정으로 관리합니다. 기준 구현은 Users의 `infrastructure/security` 패키지입니다.
-
-```yaml
-users:
-  internal-auth:
-    service-token: ${USERS_SERVICE_TOKEN}   # Users가 다른 서비스를 호출할 때 보내는 값
-    clients:                                # Users 내부 API를 호출할 수 있는 서비스
-      gateway:
-        token: ${GATEWAY_SERVICE_TOKEN}
-        allowed:
-          - GET /internal/users/*/authorization
-```
-
-#### 내부 API 목록
-
-| 수신 서비스 | API | 허용 호출 서비스 | 원 요청자 | 상태 |
-| --- | --- | --- | --- | --- |
-| Users | `GET /internal/users/{id}/authorization` | Gateway | 불필요(사용자 검증 단계) | 적용 |
-| Hub | `GET /internal/hubs?name=` | Users | 선택(회원가입은 생략) | 수신 적용. 활성 허브명 완전 일치 조회 |
-| Hub | `GET /internal/hubs/{id}` | Users, Company, Delivery | 필수 | 수신 적용. 사용자 소속·업체 관리 허브·배송 출발/도착 허브 검증 |
-| Hub | `GET /internal/hub-routes` | Delivery | 필수 | 수신 적용. `departure_hub_id`, `arrival_hub_id`로 기준 구간 단건 조회 |
-| Hub | `GET /internal/hubs/{hubId}/stocks/{productId}` | Orders | 필수 | 수신 적용. 허브·상품별 활성 재고 조회 |
-| Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | 적용 |
-| Company | `GET /internal/companies/{id}` | Orders, Users | 필수 | 적용(Users는 사용자 생성·수정 시 소속 업체 확인) |
-| Company | `GET /internal/products/{id}` | Orders, Hub | 필수 | 적용(Hub는 재고 생성 시 상품 존재 확인) |
-| Delivery | `GET /internal/deliveries/by-order/{order_id}` | Orders | 필수 | 현재 배송 ID·주문 ID·상태 조회. 없거나 삭제된 배송은 404 |
-| Delivery | `POST /internal/deliveries/{id}/cancel` | Orders | 필수 | 출발 전 취소와 재요청 200, 출발 후 409. 배송·경로를 함께 변경 |
-| Delivery | `DELETE /internal/deliveries/{id}` | Orders | 필수 | 완료·취소 배송과 경로 논리 삭제 204. 반복 삭제도 204, 진행 중은 409 |
-| Delivery | `POST /internal/deliveries` | Orders | 필수 | 배송·경로 생성. 최초 201, 동일 주문·내용 재요청 200, 다른 내용 409 |
-| Hub | `POST /internal/stocks/deductions` | Orders | 필수 | 서비스 인증 적용. `order_id`는 추적용이며 재차감 금지 |
-| Hub | `POST /internal/stocks/restorations` | Orders | 필수 | 서비스 인증 적용. 주문별 멱등 복원 |
-
-내부 API를 추가하면 이 표와 수신 서비스의 허용 API 설정을 함께 갱신합니다.
-
-재고 복원 요청은 `order_id`, `hub_id`, `product_id` UUID와 양의 bigint `quantity`를 받습니다.
-성공은 200과 `data: {id, hub_id, product_id, quantity}`이며 quantity는 최초 복원 직후 잔량입니다.
-같은 주문 키와 같은 내용은 수량을 다시 늘리지 않고 최초 응답을 반환합니다. 다른 내용은 409 `STOCK_RESTORATION_CONFLICT`, 대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.
-성공 기록과 수량의 원자성·보존 계약은 [Hub / Stock 설계](domain-design.md#hub--stock-설계-결정-사항)를 따릅니다.
+기존 볼륨의 권한 보완과 앱 갱신 순서는 [개발 절차](development.md#기존-볼륨의-스키마-생성-권한-보완)를 따릅니다.

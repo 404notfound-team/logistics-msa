@@ -44,8 +44,8 @@ Rebase and merge로 각 커밋이 보존되므로 커밋 목록과 메시지도 
 
 ## 코드와 설정
 
-- 요청·성공/페이지/오류 응답과 감사 필드는 [공통 API·감사 규칙](docs/common-contracts.md)을 따릅니다.
-- 업무 서비스의 패키지 배치와 의존 방향은 [서비스 패키지 구조와 책임](docs/service-architecture.md)을 따릅니다.
+- 요청·성공/페이지/오류 응답과 감사 필드는 [공통 API·감사 규칙](docs/common-contracts.md#api감사-계약)을 따릅니다.
+- 업무 서비스의 패키지 배치와 의존 방향은 [서비스 패키지 구조와 책임](docs/architecture.md#서비스-내부-구조)을 따릅니다.
 - Java 포맷은 Spotless의 Google Java Format(기본 2칸 들여쓰기)을 사용합니다.
   자동 정렬은 `./gradlew spotlessApply`, 전체 검사는 `./gradlew --continue clean build`로 실행합니다.
 - Checkstyle은 이름 규칙, 와일드카드 import, 빈 문장, equals/hashCode 쌍과 JDK 내부 API import를 검사합니다.
@@ -54,7 +54,8 @@ Rebase and merge로 각 커밋이 보존되므로 커밋 목록과 메시지도 
   CI가 코드를 자동 수정하지는 않습니다. 검사 보고서는 실행 화면의 `verification-reports`에서 7일간 내려받을 수 있습니다.
 - 도메인 로직과 엔티티는 담당 서비스가 소유합니다. 서비스 간 계약 변경은 호출자와 함께 검토합니다.
 - `.env`, 비밀번호, JWT 키, Webhook URL은 커밋하지 않습니다. 변수 이름만 `.env.example`에 공유합니다.
-- 새 API·테이블은 SA/API 명세와 함께 갱신하고 해당 동작을 검증하는 테스트를 추가합니다.
+- API 변경은 컨트롤러·DTO의 OpenAPI 정의와 관련 [API 계약](docs/common-contracts.md#api감사-계약), 테이블 변경은 [ERD](docs/data-model.md#서비스별-erd)에 반영합니다.
+  변경한 동작의 테스트를 함께 추가·수정합니다.
 - 공개 API는 서비스의 `springdoc.paths-to-match`와 Gateway의 업무 라우트에 맞는 경로를 사용합니다.
   컨트롤러에는 `@Tag`·`@Operation`, DTO에는 필요한 `@Schema` 설명을 추가하고 Swagger에서 확인합니다.
   새 경로 접두사를 도입하면 라우트·문서 필터·`scripts/smoke.py`를 함께 갱신합니다.

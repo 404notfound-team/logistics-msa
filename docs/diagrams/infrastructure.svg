@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 992 544" width="992" height="544" role="img" aria-labelledby="infra-title infra-desc">
+  <title id="infra-title">로컬 Docker Compose 인프라 구성</title>
+  <desc id="infra-desc">Docker Compose로 Spring Boot 3.5.16 기반 Gateway, Eureka 서버, 도메인 앱 5개와 PostgreSQL 18, Zipkin을 실행한다. PostgreSQL 컨테이너 1개 안에 users_db, company_db, hub_db, orders_db, delivery_db 데이터베이스 5개를 둔다. 도메인 앱별 계정은 자기 데이터베이스의 독립 스키마에만 접근하며 서비스 간 물리 FK는 없다. Zipkin은 Gateway와 각 앱의 분산 호출을 추적한다. Slack은 Compose 밖의 외부 서비스이며 주문 확정 후 Incoming Webhook으로 알림을 보낸다.</desc>
+  <!-- Laptop, Docker, gateway and database glyphs: Tabler Icons (MIT), https://github.com/tabler/tabler-icons -->
+  <defs>
+    <style>
+      text { font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', Arial, sans-serif; fill: #243344; }
+      .name { font-size: 14px; font-weight: 600; text-anchor: middle; }
+      .meta { font-size: 11px; fill: #657488; }
+      .db-name { font-family: 'SFMono-Regular', Consolas, monospace; font-size: 10.5px; fill: #33546f; text-anchor: middle; }
+      .glyph { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+      .edge { fill: none; stroke: #477693; stroke-width: 1.5; stroke-linejoin: round; }
+      .discovery { fill: none; stroke: #8995a3; stroke-width: 1.3; stroke-dasharray: 4 4; }
+      .trace { fill: none; stroke: #5d8793; stroke-width: 1.3; stroke-dasharray: 4 4; }
+    </style>
+    <marker id="arrow" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto"><path d="M0 0 7 3.5 0 7Z" fill="#477693"/></marker>
+    <marker id="arrow-accent" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto"><path d="M0 0 7 3.5 0 7Z" fill="#6db33f"/></marker>
+    <marker id="arrow-link" markerWidth="7" markerHeight="7" refX="6.5" refY="3.5" orient="auto"><path d="M0 0 7 3.5 0 7Z" fill="#8995a3"/></marker>
+<symbol id="icon-laptop" viewBox="0 0 24 24"><path d="M3 19l18 0" /> <path d="M5 7a1 1 0 0 1 1 -1h12a1 1 0 0 1 1 1v8a1 1 0 0 1 -1 1h-12a1 1 0 0 1 -1 -1l0 -8" /></symbol>
+<symbol id="icon-docker" viewBox="0 0 24 24"><path d="M22 12.54c-1.804 -.345 -2.701 -1.08 -3.523 -2.94c-.487 .696 -1.102 1.568 -.92 2.4c.028 .238 -.32 1 -.557 1h-14c0 5.208 3.164 7 6.196 7c4.124 .022 7.828 -1.376 9.854 -5c1.146 -.101 2.296 -1.505 2.95 -2.46" /> <path d="M5 10h3v3h-3l0 -3" /> <path d="M8 10h3v3h-3l0 -3" /> <path d="M11 10h3v3h-3l0 -3" /> <path d="M8 7h3v3h-3l0 -3" /> <path d="M11 7h3v3h-3l0 -3" /> <path d="M11 4h3v3h-3l0 -3" /> <path d="M4.571 18c1.5 0 2.047 -.074 2.958 -.78" /> <path d="M10 16l0 .01" /></symbol>
+<symbol id="icon-gateway" viewBox="0 0 24 24"><path d="M13 12v.01" /> <path d="M3 21h18" /> <path d="M5 21v-16a2 2 0 0 1 2 -2h6m4 10.5v7.5" /> <path d="M21 7h-7m3 -3l-3 3l3 3" /></symbol>
+<symbol id="icon-database" viewBox="0 0 24 24"><path d="M4 6a8 3 0 1 0 16 0a8 3 0 1 0 -16 0" /> <path d="M4 6v6a8 3 0 0 0 16 0v-6" /> <path d="M4 12v6a8 3 0 0 0 16 0v-6" /></symbol>
+    <symbol id="icon-spring-boot" viewBox="0 0 48 48">
+      <path d="M17 3H31Q33 3 34 5L44 21Q46 24 44 27L34 43Q33 45 31 45H17Q15 45 14 43L4 27Q2 24 4 21L14 5Q15 3 17 3Z" fill="#6db33f"/>
+      <path d="M16 15.5a12 12 0 1 0 16 0M24 11v13" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-discovery" viewBox="0 0 48 48">
+      <path d="M24 15v8M12 31v-8h24v8" fill="none" stroke="#477693" stroke-width="2" stroke-linejoin="round"/>
+      <rect x="17" y="3" width="14" height="12" rx="3" fill="#eaf3f9" stroke="#477693" stroke-width="1.6"/>
+      <rect x="5" y="31" width="14" height="12" rx="3" fill="#eaf3f9" stroke="#477693" stroke-width="1.6"/>
+      <rect x="29" y="31" width="14" height="12" rx="3" fill="#eaf3f9" stroke="#477693" stroke-width="1.6"/>
+    </symbol>
+    <symbol id="icon-db" viewBox="0 0 48 48">
+      <path d="M7 10v27c0 4 7.6 7 17 7s17-3 17-7V10" fill="#edf4fa" stroke="#477693" stroke-width="1.5"/>
+      <path d="M7 24c0 4 7.6 7 17 7s17-3 17-7" fill="none" stroke="#9bb4c8" stroke-width="1.3"/>
+      <ellipse cx="24" cy="10" rx="17" ry="7" fill="#d1e6f3" stroke="#477693" stroke-width="1.5"/>
+    </symbol>
+    <symbol id="icon-trace" viewBox="0 0 48 48">
+      <rect x="4" y="4" width="40" height="40" rx="5" fill="#edf6f7" stroke="#5d8793" stroke-width="1.5"/>
+      <path d="M11 14H26M17 24H37M23 34H33" fill="none" stroke="#5d8793" stroke-width="4" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="icon-schema" viewBox="0 0 48 48">
+      <rect x="7" y="8" width="34" height="32" rx="3" fill="#edf4fa" stroke="#477693" stroke-width="1.5"/>
+      <path d="M7 18H41M18 18V40M29 18V40M7 29H41" fill="none" stroke="#8ba6bb" stroke-width="1.2"/>
+    </symbol>
+    <symbol id="icon-slack" viewBox="0 0 48 48">
+      <circle cx="16" cy="8" r="4" fill="#36c5f0"/><rect x="4" y="16" width="20" height="8" rx="4" fill="#36c5f0"/>
+      <circle cx="40" cy="16" r="4" fill="#2eb67d"/><rect x="24" y="4" width="8" height="20" rx="4" fill="#2eb67d"/>
+      <circle cx="8" cy="32" r="4" fill="#e01e5a"/><rect x="16" y="24" width="8" height="20" rx="4" fill="#e01e5a"/>
+      <circle cx="32" cy="40" r="4" fill="#ecb22e"/><rect x="24" y="24" width="20" height="8" rx="4" fill="#ecb22e"/>
+    </symbol>
+  </defs>
+  <rect width="992" height="544" fill="#fff"/>
+  <!-- Deployment boundary; client is outside the Compose network. -->
+  <path id="compose-boundary" d="M120 16H968Q976 16 976 24V416Q976 424 968 424H632Q624 424 624 432V512Q624 520 616 520H120Q112 520 112 512V24Q112 16 120 16Z" fill="#fff" stroke="#90afc6" stroke-width="1.5"/>
+  <g class="glyph" color="#2496ed"><use href="#icon-docker" x="128" y="28" width="28" height="28"/></g>
+  <text x="164" y="48" font-size="18" font-weight="700">Docker Compose</text>
+  <text x="928" y="46" class="meta" text-anchor="end">로컬 실행 · 내부 네트워크</text>
+  <rect x="296" y="84" width="632" height="168" rx="6" fill="#fbfdf9" stroke="#d0ddc6"/>
+  <text x="316" y="108" font-size="12" font-weight="600" fill="#466634">도메인 앱 5개 · Spring Boot 3.5.16</text>
+  <text x="908" y="108" class="meta" text-anchor="end">공통 Dockerfile · 앱별 이미지</text>
+  <rect x="296" y="288" width="632" height="104" rx="6" fill="#fafcfe" stroke="#c5d6e3"/>
+  <!-- Connectors precede their endpoints. Separate lanes are used for discovery. -->
+  <path class="edge" d="M88 176H128" marker-end="url(#arrow)"/>
+  <path class="edge" d="M264 176H296" marker-end="url(#arrow)"/>
+  <path class="discovery" d="M180 236V292" marker-end="url(#arrow-link)"/>
+  <path class="discovery" d="M296 236H284Q276 236 276 244V324Q276 332 268 332H264" marker-end="url(#arrow-link)"/>
+  <path id="db-link-users" class="edge" d="M352 252V304" marker-end="url(#arrow)"/>
+  <path id="db-link-company" class="edge" d="M476 252V304" marker-end="url(#arrow)"/>
+  <path id="db-link-hub" class="edge" d="M600 252V304" marker-end="url(#arrow)"/>
+  <path id="db-link-orders" class="edge" d="M724 252V304" marker-end="url(#arrow)"/>
+  <path id="db-link-delivery" class="edge" d="M848 252V304" marker-end="url(#arrow)"/>
+  <!-- Trace exporters use separate lanes and distinct Zipkin ports. -->
+  <path id="trace-gateway" class="trace" d="M248 120V80Q248 72 256 72H948Q956 72 956 80V408Q956 416 948 416H592a8 8 0 0 1 -16 0H568Q560 416 560 424V448" marker-end="url(#arrow-link)"/>
+  <path id="trace-services" class="trace" d="M928 168H932Q940 168 940 176V392Q940 400 932 400H592Q584 400 584 408V448" marker-end="url(#arrow-link)"/>
+  <path id="slack-notification" class="edge" d="M724 136V128Q724 120 732 120H948a8 8 0 0 1 16 0H976Q984 120 984 128V432Q984 440 976 440H800Q792 440 792 448" marker-end="url(#arrow)"/>
+  <rect x="668" y="50" width="64" height="14" fill="#fff"/>
+  <text x="700" y="61" class="meta" text-anchor="middle">추적 전송</text>
+  <!-- App glyphs and names. -->
+  <g id="client" class="glyph" color="#4c657c"><use href="#icon-laptop" x="24" y="140" width="64" height="56"/></g>
+  <text x="56" y="212" class="name">Client</text>
+  <rect x="128" y="120" width="136" height="116" rx="6" fill="#fff" stroke="#9bb9cd"/>
+  <use href="#icon-spring-boot" x="174" y="132" width="44" height="44"/>
+  <text x="196" y="198" class="name">Gateway</text>
+  <text x="196" y="220" class="meta" text-anchor="middle">Spring Boot · JWT 라우팅</text>
+  <g id="discovery-eureka" data-runtime="spring-boot" data-role="eureka-server">
+    <rect x="128" y="292" width="136" height="96" rx="6" fill="#fff" stroke="#c8d3dd"/>
+    <use href="#icon-spring-boot" x="174" y="296" width="44" height="44"/>
+    <text x="196" y="354" class="name">Eureka</text>
+    <text x="196" y="369" class="meta" text-anchor="middle">Spring Boot</text>
+    <text x="196" y="382" class="meta" text-anchor="middle">서비스 등록 · 탐색</text>
+  </g>
+  <rect x="188" y="258" width="72" height="14" fill="#fff"/>
+  <text x="194" y="269" class="meta">등록 · 탐색</text>
+  <g id="service-users" data-database="users_db" data-schema="users">
+    <use href="#icon-spring-boot" x="328" y="136" width="48" height="48"/>
+    <text x="352" y="208" class="name">사용자</text>
+  </g>
+  <g id="db-users" data-database="users_db" data-schema="users" data-owner-service="users">
+    <use href="#icon-db" x="332" y="304" width="40" height="40"/>
+    <text x="352" y="360" class="db-name">users_db</text>
+  </g>
+  <g id="service-company" data-database="company_db" data-schema="company">
+    <use href="#icon-spring-boot" x="452" y="136" width="48" height="48"/>
+    <text x="476" y="208" class="name">업체·상품</text>
+  </g>
+  <g id="db-company" data-database="company_db" data-schema="company" data-owner-service="company">
+    <use href="#icon-db" x="456" y="304" width="40" height="40"/>
+    <text x="476" y="360" class="db-name">company_db</text>
+  </g>
+  <g id="service-hub" data-database="hub_db" data-schema="hub">
+    <use href="#icon-spring-boot" x="576" y="136" width="48" height="48"/>
+    <text x="600" y="208" class="name">허브·재고</text>
+  </g>
+  <g id="db-hub" data-database="hub_db" data-schema="hub" data-owner-service="hub">
+    <use href="#icon-db" x="580" y="304" width="40" height="40"/>
+    <text x="600" y="360" class="db-name">hub_db</text>
+  </g>
+  <g id="service-orders" data-database="orders_db" data-schema="orders">
+    <use href="#icon-spring-boot" x="700" y="136" width="48" height="48"/>
+    <text x="724" y="208" class="name">주문</text>
+  </g>
+  <g id="db-orders" data-database="orders_db" data-schema="orders" data-owner-service="orders">
+    <use href="#icon-db" x="704" y="304" width="40" height="40"/>
+    <text x="724" y="360" class="db-name">orders_db</text>
+  </g>
+  <g id="service-delivery" data-database="delivery_db" data-schema="delivery">
+    <use href="#icon-spring-boot" x="824" y="136" width="48" height="48"/>
+    <text x="848" y="208" class="name">배송</text>
+  </g>
+  <g id="db-delivery" data-database="delivery_db" data-schema="delivery" data-owner-service="delivery">
+    <use href="#icon-db" x="828" y="304" width="40" height="40"/>
+    <text x="848" y="360" class="db-name">delivery_db</text>
+  </g>
+  <text x="612" y="238" class="meta" text-anchor="middle">서비스 간 통신 · Feign / HTTP · 서비스 간 인증</text>
+  <text x="316" y="384" font-size="12" font-weight="600">PostgreSQL 18 · 컨테이너 1개</text>
+  <text x="908" y="384" class="meta" text-anchor="end">독립 스키마</text>
+  <g id="monitoring-zipkin" data-runtime="zipkin" data-port="9411">
+    <rect x="128" y="448" width="480" height="56" rx="6" fill="#f8fbfc" stroke="#bdd1d7"/>
+    <use href="#icon-trace" x="144" y="460" width="32" height="32"/>
+    <text x="192" y="470" font-size="14" font-weight="600">Zipkin · 분산 추적</text>
+    <text x="192" y="492" class="meta">Gateway + 앱 5개 · 추적 수집</text>
+    <text x="588" y="492" class="meta" text-anchor="end">UI · localhost:9411</text>
+  </g>
+  <g id="external-slack" data-external="true">
+    <rect x="656" y="448" width="272" height="56" rx="6" fill="#fff" stroke="#c5ccd5"/>
+    <use href="#icon-slack" x="672" y="456" width="40" height="40"/>
+    <text x="726" y="470" font-size="14" font-weight="600">Slack 알림</text>
+    <text x="726" y="492" class="meta">외부 서비스 · 주문 확정 알림</text>
+  </g>
+  <text x="128" y="538" class="meta">서비스별 독립 스키마 · PostgreSQL 컨테이너·볼륨은 공유</text>
+</svg>
