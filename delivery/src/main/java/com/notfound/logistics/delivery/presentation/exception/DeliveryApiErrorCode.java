@@ -23,7 +23,8 @@ record DeliveryApiErrorCode(DeliveryErrorCode errorCode) implements ApiErrorCode
           INVALID_STATUS_TRANSITION,
           CONCURRENT_MODIFICATION,
           DELIVERY_ALREADY_EXISTS,
-          DELIVERY_ALREADY_STARTED, DELIVERY_IN_PROGRESS ->
+          DELIVERY_ALREADY_STARTED,
+          DELIVERY_IN_PROGRESS ->
           409;
       case HUB_UNAVAILABLE -> 503;
     };

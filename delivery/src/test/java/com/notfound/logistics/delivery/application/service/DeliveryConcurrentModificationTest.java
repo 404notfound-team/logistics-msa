@@ -108,6 +108,40 @@ class DeliveryConcurrentModificationTest {
   }
 
   @Test
+  void cancellationPreventsAStaleDepartureFromOverwritingTheCancelledStatus() {
+    UUID deliveryId = insertHubWaitingDelivery();
+    TransactionTemplate departure = new TransactionTemplate(transactionManager);
+    TransactionTemplate cancellation = new TransactionTemplate(transactionManager);
+    cancellation.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    assertThatThrownBy(
+            () ->
+                departure.executeWithoutResult(
+                    status -> {
+                      Delivery stale = deliveryRepository.findById(deliveryId).orElseThrow();
+                      stale.changeStatus(DeliveryStatus.HUB_MOVING);
+                      cancellation.executeWithoutResult(inner -> service.cancel(deliveryId));
+                    }))
+        .isInstanceOf(ObjectOptimisticLockingFailureException.class);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM p_deliveries WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("CANCELLED");
+  }
+
+  @Test
+  void committedDeparturePreventsCancellation() {
+    UUID deliveryId = insertHubWaitingDelivery();
+    service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER);
+    assertThatThrownBy(() -> service.cancel(deliveryId))
+        .isInstanceOf(
+            com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException.class);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM p_deliveries WHERE delivery_id = ?", String.class, deliveryId))
+        .isEqualTo("HUB_MOVING");
+  }
+
+  @Test
   void eachSuccessfulModificationIncreasesTheVersion() {
     UUID deliveryId = insertHubWaitingDelivery();
 

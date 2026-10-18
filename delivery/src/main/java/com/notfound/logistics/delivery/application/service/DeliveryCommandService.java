@@ -5,16 +5,16 @@ import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.Delivery;
+import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
-import java.util.UUID;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.AuditorAware;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +56,7 @@ public class DeliveryCommandService {
     }
     return DeliveryResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(deliveryId));
   }
+
   // ---------------------------------------------------------------------------------------------
   // 내부 API (Orders → Delivery). InternalDeliveryController에서 호출한다.
   // ---------------------------------------------------------------------------------------------

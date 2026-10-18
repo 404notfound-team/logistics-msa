@@ -19,11 +19,11 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import java.time.Instant;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class DeliveryCommandServiceTest {
@@ -38,7 +38,8 @@ class DeliveryCommandServiceTest {
   private static final DeliveryActor OTHER_USER = new DeliveryActor(OTHER_ASSIGNEE_ID, false);
 
   private final DeliveryRepository deliveryRepository = mock(DeliveryRepository.class);
-  private final DeliveryCommandService service = new DeliveryCommandService(deliveryRepository, () -> Optional.of(ACTOR));
+  private final DeliveryCommandService service =
+      new DeliveryCommandService(deliveryRepository, () -> Optional.of(ACTOR));
 
   @Test
   void modifyChangesOnlyTheStatusWhenNoAssigneeIsGiven() {
@@ -204,6 +205,7 @@ class DeliveryCommandServiceTest {
         DeliveryRouteStatus.WAITING,
         null);
   }
+
   // ---------------------------------------------------------------------------------------------
   // cancel: [내부 API] POST /internal/deliveries/{id}/cancel
   // ---------------------------------------------------------------------------------------------
