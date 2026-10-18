@@ -127,6 +127,22 @@ const logisticsSwaggerLogin = (() => {
   function request(request) {
     const url = new URL(request.url, window.location.href);
     request.headers ||= {};
+    if (url.origin === window.location.origin && url.pathname === "/api/users/signin" && request.method?.toUpperCase() === "POST") {
+      const version = ++generation;
+      pending?.abort();
+      pending = null;
+      render();
+      // 이 요청의 응답만 반영한다. 로그아웃·새 로그인 뒤 도착한 응답은 무시한다.
+      request.responseInterceptor = (result) => {
+        if (version === generation && result.status === 200) {
+          const raw = result.obj || result.body || result.text || result.data;
+          const body = typeof raw === "string" ? JSON.parse(raw) : raw;
+          const payload = JSON.parse(atob(body.data.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+          accept(body.data, payload.sub);
+        }
+        return result;
+      };
+    }
     if (!authenticatedApi(url)) {
       for (const name of Object.keys(request.headers)) {
         if (name.toLowerCase() === "authorization") delete request.headers[name];
@@ -148,23 +164,15 @@ const logisticsSwaggerLogin = (() => {
     return request;
   }
 
-  function response(response) {
-    const url = new URL(response.url, window.location.href);
-    if (url.origin === window.location.origin && url.pathname === "/api/users/signin" && response.status === 200) {
-      // Swagger의 기본 signin 작업으로 로그인해도 복사·붙여넣기 없이 공유한다.
-      const raw = response.obj || response.body || response.text || response.data;
-      const body = typeof raw === "string" ? JSON.parse(raw) : raw;
-      const payload = JSON.parse(atob(body.data.access_token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
-      accept(body.data, payload.sub);
-    }
-    return response;
-  }
-
   function plugin() {
     return { statePlugins: { auth: { wrapActions: {
-      logout: (original) => (...args) => { if (token || pending) clear(); return original(...args); },
+      logout: (original) => (...args) => {
+        if (token || pending) clear();
+        else generation += 1;
+        return original(...args);
+      },
     } } } };
   }
 
-  return { complete, request, response, plugin };
+  return { complete, request, plugin };
 })();

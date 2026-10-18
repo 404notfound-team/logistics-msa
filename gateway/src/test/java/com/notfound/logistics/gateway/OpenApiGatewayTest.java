@@ -99,7 +99,6 @@ class OpenApiGatewayTest {
         .contains(
             "const logisticsSwaggerLogin",
             "requestInterceptor: logisticsSwaggerLogin.request",
-            "responseInterceptor: logisticsSwaggerLogin.response",
             "onComplete: logisticsSwaggerLogin.complete",
             "SwaggerUIBundle.plugins.DownloadUrl, logisticsSwaggerLogin.plugin");
   }
