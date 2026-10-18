@@ -40,7 +40,7 @@ CI는 전용 스택을 한 번 시작해 인프라·개발 데이터·정상 주
 | `check-orders-recovery.py`의 Delivery 지연 | `OrdersRecoveryTest`: 실제 배송 INSERT 대기·호출 타임아웃, Orders 중지 뒤 외부 커밋, 재시작 전 미완료·CREATE 의도, 같은 주문 자동 확정, 재요청·배송·재고·감사 보존 |
 | `check-orders-recovery.py`의 Hub 지연 | `OrdersRecoveryTest`: 실제 복원 INSERT 대기·호출 타임아웃, Orders 중지 뒤 외부 커밋, 재시작 전 미완료·CANCEL 의도, 같은 주문 자동 취소, 복원 기록 1건·재고·원래 요청자 보존 |
 
-조회 전용 샘플 검사·토큰 발급(`check-dev-data.py`), 인프라 점검(`smoke.py`), 환경 준비(`init-env.py`)는 기존 진입점을 유지합니다.
+조회 전용 샘플 검사(`check-dev-data.py`), 인프라 점검(`smoke.py`), 환경 준비(`init-env.py`)는 기존 진입점을 유지합니다.
 
 ## 실패와 복구
 
