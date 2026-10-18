@@ -28,6 +28,7 @@ hub:
       delivery:
         token: ${DELIVERY_SERVICE_TOKEN:}
         allowed:
+          - GET /internal/hubs/*
           - GET /internal/hub-routes
 springdoc:
   api-docs:
