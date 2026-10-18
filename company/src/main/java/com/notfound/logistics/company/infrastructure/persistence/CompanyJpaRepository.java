@@ -24,6 +24,9 @@ interface CompanyJpaRepository
   @Query("SELECT c FROM Company c WHERE c.id = :id")
   Optional<Company> findByIdForUpdate(@Param("id") UUID id);
 
+  @Query("SELECT c.managerUserId FROM Company c WHERE c.id = :id")
+  Optional<UUID> findManagerUserId(@Param("id") UUID id);
+
   // 상품은 Company Aggregate 내부 엔티티라 별도 저장소를 두지 않고 읽기 전용 쿼리만 둔다.
   @Query("SELECT p FROM Product p WHERE p.company.id = :companyId")
   Page<Product> findProducts(@Param("companyId") UUID companyId, Pageable pageable);

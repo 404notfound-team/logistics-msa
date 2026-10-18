@@ -131,6 +131,7 @@ class CompanyServiceTest {
   @Test
   void updateCompanyChangesOnlyProvidedFields() {
     Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
+    given(companyRepository.findManagerUserId(COMPANY_ID)).willReturn(Optional.of(MANAGER_ID));
     given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     // 이름과 허브만 보내고 주소·관리자는 null로 둔다.
@@ -343,6 +344,7 @@ class CompanyServiceTest {
 
   @Test
   void updateCompanyToMissingHubFails() {
+    given(companyRepository.findManagerUserId(COMPANY_ID)).willReturn(Optional.of(MANAGER_ID));
     willThrow(new CompanyException(CompanyError.HUB_NOT_FOUND))
         .given(hubVerifier)
         .verifyExists(OTHER_HUB_ID);
@@ -354,6 +356,41 @@ class CompanyServiceTest {
         .isEqualTo(CompanyError.HUB_NOT_FOUND);
     // hub 호출을 기다리는 동안 업체를 잠그지 않도록, 허브가 없으면 업체를 잠그기 전에 끝난다.
     verify(companyRepository, never()).findByIdForUpdate(any());
+  }
+
+  @Test
+  void otherUserChangingHubIsDeniedBeforeHubLookup() {
+    given(companyRepository.findManagerUserId(COMPANY_ID)).willReturn(Optional.of(MANAGER_ID));
+
+    // 없는 허브든 hub 장애든, 권한이 없으면 hub를 부르지 않고 403이다.
+    assertAccessDenied(
+        () -> companyService.updateCompany(OTHER_USER, COMPANY_ID, null, OTHER_HUB_ID, null, null));
+    verify(hubVerifier, never()).verifyExists(any());
+    verify(companyRepository, never()).findByIdForUpdate(any());
+  }
+
+  @Test
+  void changingHubOfMissingCompanyIsNotFoundBeforeHubLookup() {
+    given(companyRepository.findManagerUserId(COMPANY_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(
+            () -> companyService.updateCompany(MANAGER, COMPANY_ID, null, OTHER_HUB_ID, null, null))
+        .isInstanceOf(CompanyException.class)
+        .extracting(e -> ((CompanyException) e).getError())
+        .isEqualTo(CompanyError.COMPANY_NOT_FOUND);
+    verify(hubVerifier, never()).verifyExists(any());
+  }
+
+  @Test
+  void managerChangedDuringHubLookupIsDeniedAfterLocking() {
+    // 허브 확인 전에는 관리자였지만, 잠그고 다시 읽은 업체의 관리자는 다른 사람이다.
+    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", OTHER_USER_ID);
+    given(companyRepository.findManagerUserId(COMPANY_ID)).willReturn(Optional.of(MANAGER_ID));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
+
+    assertAccessDenied(
+        () -> companyService.updateCompany(MANAGER, COMPANY_ID, null, OTHER_HUB_ID, null, null));
+    assertThat(company.getHubId()).isEqualTo(HUB_ID);
   }
 
   @Test

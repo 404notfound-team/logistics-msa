@@ -20,6 +20,9 @@ public interface CompanyRepository {
    */
   Optional<Company> findByIdForUpdate(UUID id);
 
+  /** 업체 관리자 ID만 잠금 없이 조회한다. 삭제된 업체는 제외한다. 엔티티를 읽지 않으므로 같은 트랜잭션의 이후 잠금 조회가 최신 행을 그대로 읽는다. */
+  Optional<UUID> findManagerUserId(UUID id);
+
   Page<Company> search(CompanySearchCondition condition, Pageable pageable);
 
   /** 이름이 정확히 같은 업체를 모두 찾는다. 삭제된 업체는 제외한다. */
