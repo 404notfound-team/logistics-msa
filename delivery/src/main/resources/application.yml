@@ -40,6 +40,9 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   cloud:
+    loadbalancer:
+      eager-load:
+        clients: hub
     openfeign:
       client:
         config:

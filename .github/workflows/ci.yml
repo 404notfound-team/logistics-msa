@@ -87,12 +87,14 @@ jobs:
           done
       - name: Start infrastructure
         run: docker compose up -d --build --wait --wait-timeout 300
+      - name: Verify first login and order before other API calls
+        run: ./gradlew --no-daemon :integration-tests:coldStartTest
       - name: Verify service boundaries and tracing
         run: python3 scripts/smoke.py
       - name: Verify linked development scenarios
         run: python3 scripts/check-dev-data.py
       - name: Verify real Orders flow, timeouts and restart recovery
-        run: ./gradlew --no-daemon :integration-tests:e2eTest
+        run: ./gradlew --no-daemon :integration-tests:ordersFlowTest :integration-tests:deliveryRecoveryTest :integration-tests:stockRecoveryTest
       - name: Upload service integration reports
         if: always()
         uses: actions/upload-artifact@v7.0.2

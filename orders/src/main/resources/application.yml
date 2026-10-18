@@ -25,13 +25,20 @@ spring:
   jackson:
     property-naming-strategy: SNAKE_CASE
   cloud:
+    loadbalancer:
+      eager-load:
+        clients: company,hub,delivery
     openfeign:
       client:
-        default-to-properties: false
         config:
           default:
+            connect-timeout: ${orders.clients.connect-timeout-ms}
+            read-timeout: ${orders.clients.read-timeout-ms}
+            follow-redirects: false
+          infraHubProbe:
             connect-timeout: 2000
             read-timeout: 5000
+            follow-redirects: true
       micrometer:
         enabled: true
 eureka:
@@ -62,6 +69,8 @@ orders:
   jwt:
     secret: "${JWT_SECRET:}"
   clients:
+    connect-timeout-ms: ${ORDERS_CLIENTS_CONNECT_TIMEOUT_MS:1000}
+    read-timeout-ms: ${ORDERS_CLIENTS_READ_TIMEOUT_MS:2000}
     company-url: "${ORDERS_COMPANY_URL:}"
     stock-url: "${ORDERS_STOCK_URL:}"
     delivery-url: "${ORDERS_DELIVERY_URL:}"

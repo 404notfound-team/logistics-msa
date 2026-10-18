@@ -5,6 +5,7 @@ x-app: &app
   environment: &app-env
     SPRING_PROFILES_ACTIVE: local
     EUREKA_URL: http://eureka:8080/eureka/
+    EUREKA_CLIENT_REGISTRYFETCHINTERVALSECONDS: '5'
     ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     TZ: Asia/Seoul
   healthcheck:
@@ -56,6 +57,9 @@ services:
       context: .
       args:
         MODULE: eureka
+    environment:
+      <<: *app-env
+      EUREKA_SERVER_USEREADONLYRESPONSECACHE: 'false'
     ports:
       - "127.0.0.1:${EUREKA_PORT:-8761}:8080"
 

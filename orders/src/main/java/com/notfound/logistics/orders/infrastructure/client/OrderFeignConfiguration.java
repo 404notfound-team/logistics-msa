@@ -2,11 +2,9 @@ package com.notfound.logistics.orders.infrastructure.client;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
-import feign.Request;
 import feign.RequestInterceptor;
 import feign.Retryer;
 import feign.codec.ErrorDecoder;
-import java.util.concurrent.TimeUnit;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 
@@ -15,13 +13,6 @@ public class OrderFeignConfiguration {
   @Bean
   Retryer orderRetryer() {
     return Retryer.NEVER_RETRY;
-  }
-
-  @Bean
-  Request.Options orderRequestOptions(
-      @Value("${orders.clients.connect-timeout-ms:1000}") int connect,
-      @Value("${orders.clients.read-timeout-ms:2000}") int read) {
-    return new Request.Options(connect, TimeUnit.MILLISECONDS, read, TimeUnit.MILLISECONDS, false);
   }
 
   @Bean
