@@ -21,6 +21,8 @@ spring:
       add-mappings: false
   cloud:
     loadbalancer:
+      eager-load:
+        clients: users,company,hub,orders,delivery
       cache:
         # Eureka의 등록 목록 캐시를 사용하며, 추가 캐시로 재시작 전 목록을 유지하지 않는다.
         enabled: false

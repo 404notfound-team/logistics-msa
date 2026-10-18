@@ -17,6 +17,7 @@ dependencies {
 
 // Each stage owns its report and uses the same already started Compose stack.
 def stages = [
+    coldStartTest: '*ColdStartTest',
     ordersFlowTest: '*OrdersFlowTest',
     deliveryRecoveryTest: '*OrdersRecoveryTest.recoversDeliveryCommittedAfterTimeoutAndOrdersShutdown',
     stockRecoveryTest: '*OrdersRecoveryTest.recoversRestorationCommittedAfterTimeoutAndOrdersShutdown'

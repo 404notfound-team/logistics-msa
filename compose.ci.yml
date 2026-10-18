@@ -3,29 +3,18 @@ x-ci-build: &ci-build
   additional_contexts:
     jars: ./work/ci-jars
 
-x-ci-discovery-env: &ci-discovery-env
-  EUREKA_CLIENT_REGISTRYFETCHINTERVALSECONDS: '5'
-
 services:
   eureka:
     build: *ci-build
-    environment:
-      EUREKA_SERVER_RESPONSECACHEUPDATEINTERVALMS: '5000'
   gateway:
     build: *ci-build
-    environment: *ci-discovery-env
   users:
     build: *ci-build
-    environment: *ci-discovery-env
   company:
     build: *ci-build
-    environment: *ci-discovery-env
   hub:
     build: *ci-build
-    environment: *ci-discovery-env
   orders:
     build: *ci-build
-    environment: *ci-discovery-env
   delivery:
     build: *ci-build
-    environment: *ci-discovery-env

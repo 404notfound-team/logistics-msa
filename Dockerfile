@@ -13,10 +13,20 @@ ENV JAVA_TOOL_OPTIONS="-Xms64m -Xmx256m -Duser.timezone=Asia/Seoul"
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
 
-FROM runtime-base AS ci
+FROM runtime-base AS ci-extract
+USER root
 ARG MODULE
-COPY --from=jars --chown=app:app /${MODULE}/app.jar /app/app.jar
+COPY --from=jars /${MODULE}/app.jar /app/app.jar
+RUN java -Djarmode=tools -jar /app/app.jar extract --destination /app/extracted
+
+FROM runtime-base AS ci
+COPY --from=ci-extract --chown=app:app /app/extracted/ /app/
+
+FROM runtime-base AS runtime-extract
+USER root
+ARG MODULE
+COPY --from=build /workspace/${MODULE}/build/libs/app.jar /app/app.jar
+RUN java -Djarmode=tools -jar /app/app.jar extract --destination /app/extracted
 
 FROM runtime-base AS runtime
-ARG MODULE
-COPY --from=build --chown=app:app /workspace/${MODULE}/build/libs/app.jar /app/app.jar
+COPY --from=runtime-extract --chown=app:app /app/extracted/ /app/
