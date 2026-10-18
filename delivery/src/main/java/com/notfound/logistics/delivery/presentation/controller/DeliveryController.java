@@ -79,7 +79,6 @@ class DeliveryController {
         deliveryQueryService.search(
             condition, PageRequest.of(page, size, DeliverySort.parse(sort)));
 
-    // TODO: 권한 검사하기
     return new ApiResponse<>(
         new PageResponse<>(
             result.map(DeliveryResponse::from).getContent(),
@@ -92,7 +91,7 @@ class DeliveryController {
   @GetMapping("/{delivery_id}")
   ApiResponse<DeliveryResponse> searchDetail(
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
-    // TODO: 권한 검사하기
+
     return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
   }
 
@@ -100,7 +99,7 @@ class DeliveryController {
   @GetMapping("/{id}/routes")
   ApiResponse<List<DeliveryRouteResponse>> searchRoutes(
       @Parameter(description = "배송 ID") @PathVariable() UUID id) {
-    // TODO: 권한 검사하기
+
     return new ApiResponse<>(
         deliveryQueryService.searchRoutes(id).stream().map(DeliveryRouteResponse::from).toList());
   }
