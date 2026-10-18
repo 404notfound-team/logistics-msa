@@ -11,11 +11,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.SQLRestriction;
 
 /** 주문 1건의 배송. 출발 허브에서 목적지 허브까지 이동한 뒤 업체 주소의 수령인에게 전달한다. */
@@ -53,6 +55,12 @@ public class Delivery extends AuditEntity {
   @Column(name = "delivery_manager_id")
   private UUID assigneeId;
 
+  /** 낙관적 락 버전. 같은 배송을 동시에 수정하면 먼저 커밋한 요청만 반영되고, 나머지는 이전 상태를 기준으로 검증했으므로 커밋 시 실패한다. */
+  @Version
+  @ColumnDefault("0")
+  @Column(name = "version", nullable = false)
+  private Long version;
+
   private Delivery(
       UUID orderId,
       UUID departureHubId,
@@ -76,9 +84,20 @@ public class Delivery extends AuditEntity {
     return new Delivery(orderId, departureHubId, destinationHubId, address, recipientName);
   }
 
-  /** 배송 상태를 바꾼다. 상태 전이 규칙은 아직 정하지 않아 어떤 상태로든 바꿀 수 있다. */
+  /**
+   * 배송 상태를 바꾼다. 진행 순서상 바로 다음 상태로만 바꿀 수 있으며, 되돌리거나 건너뛰면 INVALID_STATUS_TRANSITION이다.
+   *
+   * <p>현재와 같은 상태를 요청하면 아무것도 바꾸지 않는다. 같은 요청을 재시도해도 실패하지 않도록 하기 위함이다.
+   */
   public void changeStatus(DeliveryStatus status) {
-    this.status = Objects.requireNonNull(status, "status");
+    Objects.requireNonNull(status, "status");
+    if (this.status == status) {
+      return;
+    }
+    if (!this.status.canTransitionTo(status)) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.INVALID_STATUS_TRANSITION);
+    }
+    this.status = status;
   }
 
   /**

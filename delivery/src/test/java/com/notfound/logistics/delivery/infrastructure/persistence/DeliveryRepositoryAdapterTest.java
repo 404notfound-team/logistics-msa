@@ -38,7 +38,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
           + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql"
+          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
+          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
     })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DeliveryRepositoryAdapter.class)
