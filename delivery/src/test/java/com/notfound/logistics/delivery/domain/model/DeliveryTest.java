@@ -174,6 +174,7 @@ class DeliveryTest {
     return Delivery.create(
         UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), "서울특별시 송파구 송파대로 55", "홍길동");
   }
+
   private static final String ACTOR = "orders-user";
   private static final Instant DELETED_AT = Instant.parse("2026-01-01T00:00:00Z");
 
