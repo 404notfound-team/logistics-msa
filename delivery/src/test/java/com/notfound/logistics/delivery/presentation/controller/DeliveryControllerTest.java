@@ -18,6 +18,7 @@ import com.notfound.logistics.delivery.application.service.DeliveryCommandServic
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
+import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
@@ -38,6 +39,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -520,6 +522,38 @@ class DeliveryControllerTest {
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("ASSIGNMENT_NOT_ALLOWED"))
         .andExpect(jsonPath("$.message").value("허브 대기중인 배송만 담당자를 배정할 수 있습니다."))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void anInvalidStatusTransitionIsAConflict() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_WAITING, null))
+        .willThrow(new DeliveryBusinessException(DeliveryErrorCode.INVALID_STATUS_TRANSITION));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_WAITING\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("INVALID_STATUS_TRANSITION"))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void aConcurrentModificationIsAConflict() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null))
+        .willThrow(new ObjectOptimisticLockingFailureException(Delivery.class, deliveryId));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}"))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
   }
 

@@ -85,6 +85,17 @@ class DeliveryCommandServiceTest {
   }
 
   @Test
+  void skippingAStatusFailsWithInvalidStatusTransitionAndChangesNothing() {
+    Delivery delivery = existingDelivery();
+
+    assertThatThrownBy(() -> service.modify(DELIVERY_ID, DeliveryStatus.DELIVERED, null))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.INVALID_STATUS_TRANSITION);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+  }
+
+  @Test
   void modifyReturnsTheDeliveryWithItsRoutes() {
     Delivery delivery = existingDelivery();
     DeliveryRoute first = route(delivery, 1);

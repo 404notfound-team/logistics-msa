@@ -6,6 +6,7 @@ import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.CommonErrorCode;
 import com.notfound.logistics.common.api.FieldViolation;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
+import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import io.micrometer.tracing.Tracer;
 import java.util.Arrays;
 import java.util.List;
@@ -13,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.core.MethodParameter;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -32,6 +34,15 @@ class ApiExceptionHandler {
   @ExceptionHandler(DeliveryBusinessException.class)
   ResponseEntity<ApiErrorResponse> business(DeliveryBusinessException exception) {
     DeliveryApiErrorCode error = new DeliveryApiErrorCode(exception.getErrorCode());
+    return error(error.httpStatus(), HttpHeaders.EMPTY, error);
+  }
+
+  // 낙관적 락 충돌은 트랜잭션 커밋 시점에 발생하므로 서비스 밖에서 변환한다. 클라이언트는 다시 조회한 뒤 재요청한다.
+  @ExceptionHandler(OptimisticLockingFailureException.class)
+  ResponseEntity<ApiErrorResponse> concurrentModification(
+      OptimisticLockingFailureException exception) {
+    DeliveryApiErrorCode error =
+        new DeliveryApiErrorCode(DeliveryErrorCode.CONCURRENT_MODIFICATION);
     return error(error.httpStatus(), HttpHeaders.EMPTY, error);
   }
 
