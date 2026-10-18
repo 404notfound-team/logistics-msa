@@ -10,11 +10,13 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
@@ -53,6 +55,15 @@ public class User extends AuditEntity {
 
   @Column(name = "is_delivery_staff", nullable = false)
   private boolean deliveryStaff;
+
+  /**
+   * 낙관적 락 버전입니다. 수정·탈퇴·관리자 삭제가 겹치면 먼저 커밋한 쪽만 반영되고, 나중 쪽은 조회 시점의 값으로 덮어쓰지 못하고 실패합니다. 기본값은 기존 행에 컬럼을
+   * 추가할 때 필요합니다.
+   */
+  @Version
+  @ColumnDefault("0")
+  @Column(nullable = false)
+  private long version;
 
   private User(
       String username,

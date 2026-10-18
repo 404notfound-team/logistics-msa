@@ -10,7 +10,8 @@ public enum UserErrorCode implements ApiErrorCode {
   INVALID_SORT(400, "지원하지 않는 정렬 조건입니다."),
   AFFILIATION_AMBIGUOUS(409, "같은 이름의 업체 또는 허브가 여러 개입니다."),
   AFFILIATION_LOOKUP_UNAVAILABLE(503, "업체 또는 허브 정보를 확인할 수 없습니다."),
-  USER_NOT_FOUND(404, "사용자를 찾을 수 없습니다.");
+  USER_NOT_FOUND(404, "사용자를 찾을 수 없습니다."),
+  USER_CONCURRENTLY_MODIFIED(409, "다른 요청이 먼저 사용자 정보를 변경했습니다. 다시 시도해 주세요.");
 
   private final int httpStatus;
   private final String message;

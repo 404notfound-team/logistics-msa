@@ -15,6 +15,7 @@ import org.slf4j.MDC;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.ErrorResponse;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
@@ -31,6 +32,15 @@ public class UserExceptionHandler {
   @ExceptionHandler(UserException.class)
   public ResponseEntity<ApiErrorResponse> handleUserException(UserException exception) {
     var error = exception.getErrorCode();
+    return ResponseEntity.status(HttpStatusCode.valueOf(error.httpStatus()))
+        .body(ApiErrorResponse.of(error, traceId()));
+  }
+
+  /** 조회 후 저장 전에 다른 요청이 같은 사용자를 먼저 커밋했습니다. 대개 트랜잭션 커밋 시점에 발생해 서비스 안에서는 잡을 수 없습니다. */
+  @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+  public ResponseEntity<ApiErrorResponse> handleConcurrentModification(
+      ObjectOptimisticLockingFailureException exception) {
+    var error = UserErrorCode.USER_CONCURRENTLY_MODIFIED;
     return ResponseEntity.status(HttpStatusCode.valueOf(error.httpStatus()))
         .body(ApiErrorResponse.of(error, traceId()));
   }

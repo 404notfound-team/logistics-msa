@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -15,6 +16,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
 import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
 import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
@@ -35,6 +37,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -190,6 +193,17 @@ class UserSecurityTest {
         .andExpect(status().isNoContent());
 
     verify(userService).withdraw(USER_ID, "user01");
+  }
+
+  @Test
+  void concurrentModificationIsConflict() throws Exception {
+    willThrow(new ObjectOptimisticLockingFailureException(User.class, USER_ID))
+        .given(userService)
+        .withdraw(USER_ID, "user01");
+
+    mvc.perform(delete("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isConflict())
+        .andExpect(jsonPath("$.code").value("USER_CONCURRENTLY_MODIFIED"));
   }
 
   @Test
