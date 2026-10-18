@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -49,6 +50,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -324,7 +326,7 @@ class HubSecurityIntegrationTest {
     "USERS,names,200", "USERS,hub,200", "USERS,stocks,403", "USERS,routes,403",
     "COMPANY,names,403", "COMPANY,hub,200", "COMPANY,stocks,403", "COMPANY,routes,403",
     "ORDERS,names,403", "ORDERS,hub,403", "ORDERS,stocks,200", "ORDERS,routes,403",
-    "DELIVERY,names,403", "DELIVERY,hub,403", "DELIVERY,stocks,403", "DELIVERY,routes,200"
+    "DELIVERY,names,403", "DELIVERY,hub,200", "DELIVERY,stocks,403", "DELIVERY,routes,200"
   })
   void internalReadPermissionsAreScopedToTheCallingService(
       String caller, String resource, int expected) throws Exception {
@@ -362,6 +364,29 @@ class HubSecurityIntegrationTest {
   }
 
   @ParameterizedTest
+  @CsvSource({
+    "GET,/internal/hubs",
+    "POST,/internal/hubs/{hub}",
+    "PUT,/internal/hubs/{hub}",
+    "PATCH,/internal/hubs/{hub}",
+    "DELETE,/internal/hubs/{hub}",
+    "GET,/internal/hub-routes/{hub}",
+    "GET,/internal/hubs/{hub}/products/{product}/stocks"
+  })
+  void deliveryHubReadPermissionDoesNotGrantOtherMethodsOrResources(String method, String path)
+      throws Exception {
+    mvc.perform(
+            request(
+                    HttpMethod.valueOf(method),
+                    path.replace("{hub}", HUB).replace("{product}", PRODUCT))
+                .header("X-Service-Token", HubSecurityTestTokens.DELIVERY)
+                .header("X-Actor-Username", "alice"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    verifyNoInteractions(hubs, stocks, routes, commands);
+  }
+
+  @ParameterizedTest
   @ValueSource(ints = {1, 100})
   void verifiedUsernamesAtAuditLengthBoundariesAreAccepted(int length) throws Exception {
     String username = "x".repeat(length);
@@ -373,7 +398,7 @@ class HubSecurityIntegrationTest {
   }
 
   @ParameterizedTest
-  @CsvSource({"USERS,hub", "COMPANY,hub", "ORDERS,stocks", "DELIVERY,routes"})
+  @CsvSource({"USERS,hub", "COMPANY,hub", "ORDERS,stocks", "DELIVERY,hub", "DELIVERY,routes"})
   void onlySignupNameLookupMayOmitOriginalActor(String caller, String resource) throws Exception {
     String token =
         switch (caller) {
