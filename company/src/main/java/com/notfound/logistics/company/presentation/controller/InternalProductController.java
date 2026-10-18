@@ -11,14 +11,17 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 // 서비스 간 호출 전용. Gateway는 /api/** 만 라우팅하고 Swagger도 공개 경로만 문서화하므로 외부에 노출되지 않는다.
-// CompanySecurityConfiguration의 서비스 인증(X-Service-Token)으로 orders만 호출할 수 있다.
+// CompanySecurityConfiguration의 서비스 인증(X-Service-Token)으로 orders·hub만 호출할 수 있다.
 @RestController
 @RequestMapping("/internal/products")
 @RequiredArgsConstructor
 public class InternalProductController {
   private final CompanyService companyService;
 
-  /** orders: 주문 생성 시 상품명·가격·공급 업체를 조회한다. 없거나 삭제된 상품은 404 PRODUCT_NOT_FOUND. */
+  /**
+   * orders: 주문 생성 시 상품명·가격·공급 업체를 조회한다. hub: 재고 생성 시 상품이 있는지 확인한다. 없거나 삭제된 상품은 404
+   * PRODUCT_NOT_FOUND.
+   */
   @GetMapping("/{product_id}")
   public ApiResponse<InternalProductResponse> getProduct(
       @PathVariable("product_id") UUID productId) {
