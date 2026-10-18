@@ -1,7 +1,6 @@
 package com.notfound.logistics.delivery.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
@@ -20,30 +19,25 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** 운영과 같은 마이그레이션 SQL로 테이블을 만들고 ddl-auto=validate로 엔티티 매핑까지 확인한다. */
-@DataJpaTest(
-    properties = {
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
-    })
+/** 앱과 같은 엔티티와 인덱스 SQL로 만든 PostgreSQL에서 조회·저장 계약을 확인한다. */
+@DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Import(DeliveryRepositoryAdapter.class)
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DeliveryRepositoryAdapterTest {
   private static final UUID HUB_A = UUID.randomUUID();
   private static final UUID HUB_B = UUID.randomUUID();
@@ -55,7 +49,8 @@ class DeliveryRepositoryAdapterTest {
       Sort.by(Sort.Order.desc("createdAt"), Sort.Order.asc("id"));
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   @Autowired private DeliveryRepository repository;
   @Autowired private JdbcTemplate jdbc;
@@ -199,16 +194,6 @@ class DeliveryRepositoryAdapterTest {
         .filteredOn(route -> route.getDelivery().getId().equals(second))
         .extracting(DeliveryRoute::getId)
         .containsExactly(firstOfSecond, secondOfSecond);
-  }
-
-  @Test
-  void migrationRejectsTheSameSequenceInOneDeliveryLikeTheEntityMapping() {
-    insertRoute(second, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
-    insertRoute(first, 1, HUB_A, HUB_B, DeliveryRouteStatus.WAITING, null);
-
-    assertThatThrownBy(
-            () -> insertRoute(second, 1, HUB_B, HUB_C, DeliveryRouteStatus.WAITING, null))
-        .isInstanceOf(DataIntegrityViolationException.class);
   }
 
   @Test

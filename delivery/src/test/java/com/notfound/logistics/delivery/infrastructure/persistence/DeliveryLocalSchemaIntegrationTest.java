@@ -25,7 +25,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "delivery.internal-auth.service-token=test-delivery-service-token"
     })
 @ActiveProfiles("local")
-@Testcontainers(disabledWithoutDocker = true)
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DeliveryLocalSchemaIntegrationTest {
   @Container

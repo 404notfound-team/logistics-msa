@@ -17,3 +17,12 @@ dependencies {
     testImplementation 'org.testcontainers:postgresql'
     runtimeOnly 'org.postgresql:postgresql'
 }
+
+tasks.named('test') {
+    systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
+    inputs.files(
+        rootProject.file('infra/postgres/01-init.sh'),
+        rootProject.file('infra/dev-data/seed-delivery-routes.sh'),
+        rootProject.file('hub/src/main/resources/db/seed/hub-routes.sql')
+    ).withPropertyName('deliveryRoutesDevData').withPathSensitivity(PathSensitivity.RELATIVE)
+}

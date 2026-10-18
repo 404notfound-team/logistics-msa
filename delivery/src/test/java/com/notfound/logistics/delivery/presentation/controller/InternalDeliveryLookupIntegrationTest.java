@@ -22,6 +22,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -45,16 +46,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "delivery.internal-auth.clients.orders.token="
           + InternalDeliveryLookupIntegrationTest.ORDERS_TOKEN,
       "delivery.internal-auth.clients.company.token="
-          + InternalDeliveryLookupIntegrationTest.COMPANY_TOKEN,
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
+          + InternalDeliveryLookupIntegrationTest.COMPANY_TOKEN
     })
 @AutoConfigureMockMvc
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class InternalDeliveryLookupIntegrationTest {
   static final String ORDERS_TOKEN = "test-orders-service-token";
@@ -63,7 +59,8 @@ class InternalDeliveryLookupIntegrationTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   @Autowired private MockMvc mockMvc;
   @Autowired private JdbcTemplate jdbc;

@@ -1,12 +1,14 @@
 package com.notfound.logistics.company.infrastructure.persistence;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.awaitility.Awaitility.await;
 
 import com.notfound.logistics.company.application.service.CompanyService;
 import com.notfound.logistics.company.application.service.HubVerifier;
 import com.notfound.logistics.company.application.service.Requester;
 import com.notfound.logistics.company.domain.model.Company;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
@@ -15,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,8 +33,10 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -65,6 +70,7 @@ class CompanyConcurrencyTest {
   @Autowired private CompanyService companyService;
   @Autowired private PausingAuditor auditor;
   @Autowired private DataSource dataSource;
+  @Autowired private PlatformTransactionManager transactions;
 
   private JdbcTemplate jdbc;
 
@@ -146,15 +152,41 @@ class CompanyConcurrencyTest {
   private void runOverlapping(Runnable first, Runnable second) throws Exception {
     auditor.pauseFirstCallOn(SLOW_THREAD);
     CompletableFuture<Void> a = CompletableFuture.runAsync(first, namedThread(SLOW_THREAD));
-    assertThat(auditor.awaitPaused()).as("A가 업체를 잠근 채 커밋 직전에 멈춤").isTrue();
-
-    CompletableFuture<Void> b = CompletableFuture.runAsync(second, namedThread("fast-tx"));
-    Thread.sleep(500);
-    assertThat(b).as("B는 A의 잠금이 풀릴 때까지 기다린다").isNotDone();
-
-    auditor.resume();
-    a.get(10, TimeUnit.SECONDS);
-    b.get(10, TimeUnit.SECONDS);
+    CompletableFuture<Void> b = null;
+    try {
+      assertThat(auditor.awaitPaused()).as("A가 업체를 잠근 채 커밋 직전에 멈춤").isTrue();
+      AtomicInteger backend = new AtomicInteger();
+      b =
+          CompletableFuture.runAsync(
+              () ->
+                  new TransactionTemplate(transactions)
+                      .executeWithoutResult(
+                          status -> {
+                            backend.set(
+                                jdbc.queryForObject("SELECT pg_backend_pid()", Integer.class));
+                            second.run();
+                          }),
+              namedThread("fast-tx"));
+      CompletableFuture<Void> competing = b;
+      // B가 실제 DB 잠금을 기다리는지 확인한다. 잠금 회귀로 B가 먼저 끝나도 즉시 판정한다.
+      await()
+          .atMost(Duration.ofSeconds(5))
+          .until(
+              () ->
+                  competing.isDone()
+                      || Boolean.TRUE.equals(
+                          jdbc.queryForObject(
+                              "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE pid = ? "
+                                  + "AND wait_event_type = 'Lock' "
+                                  + "AND cardinality(pg_blocking_pids(pid)) > 0)",
+                              Boolean.class,
+                              backend.get())));
+      assertThat(b).as("B는 A의 잠금이 풀릴 때까지 기다린다").isNotDone();
+    } finally {
+      auditor.resume();
+      CompletableFuture<Void> completion = b == null ? a : CompletableFuture.allOf(a, b);
+      completion.get(10, TimeUnit.SECONDS);
+    }
   }
 
   private UUID createCompany() {
@@ -210,9 +242,10 @@ class CompanyConcurrencyTest {
         pausedThread = null;
         paused.countDown();
         try {
-          released.await(10, TimeUnit.SECONDS);
+          assertThat(released.await(10, TimeUnit.SECONDS)).as("A의 일시 중지 해제").isTrue();
         } catch (InterruptedException e) {
           Thread.currentThread().interrupt();
+          throw new IllegalStateException("A의 일시 중지 대기가 중단됨", e);
         }
       }
       return Optional.of(name);

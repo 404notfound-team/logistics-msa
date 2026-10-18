@@ -32,7 +32,7 @@ case "$1" in
     deliveries)
         [[ $# -eq 1 ]] || usage
         service=delivery
-        sql="$root/delivery/src/main/resources/db/seed/local_p_deliveries.sql"
+        sql="$root/delivery/src/main/resources/db/seed/local-deliveries.sql"
         ;;
     delivery-routes)
         [[ $# -eq 1 ]] || usage

@@ -21,6 +21,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -28,28 +29,24 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-/** 운영 마이그레이션으로 만든 테이블에 저장한 거리·시간 값이 엔티티와 DTO를 거쳐 JSON 응답까지 그대로 유지되는지 확인한다. */
+/** 앱과 같은 엔티티와 인덱스 SQL로 만든 테이블에 저장한 거리·시간 값이 엔티티와 DTO를 거쳐 JSON 응답까지 그대로 유지되는지 확인한다. */
 @SpringBootTest(
     properties = {
       "eureka.client.enabled=false",
       "management.tracing.enabled=false",
       // Hub Feign 클라이언트는 서비스 토큰이 비어 있으면 기동하지 않는다.
-      "delivery.internal-auth.service-token=test-delivery-service-token",
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
+      "delivery.internal-auth.service-token=test-delivery-service-token"
     })
 @AutoConfigureMockMvc
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DeliveryRouteRoundTripTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   @Autowired private MockMvc mockMvc;
   @Autowired private JdbcTemplate jdbc;

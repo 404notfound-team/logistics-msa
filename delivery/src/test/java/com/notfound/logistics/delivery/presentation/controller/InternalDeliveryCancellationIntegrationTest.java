@@ -20,6 +20,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -30,6 +31,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -53,16 +55,11 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "delivery.internal-auth.clients.orders.token="
           + InternalDeliveryCancellationIntegrationTest.ORDERS_TOKEN,
       "delivery.internal-auth.clients.company.token="
-          + InternalDeliveryCancellationIntegrationTest.COMPANY_TOKEN,
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
+          + InternalDeliveryCancellationIntegrationTest.COMPANY_TOKEN
     })
 @AutoConfigureMockMvc
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class InternalDeliveryCancellationIntegrationTest {
   static final String ORDERS_TOKEN = "test-orders-service-token";
@@ -72,7 +69,8 @@ class InternalDeliveryCancellationIntegrationTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   @Autowired private MockMvc mockMvc;
   @Autowired private JdbcTemplate jdbc;
@@ -91,7 +89,8 @@ class InternalDeliveryCancellationIntegrationTest {
   }
 
   @Test
-  void cancelsTheWaitingDeliveryAndRespondsWithOnlyTheSpecifiedFields() throws Exception {
+  void cancelsAWaitingDeliveryWithoutRoutesAndRespondsWithOnlyTheSpecifiedFields()
+      throws Exception {
     UUID orderId = UUID.randomUUID();
     UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_WAITING, null);
 
@@ -125,17 +124,6 @@ class InternalDeliveryCancellationIntegrationTest {
                 String.class,
                 deliveryId))
         .containsOnly(ACTOR);
-  }
-
-  @Test
-  void deliveryWithoutRoutesIsCancelled() throws Exception {
-    // 출발·목적지 허브가 같은 배송은 경로가 없다.
-    UUID deliveryId = insertDelivery(UUID.randomUUID(), DeliveryStatus.HUB_WAITING, null);
-
-    cancel(deliveryId)
-        .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.status").value("CANCELLED"));
-    assertThat(deliveryRow(deliveryId).get("status")).isEqualTo("CANCELLED");
   }
 
   @Test
@@ -200,7 +188,7 @@ class InternalDeliveryCancellationIntegrationTest {
     try {
       Callable<Integer> request =
           () -> {
-            start.await();
+            assertThat(start.await(10, TimeUnit.SECONDS)).isTrue();
             return cancel(deliveryId).andReturn().getResponse().getStatus();
           };
       List<Future<Integer>> results = new ArrayList<>();
@@ -209,10 +197,11 @@ class InternalDeliveryCancellationIntegrationTest {
       }
       start.countDown();
       for (Future<Integer> result : results) {
-        assertThat(result.get()).isEqualTo(200);
+        assertThat(result.get(10, TimeUnit.SECONDS)).isEqualTo(200);
       }
     } finally {
       executor.shutdownNow();
+      assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
     }
 
     assertThat(deliveryRow(deliveryId).get("status")).isEqualTo("CANCELLED");

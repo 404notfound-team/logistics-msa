@@ -26,8 +26,8 @@ python3 scripts/check-dev-data.py
 | 업체·상품 | 허브마다 업체 2개, 업체마다 상품 3개. 총 업체 34개·상품 102개 | [업체·상품](../../company/src/main/resources/db/seed/local-companies.sql) |
 | 재고 | 상품별 100개·2개·0개, 총 102건 | [재고](../../hub/src/main/resources/db/seed/local-stocks.sql) |
 | 주문 | 확정 20·취소 5·실패 5·논리 삭제 1. 두 작성자, 같은 허브·다른 허브, 날짜·상품 필터와 여러 페이지 | [주문](../../orders/src/main/resources/db/seed/local-orders.sql) |
-| 배송 | 5개 상태마다 조회 가능한 배송 4개. 취소 주문의 배송 5개·삭제 주문의 배송 1개는 논리 삭제되어 조회 제외 | [배송](../../delivery/src/main/resources/db/seed/local_p_deliveries.sql) |
-| 배송 구간 | 26개 배송에 총 33구간(조회 가능 25·논리 삭제 8). 1구간·중간 허브를 거치는 2구간, 동일 허브의 거리/시간 0, 대기·이동·도착·취소 | [구간 계산·적재](../../delivery/src/main/resources/db/seed/local_p_delivery_routes.sql) |
+| 배송 | 5개 상태마다 조회 가능한 배송 4개. 취소 주문의 배송 5개·삭제 주문의 배송 1개는 논리 삭제되어 조회 제외 | [배송](../../delivery/src/main/resources/db/seed/local-deliveries.sql) |
+| 배송 구간 | 26개 배송에 총 33구간(조회 가능 25·논리 삭제 8). 1구간·중간 허브를 거치는 2구간, 동일 허브의 거리/시간 0, 대기·이동·도착·취소 | [구간 계산·적재](../../delivery/src/main/resources/db/seed/local-delivery-routes.sql) |
 
 상품의 업체, 재고의 허브·상품, 주문의 공급·수령 업체·상품·허브, 배송의 주문·허브 ID가 서로 연결됩니다.
 업체 이름·상품 이름에는 `[개발샘플]`이 있고 주소·수령인·식별자는 합성 값입니다.
@@ -78,6 +78,9 @@ Company의 내부 조회 API(업체 이름 조회·업체 단건 조회·상품 
 샘플 조회의 성공은 실제 서비스 간 주문 생성·배송 생성·취소·삭제의 성공을 보장하지 않습니다.
 선행 배송 API와 실제 주문 흐름의 실행 조건은 [주문 서비스](../../orders/README.md#실제-서비스-연동)를 따릅니다.
 기본 Compose는 실제 서비스만 호출합니다.
+
+Delivery 테이블은 엔티티로 생성합니다. 삭제되지 않은 배송의 주문 ID를 유일하게 유지하는 부분 UNIQUE 인덱스는 [indexes.sql](../../delivery/src/main/resources/db/indexes.sql)에 둡니다. 테스트도 같은 엔티티·인덱스를 사용하며, `local` 프로필은 그 뒤 배송 샘플을 적재합니다.
+
 입력 오류·권한·재고 부족·멱등·동시 처리·통신 실패·중단 복구는 해당 모듈의 기존 테스트로 검증합니다.
 `PROCESSING`·`CANCELLING`·`RECOVERY_REQUIRED`는 자동 복구 작업이 실제 처리하므로 기본 조회 샘플로 고정하지 않습니다.
 재고 차감·복원은 최신 Hub의 실제 내부 API와 [주문 서비스 검증](../../orders/README.md#실행과-검증)에서 각각 확인합니다.

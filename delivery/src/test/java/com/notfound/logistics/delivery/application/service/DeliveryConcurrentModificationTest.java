@@ -22,6 +22,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,15 +37,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
     properties = {
       "eureka.client.enabled=false",
       "delivery.internal-auth.service-token=test-delivery-service-token",
-      "management.tracing.enabled=false",
-      "spring.jpa.hibernate.ddl-auto=validate",
-      "spring.sql.init.mode=always",
-      "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
-          + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
-          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
+      "management.tracing.enabled=false"
     })
-@Testcontainers(disabledWithoutDocker = true)
+@ActiveProfiles("test")
+@Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class DeliveryConcurrentModificationTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
@@ -52,7 +48,8 @@ class DeliveryConcurrentModificationTest {
   private static final DeliveryActor MASTER = new DeliveryActor(UUID.randomUUID(), true);
 
   @Container
-  static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
+  static final PostgreSQLContainer<?> DATABASE =
+      new PostgreSQLContainer<>("postgres:18-alpine").withInitScript("db/test-schema.sql");
 
   @Autowired private DeliveryCommandService service;
   @Autowired private DeliveryRepository deliveryRepository;
