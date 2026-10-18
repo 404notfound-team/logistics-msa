@@ -74,7 +74,7 @@ curl -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/api/hubs/00000000-
 데이터를 수정한 DB에서는 초기값 검사가 실패할 수 있습니다. 검사 명령 자체는 데이터를 변경하지 않습니다.
 Gateway 포트를 바꿨다면 `--gateway-url http://localhost:포트`를 지정하세요.
 
-Company의 Orders용 업체·상품 ID 조회 API는 최신 develop에 반영되어 있습니다. Users 회원가입에 필요한 Company 이름 조회 `/internal/companies?name=`는 미구현이라 업체 소속 가입은 현재 503입니다. 허브 소속 가입과 기본 개발 계정 로그인은 가능합니다. Delivery의 생성·조회·취소·삭제 내부 API도 아직 미구현입니다.
+Company의 내부 조회 API(업체 이름 조회·업체 단건 조회·상품 단건 조회)는 최신 develop에 반영되어 있어 업체·허브 소속 가입과 Hub의 재고 생성 상품 확인이 동작합니다. Delivery의 생성·조회·취소·삭제 내부 API도 아직 미구현입니다.
 Orders와 Delivery의 내부 배송 상태 명칭도 아직 통합되지 않았습니다.
 따라서 기본 샘플로 **실제 서비스 간 주문 생성·배송 생성·취소·삭제가 성공한다고 보장하지 않습니다**.
 이 연동을 가짜 API나 Stub으로 기본 Compose에서 대신하지 않습니다.
