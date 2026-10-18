@@ -11,11 +11,16 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -30,6 +35,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 @SpringBootTest(
     properties = {
       "eureka.client.enabled=false",
+      "delivery.internal-auth.service-token=test-delivery-service-token",
       "management.tracing.enabled=false",
       "spring.jpa.hibernate.ddl-auto=validate",
       "spring.sql.init.mode=always",
@@ -58,6 +64,18 @@ class DeliveryConcurrentModificationTest {
     registry.add("spring.datasource.url", () -> DATABASE.getJdbcUrl() + "&currentSchema=delivery");
     registry.add("spring.datasource.username", DATABASE::getUsername);
     registry.add("spring.datasource.password", DATABASE::getPassword);
+  }
+
+  @BeforeEach
+  void authenticate() {
+    Jwt jwt = Jwt.withTokenValue("test").header("alg", "none").subject("tester").build();
+    SecurityContextHolder.getContext()
+        .setAuthentication(new JwtAuthenticationToken(jwt, java.util.List.of()));
+  }
+
+  @AfterEach
+  void clearAuthentication() {
+    SecurityContextHolder.clearContext();
   }
 
   @Test

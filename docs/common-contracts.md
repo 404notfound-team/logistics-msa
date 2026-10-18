@@ -89,6 +89,7 @@ users:
 | Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | 적용 |
 | Company | `GET /internal/companies/{id}` | Orders | 필수 | 적용 |
 | Company | `GET /internal/products/{id}` | Orders | 필수 | 적용 |
+| Delivery | `POST /internal/deliveries` | Orders | 필수 | 배송·경로 생성. 최초 201, 동일 주문·내용 재요청 200, 다른 내용 409 |
 | Hub | `POST /internal/stocks/deductions` | Orders | 필수 | 서비스 인증 적용. `order_id`는 추적용이며 재차감 금지 |
 | Hub | `POST /internal/stocks/restorations` | Orders | 필수 | 서비스 인증 적용. 주문별 멱등 복원 |
 

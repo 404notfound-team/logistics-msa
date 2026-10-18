@@ -102,12 +102,6 @@ class ApiExceptionHandler {
     return validation(violations);
   }
 
-  // 요청 본문을 읽을 수 없음(본문 없음, JSON 문법 오류, UUID 등 형식 오류). 500이 아니라 400으로 응답한다.
-  @ExceptionHandler(HttpMessageNotReadableException.class)
-  ResponseEntity<ApiErrorResponse> unreadableBody(HttpMessageNotReadableException exception) {
-    return error(400, HttpHeaders.EMPTY, CommonErrorCode.INVALID_REQUEST);
-  }
-
   @ExceptionHandler(Exception.class)
   ResponseEntity<ApiErrorResponse> unexpected(Exception exception) {
     // Framework 4xx/5xx(지원하지 않는 메서드, 없는 경로 등)는 상태를 유지하고 공통 오류 코드로 응답한다.
