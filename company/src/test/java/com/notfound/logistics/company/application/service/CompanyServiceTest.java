@@ -131,7 +131,7 @@ class CompanyServiceTest {
   @Test
   void updateCompanyChangesOnlyProvidedFields() {
     Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     // 이름과 허브만 보내고 주소·관리자는 null로 둔다.
     Company updated =
@@ -145,7 +145,7 @@ class CompanyServiceTest {
 
   @Test
   void updateMissingCompanyThrowsCompanyNotFound() {
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.empty());
 
     assertThatThrownBy(
             () -> companyService.updateCompany(MANAGER, COMPANY_ID, "변경 업체", null, null, null))
@@ -157,7 +157,7 @@ class CompanyServiceTest {
   @Test
   void deleteCompanyRecordsActorAndTime() {
     Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
     companyService.deleteCompany(MANAGER, COMPANY_ID);
@@ -169,7 +169,7 @@ class CompanyServiceTest {
 
   @Test
   void deleteMissingCompanyThrowsCompanyNotFound() {
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.empty());
 
     assertThatThrownBy(() -> companyService.deleteCompany(MANAGER, COMPANY_ID))
         .isInstanceOf(CompanyException.class)
@@ -180,7 +180,7 @@ class CompanyServiceTest {
   @Test
   void deleteWithoutAuditorFailsWithoutDeleting() {
     Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.empty());
 
     // 공통 계약: 작업자를 알 수 없으면 임의 값으로 채우지 않고 실패한다.
@@ -193,7 +193,7 @@ class CompanyServiceTest {
   void deleteCompanyAlsoDeletesItsProducts() {
     Company company = Company.of("삭제할 업체", HUB_ID, "주소", MANAGER_ID);
     Product product = company.addProduct("상품", null, 1000L);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
     companyService.deleteCompany(MANAGER, COMPANY_ID);
@@ -206,7 +206,7 @@ class CompanyServiceTest {
   @Test
   void createProductAddsProductThroughCompany() {
     Company company = Company.of("업체", HUB_ID, "주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     Product product = companyService.createProduct(MANAGER, COMPANY_ID, "무선 키보드", "설명", 35000L);
 
@@ -221,7 +221,7 @@ class CompanyServiceTest {
 
   @Test
   void createProductForMissingCompanyThrowsCompanyNotFound() {
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.empty());
 
     assertThatThrownBy(() -> companyService.createProduct(MANAGER, COMPANY_ID, "상품", null, 1000L))
         .isInstanceOf(CompanyException.class)
@@ -263,7 +263,7 @@ class CompanyServiceTest {
   @Test
   void updateProductChangesOnlyProvidedFields() {
     Company company = companyWithProduct();
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     Product updated =
         companyService.updateProduct(MANAGER, COMPANY_ID, PRODUCT_ID, null, null, 39000L);
@@ -277,7 +277,7 @@ class CompanyServiceTest {
   void deleteProductRecordsActorAndTime() {
     Company company = companyWithProduct();
     Product product = company.getProduct(PRODUCT_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
     given(auditorAware.getCurrentAuditor()).willReturn(Optional.of("test-user"));
 
     companyService.deleteProduct(MANAGER, COMPANY_ID, PRODUCT_ID);
@@ -334,7 +334,7 @@ class CompanyServiceTest {
   @Test
   void updateCompanyVerifiesOnlyChangedHub() {
     Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     companyService.updateCompany(MANAGER, COMPANY_ID, "변경 업체", null, null, null);
 
@@ -343,8 +343,6 @@ class CompanyServiceTest {
 
   @Test
   void updateCompanyToMissingHubFails() {
-    Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
     willThrow(new CompanyException(CompanyError.HUB_NOT_FOUND))
         .given(hubVerifier)
         .verifyExists(OTHER_HUB_ID);
@@ -354,13 +352,14 @@ class CompanyServiceTest {
         .isInstanceOf(CompanyException.class)
         .extracting(e -> ((CompanyException) e).getError())
         .isEqualTo(CompanyError.HUB_NOT_FOUND);
-    assertThat(company.getHubId()).isEqualTo(HUB_ID);
+    // hub 호출을 기다리는 동안 업체를 잠그지 않도록, 허브가 없으면 업체를 잠그기 전에 끝난다.
+    verify(companyRepository, never()).findByIdForUpdate(any());
   }
 
   @Test
   void masterCanChangeCompanyManagedBySomeoneElse() {
     Company company = Company.of("기존 업체", HUB_ID, "기존 주소", MANAGER_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     companyService.updateCompany(MASTER, COMPANY_ID, "변경 업체", null, null, null);
 
@@ -371,7 +370,7 @@ class CompanyServiceTest {
   void otherUserCannotChangeCompanyOrItsProducts() {
     Company company = companyWithProduct();
     Product product = company.getProduct(PRODUCT_ID);
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.of(company));
 
     assertAccessDenied(
         () -> companyService.updateCompany(OTHER_USER, COMPANY_ID, "변경 업체", null, null, null));
@@ -390,7 +389,7 @@ class CompanyServiceTest {
 
   @Test
   void accessCheckOnMissingCompanyIsNotFound() {
-    given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+    given(companyRepository.findByIdForUpdate(COMPANY_ID)).willReturn(Optional.empty());
 
     // 없는 업체는 권한과 관계없이 404로 응답한다.
     assertThatThrownBy(() -> companyService.deleteCompany(OTHER_USER, COMPANY_ID))
