@@ -63,6 +63,10 @@ public class CompanyService {
   @Transactional
   public Company updateCompany(
       Requester requester, UUID id, String name, UUID hubId, String address, UUID managerUserId) {
+    // hub 호출을 기다리는 동안 업체 행을 잠그지 않도록, 허브 확인은 업체를 잠그기 전에 한다.
+    if (hubId != null) {
+      hubVerifier.verifyExists(hubId);
+    }
     Company company = findManagedCompany(requester, id);
     if (name != null) {
       company.changeName(name);
@@ -71,7 +75,6 @@ public class CompanyService {
       company.changeAddress(address);
     }
     if (hubId != null) {
-      hubVerifier.verifyExists(hubId);
       company.moveToHub(hubId);
     }
     if (managerUserId != null) {
@@ -134,8 +137,12 @@ public class CompanyService {
   }
 
   // 업체와 그 상품의 변경은 MASTER 또는 해당 업체 관리자만 할 수 있다. 없는 업체는 권한 확인 전에 404로 응답한다.
+  // 변경할 업체는 행 잠금으로 읽어, 같은 업체에 대한 수정·삭제·상품 변경이 동시에 실행되지 않게 한다.
   private Company findManagedCompany(Requester requester, UUID companyId) {
-    Company company = findCompany(companyId);
+    Company company =
+        companyRepository
+            .findByIdForUpdate(companyId)
+            .orElseThrow(() -> new CompanyException(CompanyError.COMPANY_NOT_FOUND));
     checkManages(requester, company.getManagerUserId());
     return company;
   }

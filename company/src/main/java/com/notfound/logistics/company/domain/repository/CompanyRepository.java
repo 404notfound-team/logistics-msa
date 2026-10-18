@@ -14,6 +14,12 @@ public interface CompanyRepository {
 
   Optional<Company> findById(UUID id);
 
+  /**
+   * 변경할 업체를 행 잠금(SELECT ... FOR UPDATE)으로 조회한다. 업체와 소속 상품의 변경이 업체 단위로 직렬화되어, 동시 수정의 유실과 삭제된 업체·상품의
+   * 복원을 막는다. 잠금은 트랜잭션이 끝날 때 풀린다.
+   */
+  Optional<Company> findByIdForUpdate(UUID id);
+
   Page<Company> search(CompanySearchCondition condition, Pageable pageable);
 
   /** 이름이 정확히 같은 업체를 모두 찾는다. 삭제된 업체는 제외한다. */
