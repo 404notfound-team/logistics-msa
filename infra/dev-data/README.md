@@ -54,16 +54,7 @@ python3 scripts/check-dev-data.py
 
 공개 회원가입·로그인 외의 업무 API는 Gateway에서 JWT가 필요합니다. Swagger 상단의 아이디·비밀번호 입력으로 로그인하면 서비스 선택을 바꿔도 인증이 자동 적용됩니다. 개발 계정의 최초 비밀번호는 로컬 `.env`의 `DEV_DATA_PASSWORD`입니다. 비밀번호와 토큰은 브라우저 저장소에 보관하지 않으며, 페이지를 새로 열거나 15분이 지나면 다시 로그인합니다. 로그아웃하면 인증이 해제됩니다. Users의 `POST /api/users/signin`을 직접 실행해도 반환된 토큰이 자동 적용됩니다.
 
-터미널에서 호출할 때는 아래 도구로 개발 계정의 JWT를 받을 수 있습니다. 비밀번호는 실행 중인 Users 환경에서 메모리로만 읽고, `--token`을 명시했을 때만 JWT를 출력합니다.
-
-```bash
-TOKEN=$(python3 scripts/check-dev-data.py --token)
-curl -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/api/orders?status=CONFIRMED&size=2&page=1'
-curl -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/api/hubs/00000000-0000-0000-0000-000000000001/stocks'
-```
-
-기본 로그인 주체는 `devmaster` / `MASTER`입니다. `--role USER`는 `devseed`의 주문 15건만 보고,
-`--username devseed2 --role USER`는 나머지 15건만 봅니다. 다른 작성자의 주문 상세는 403입니다.
+전체 조회는 Swagger에서 `devmaster`로 로그인해 확인합니다. `devseed`와 `devseed2`로 로그인하면 각자의 주문 15건만 조회할 수 있습니다. 다른 작성자의 주문 상세는 403입니다.
 배송 목록 `/api/deliveries?status=HUB_WAITING`은 4건이며 나머지 네 상태도 각각 4건입니다.
 목록과 상세 `/api/deliveries/c0ffee39-0004-4000-8000-000000000001`의 `routes`에 구간이 순서대로 나옵니다. 1번은 두 대기 구간, 17번은 도착한 첫 구간과 이동 중인 두 번째 구간이며, 같은 허브인 2번은 거리·시간이 0인 한 구간입니다.
 논리 삭제 주문 31번은 상세 404이고, 논리 삭제 배송은 검색 결과에서 제외됩니다.
@@ -72,7 +63,7 @@ curl -H "Authorization: Bearer $TOKEN" 'http://localhost:8080/api/hubs/00000000-
 
 ## 검증 범위와 남은 연동
 
-`check-dev-data.py`는 새 기본 데이터 기준으로 서비스 간 ID 연결·초기 재고·페이지·검색·주문 소유권·상태 필터·삭제 제외·401/403/404/400을 검사합니다. 배송 구간의 Hub 거리·분→초 변환·연속성·상태·담당자와 목록/상세 응답도 확인합니다.
+`check-dev-data.py`는 새 기본 데이터 기준으로 서비스 간 ID 연결·초기 재고·페이지·검색·주문 소유권·상태 필터·삭제 제외·401/403/404/400을 검사합니다. 배송 구간의 Hub 거리·분→초 변환·연속성·상태·담당자와 목록/상세 응답도 확인합니다. 인증이 필요한 검사는 내부에서 로그인하며 비밀번호·토큰을 출력하지 않습니다.
 데이터를 수정한 DB에서는 초기값 검사가 실패할 수 있습니다. 검사 명령 자체는 데이터를 변경하지 않습니다.
 Gateway 포트를 바꿨다면 `--gateway-url http://localhost:포트`를 지정하세요.
 

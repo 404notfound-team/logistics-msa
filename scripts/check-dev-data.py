@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""새 로컬 Compose의 연결된 샘플·조회 분기를 확인하거나 개발용 JWT를 출력한다."""
+"""새 로컬 Compose의 연결된 샘플·조회 분기를 확인한다."""
 import argparse
 import base64
 from collections import Counter
@@ -17,7 +17,7 @@ def compose(*args):
 
 
 def token(base, username, role):
-    # 실제 Users 로그인으로 발급한다. 비밀번호·토큰은 메모리에서만 사용한다.
+    # 자동 검사에서만 실제 Users로 로그인한다. 비밀번호·토큰은 출력하지 않는다.
     password = compose("exec", "-T", "users", "printenv", "DEV_DATA_PASSWORD")
     if not password:
         raise SystemExit("DEV_DATA_PASSWORD가 없습니다. init-env.sh 실행 뒤 Users를 다시 시작하세요.")
@@ -180,14 +180,7 @@ def check_api(base):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gateway-url", default="http://127.0.0.1:8080")
-    parser.add_argument("--token", action="store_true", help="로컬 개발 계정의 실제 로그인 JWT 출력")
-    parser.add_argument("--username", help="기본값: MASTER는 devmaster, USER는 devseed")
-    parser.add_argument("--role", choices=["USER", "MASTER"], default="MASTER")
     args = parser.parse_args()
-    if args.token:
-        username = args.username or ("devmaster" if args.role == "MASTER" else "devseed")
-        print(token(args.gateway_url.rstrip("/"), username, args.role))
-        return
     check_links()
     check_routes()
     check_api(args.gateway_url.rstrip("/"))
