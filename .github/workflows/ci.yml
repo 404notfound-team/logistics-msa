@@ -48,12 +48,15 @@ jobs:
     timeout-minutes: 25
     env:
       COMPOSE_FILE: compose.yml:compose.ci.yml
+      COMPOSE_PROJECT_NAME: logistics-orders-recovery-ci
     steps:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: Verify environment initialization preserves existing settings
-        run: python3 scripts/test_init_env.py
+        run: |
+          python3 scripts/test_init_env.py
+          python3 scripts/test_orders_flow.py
       - name: Configure local environment
         id: configure-env
         run: bash scripts/init-env.sh
@@ -89,6 +92,10 @@ jobs:
         run: python3 scripts/smoke.py
       - name: Verify linked development scenarios
         run: python3 scripts/check-dev-data.py
+      - name: Verify real Orders service flow
+        run: python3 scripts/check-orders-flow.py
+      - name: Verify real service timeouts and Orders restart recovery
+        run: python3 scripts/check-orders-recovery.py
       - name: Show service status on failure
         if: failure() && steps.configure-env.outcome == 'success'
         run: |

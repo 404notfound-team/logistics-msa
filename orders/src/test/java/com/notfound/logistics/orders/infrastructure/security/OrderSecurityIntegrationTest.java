@@ -8,7 +8,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
-import com.notfound.logistics.orders.support.LocalOrderStub;
+import com.notfound.logistics.orders.support.OrderClientFixture;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
@@ -34,7 +34,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-@WebMvcTest(properties = "orders.jwt.secret=" + LocalOrderStub.SECRET)
+@WebMvcTest(properties = "orders.jwt.secret=" + OrderClientFixture.SECRET)
 @ContextConfiguration(
     classes = {
       OrderSecurityConfiguration.class,
@@ -121,7 +121,7 @@ class OrderSecurityIntegrationTest {
   private static String token(JwtClaimsSet claims) {
     var encoder =
         new NimbusJwtEncoder(
-            new ImmutableSecret<>(LocalOrderStub.SECRET.getBytes(StandardCharsets.UTF_8)));
+            new ImmutableSecret<>(OrderClientFixture.SECRET.getBytes(StandardCharsets.UTF_8)));
     return encoder
         .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
         .getTokenValue();

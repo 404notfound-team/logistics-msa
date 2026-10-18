@@ -1,7 +1,7 @@
 # 주문 서비스
 
 팀 SA·구현 설계의 주문 생성·조회·취소·삭제와 자동 복구를 구현합니다.
-다른 서비스의 미구현 내부 API는 별도 로컬 HTTP Stub으로 검증합니다.
+외부 서비스 연동은 실제 서비스 검증과 테스트 내부 장애 주입으로 구분합니다.
 
 ```text
 orders/
@@ -10,8 +10,7 @@ orders/
 │   ├── application/         # 주문 처리·트랜잭션·복구
 │   ├── domain/              # 주문 상태·저장소
 │   └── infrastructure/      # Feign·JWT·감사·Slack
-├── src/test/                # 실제 HTTP·PostgreSQL 연동 테스트
-└── stubs/server.py          # 업체·상품·재고·배송·알림 HTTP Stub
+└── src/test/                # 주문 HTTP·PostgreSQL 및 클라이언트 장애 주입 테스트
 ```
 
 ## API
@@ -65,98 +64,71 @@ JSON은 snake_case이며 성공은 `ApiResponse`, 오류는 현재 공통 `ApiEr
 이전 설계의 공통 오류 포장·감사 UUID 대신 현재 저장소 규약의 직접 오류 응답·username 감사 기록을 적용합니다.
 원래 요청자의 감사 주체는 복구 중에도 보존합니다.
 
-## 로컬 Stub 실행
+## 실제 서비스 연동
 
-Python 3, Java 21, Docker가 필요합니다. 기존 PostgreSQL·Eureka·Zipkin은 저장소 실행법을 따릅니다.
+Orders는 기본 Compose에서 서비스 탐색으로 Company·Hub·Delivery를 호출합니다.
+`ORDERS_SERVICE_TOKEN`과 각 수신 서비스에 등록한 Orders 인증값이 같아야 합니다.
+`ORDERS_COMPANY_URL`, `ORDERS_STOCK_URL`, `ORDERS_DELIVERY_URL`은 개별 실행 시 실제 서비스 주소를 지정하는 선택 설정입니다.
 
-터미널에서 **테스트용 키** 두 개를 준비합니다. 같은 값을 Orders 실행 환경에도 설정합니다.
+배송 내부 API의 경로·요청·응답은 [생성 PR #77](https://github.com/404notfound-team/logistics-msa/pull/77),
+[주문별 조회 PR #78](https://github.com/404notfound-team/logistics-msa/pull/78),
+[취소 PR #80](https://github.com/404notfound-team/logistics-msa/pull/80),
+[삭제 PR #81](https://github.com/404notfound-team/logistics-msa/pull/81)의 계약과 맞춥니다.
+실제 주문 흐름 검증에는 네 배송 내부 API가 모두 필요합니다. 미반영 실행본에서는 검증 도구가 주문 생성 전에 실패합니다.
+취소는 배송의 `CANCELLED` 응답을 확인하며 주문의 취소 상태와 각각 저장합니다.
 
-```bash
-export JWT_SECRET="$(openssl rand -base64 32)"
-export ORDERS_SERVICE_TOKEN="$(openssl rand -hex 24)"
-python3 orders/stubs/server.py --port 18090
-```
+## 실행과 검증
 
-IntelliJ의 Orders 실행 설정은 `local` 프로필과 다음 환경변수를 사용합니다.
-
-| 변수 | 값 |
-| --- | --- |
-| `DB_PASSWORD` | 기존 로컬 Orders DB 비밀번호 |
-| `SERVER_PORT` | `8084` |
-| `JWT_SECRET` | 위에서 생성한 동일한 테스트용 키 |
-| `ORDERS_SERVICE_TOKEN` | 위에서 생성한 동일한 서비스 토큰 |
-| `ORDERS_COMPANY_URL` | `http://127.0.0.1:18090` |
-| `ORDERS_STOCK_URL` | `http://127.0.0.1:18090` |
-| `ORDERS_DELIVERY_URL` | `http://127.0.0.1:18090` |
-
-Stub과 같은 키를 설정한 터미널에서 테스트 JWT를 발급합니다. 출력은 로컬 API 호출에만 사용합니다.
+Java 21과 Docker가 필요합니다. 환경 설정·Compose 시작은 저장소 README를 따릅니다.
+JWT는 실제 Users 로그인으로 발급합니다. 개발 계정·샘플·발급 방법은 [개발용 샘플 데이터](../infra/dev-data/README.md)를 참고하세요.
 
 ```bash
-python3 orders/stubs/server.py --token alice
-python3 orders/stubs/server.py --token admin --role MASTER
+bash scripts/init-env.sh
+docker compose up -d --build --wait --wait-timeout 300
+python3 scripts/smoke.py
+python3 scripts/check-dev-data.py
+python3 scripts/check-orders-flow.py
 ```
 
-Swagger는 Orders 직접 실행 시 `http://localhost:8084/v3/api-docs`, Gateway 실행 시 기존 Swagger UI에서 확인합니다.
-Stub은 Gateway 외부 라우트에 추가하지 않습니다.
+`check-orders-flow.py`는 실제 서비스의 내부 API 준비 상태를 먼저 확인하고,
+실제 로그인·Gateway를 거쳐 같은 키의 8개 동시 생성, 조회·소유권, 배송 생성, 취소·재고 복원,
+반복 취소·삭제와 감사·배송 경로 삭제를 확인합니다. 별도 개발 환경에서 실행하세요.
+검증 주문은 취소·논리 삭제하며 재고는 시작 수량으로 돌아와야 합니다. 감사·멱등·복원 기록은 남습니다.
+실패하면 출력된 주문 ID와 멱등 키로 상태를 확인하고, 새 키로 재시도하거나 재고를 추정 보정하지 않습니다.
+실제 서비스의 타임아웃·지연 커밋·Orders 재시작은 아래 전용 환경에서 추가로 검증합니다.
 
-```json
-{
-  "receiver_company_id": "147259cc-6ff6-42c7-a89a-8798c8187811",
-  "supplier_company_id": "1ef5bfb1-6b53-40ef-b09a-54eb71846d73",
-  "product_id": "64f1ff8f-cd59-4504-b665-ef18727a6306",
-  "quantity": 3,
-  "delivery_address": "서울시 송파구 테스트 주소",
-  "recipient_name": "수령인"
-}
+```bash
+export COMPOSE_PROJECT_NAME=logistics-orders-recovery-local
+export GATEWAY_PORT=18080 EUREKA_PORT=18761 ZIPKIN_PORT=19411 POSTGRES_PORT=15432
+docker compose up -d --build --wait --wait-timeout 300
+python3 scripts/check-orders-recovery.py --gateway-url http://127.0.0.1:18080
+docker compose down -v --remove-orphans
 ```
 
-Stub은 고정 상품·업체와 최초 재고 1,000개를 제공합니다. SQLite에 재고 수량과 배송을 보존하며, 데이터 파일은 Git에서 제외합니다.
-배송 생성·취소·삭제와 주문별 재고 복원은 멱등 처리합니다. 재고 차감은 호출할 때마다 반영하므로 주문에서 재호출하지 않습니다. 실제 업체·재고·배송 서비스 구현은 포함하지 않습니다.
-
-Stub 내부 API와 제어 API는 `X-Service-Token: <ORDERS_SERVICE_TOKEN>`을 검사합니다.
-내부 업무 호출에는 `X-Actor-Username`도 필요합니다. 이는 로컬 Stub의 인증 계약이며 실제 서비스 통합 시 담당자와 인증 계약을 맞춰야 합니다.
-`GET /__stub/state`로 결과를 확인하고 `POST /__stub/control`로 아래 테스트 동작을 지정할 수 있습니다.
-
-```json
-{"action":"fault","operation":"delivery.create","remaining":1,"delay_after_ms":1500}
-```
-
-`operation`은 `stock.deduct`, `stock.restore`, `delivery.create`, `delivery.cancel`, `delivery.delete`, `slack` 등을 받습니다.
-`delay_before_ms`는 반영 전, `delay_after_ms`는 커밋 후 응답 지연입니다. `status`·`code`로 확정 오류도 지정할 수 있습니다.
-배송 출발은 `PATCH /api/deliveries/{delivery_id}`에 `{"status":"HUB_MOVING"}`를 보내 시험합니다. HUB_WAITING에서만 출발하며 취소와 동시에 요청하면 먼저 반영한 전이만 성공합니다.
-기본 Feign 읽기 제한은 2초이므로 수동 타임아웃 실험에서는 지연을 3초 이상으로 설정합니다.
-`{"action":"reset"}`은 **Stub 데이터만** 초기화합니다. 기본 파일은 `orders/stubs/state.sqlite`이며 `--state`로 경로를 바꿀 수 있습니다.
-Slack 시험에는 `SLACK_ENABLED=true`, `SLACK_WEBHOOK_URL=http://127.0.0.1:18090/__stub/slack`을 사용합니다.
-실제 서비스로 전환할 때는 각 URL·서비스 인증 설정을 변경하고 동일 계약으로 다시 연동 검증합니다.
-
-## 실제 서비스 연동 범위
-
-업체·상품 조회와 Hub 재고 차감·복원은 현재 구현의 경로·응답을 사용합니다.
-Orders가 보내는 `ORDERS_SERVICE_TOKEN`과 수신 서비스에 등록한 Orders 인증값은 같아야 합니다.
-실행 전 `bash scripts/init-env.sh`로 기존 `.env`에 누락된 인증값을 추가합니다.
-
-배송 전체 상태는 Delivery의 `HUB_WAITING`, `HUB_MOVING`, `DESTINATION_HUB_ARRIVED`,
-`COMPANY_MOVING`, `DELIVERED`를 따릅니다. 경로별 상태는 주문에서 판정하지 않습니다.
-배송 내부 생성·주문별 조회·취소·삭제 API는 아직 미구현이므로 Stub으로 검증합니다.
-Stub의 취소 응답 `CANCELLED`는 기존 연동 설계안이며, 실제 배송 취소 API의 결과 확인 계약이
-확정되면 함께 맞춥니다. 주문 자체의 `CANCELLED` 상태와는 구분합니다.
-Stub JWT는 Orders 직접 호출용입니다. Gateway 경유 검증에는 실제 Users 로그인 토큰을 사용합니다.
-
-## 검증
+이 검사는 실제 Delivery 생성·Hub 복원 기록의 INSERT를 잠시 잠가 호출 타임아웃을 만듭니다.
+Orders를 중지한 뒤 외부 커밋을 확인하고 다시 시작해, 재요청 없이 같은 주문이 복구되는지 확인합니다.
+주문·배송·복원 기록의 중복, 재고와 원래 요청자의 감사 정보도 검사합니다.
+기본 개발 스택의 중단을 막기 위해 `logistics-orders-recovery-`로 시작하는 별도 Compose 프로젝트만 허용합니다.
+Gateway 주소도 같은 프로젝트의 로컬 공개 포트와 일치해야 합니다.
+실패해도 자신의 DB 잠금을 해제하고 중지했던 Orders를 다시 시작합니다. 검증 주문이 남으면 출력된 키로 확인하세요.
+이는 두 서비스의 프로세스 재시작이나 모든 네트워크 장애를 검증하지는 않습니다.
+재고 차감 결과 불명의 안전한 복구와 배송 생성 실패 보상은 별도 범위입니다.
 
 ```bash
 ./gradlew --no-daemon :orders:check :orders:bootJar
 ```
 
-테스트는 임시 HTTP Stub과 독립 PostgreSQL 18을 사용하고 종료 시 제거합니다.
-정상·중복·동시 요청, 입력·권한·검색, 배송 실패 시 재고 유지, 차감 응답 유실 시 재차감 금지, 배송 결과의 재확인,
-취소·출발 경합의 양쪽 결과, 복원 실패·응답 유실·잘못된 응답과 복원 전 삭제 차단,
-복원 성공 후 주문 저장 실패와 앱 재기동 후 중복 복원 방지, 최초 상품·허브·감사 주체 보존을 검증합니다.
+Orders의 Java 테스트는 실제 HTTP·독립 PostgreSQL을 사용하며 외부 클라이언트와 Slack은 테스트 안에서 대체합니다.
+테스트 JWT는 로컬에서 서명하며 테스트용 외부 HTTP 서버·Python 프로세스·SQLite를 실행하지 않습니다.
+타임아웃 전후 반영, 배송·복원 응답 유실, 잘못된 응답, 취소·출발 경합, 마지막 주문 저장 실패,
+앱 재시작 후 복구와 원래 요청자·최초 입력 보존을 검증합니다.
+Feign 인증 헤더·오류 변환은 별도 테스트로 확인합니다. 이 테스트의 성공은 실제 서비스 연동 성공을 뜻하지 않습니다.
+CI는 개발 샘플·실제 주문 흐름 다음에 두 지연 커밋·Orders 재시작 시나리오를 실행합니다.
+선행 배송 API가 빠진 상태에서는 이 검사를 통과할 수 없습니다.
 
-Hub의 실제 HTTP·PostgreSQL 테스트는 별도로 중복·동시 복원, 같은 키의 다른 내용 거절,
+Hub의 실제 HTTP·PostgreSQL 테스트는 중복·동시 복원, 같은 키의 다른 내용 거절,
 복원 기록 저장 실패 시 수량 롤백, Hub 재시작 후 응답 재현을 확인합니다.
-Orders의 업체·배송 연동은 HTTP Stub 검증입니다. 배송 상태명은 실제 Delivery에 맞췄지만, Orders가 요구하는 생성·취소·삭제 내부 API가 아직 없어 전체 앱 간 취소 연동은 미검증입니다.
 
 로컬 실행본에 적용할 때는 복원 기록을 지원하는 Hub를 먼저 갱신하고 Orders를 갱신합니다.
-Hub의 `local` 프로필은 새 `hub.p_stock_restorations` 테이블을 엔티티에서 생성합니다.
+Hub의 `local` 프로필은 `hub.p_stock_restorations` 테이블을 엔티티에서 생성합니다.
 기존 비멱등 복원 API를 제공하는 Hub에 새 Orders를 연결해 복구를 실행하면 안 됩니다.
