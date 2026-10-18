@@ -87,8 +87,8 @@ users:
 | Hub | `GET /internal/hub-routes` | Delivery | 필수 | 수신 적용. `departure_hub_id`, `arrival_hub_id`로 기준 구간 단건 조회 |
 | Hub | `GET /internal/hubs/{hubId}/stocks/{productId}` | Orders | 필수 | 수신 적용. 허브·상품별 활성 재고 조회 |
 | Company | `GET /internal/companies?name=` | Users | 선택(회원가입은 생략) | 적용 |
-| Company | `GET /internal/companies/{id}` | Orders | 필수 | 적용 |
-| Company | `GET /internal/products/{id}` | Orders | 필수 | 적용 |
+| Company | `GET /internal/companies/{id}` | Orders, Users | 필수 | 적용(Users는 사용자 생성·수정 시 소속 업체 확인) |
+| Company | `GET /internal/products/{id}` | Orders, Hub | 필수 | 적용(Hub는 재고 생성 시 상품 존재 확인) |
 | Delivery | `GET /internal/deliveries/by-order/{order_id}` | Orders | 필수 | 현재 배송 ID·주문 ID·상태 조회. 없거나 삭제된 배송은 404 |
 | Delivery | `POST /internal/deliveries/{id}/cancel` | Orders | 필수 | 출발 전 취소와 재요청 200, 출발 후 409. 배송·경로를 함께 변경 |
 | Delivery | `DELETE /internal/deliveries/{id}` | Orders | 필수 | 완료·취소 배송과 경로 논리 삭제 204. 반복 삭제도 204, 진행 중은 409 |
