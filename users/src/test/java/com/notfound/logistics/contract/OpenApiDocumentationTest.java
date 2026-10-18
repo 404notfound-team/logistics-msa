@@ -57,6 +57,9 @@ class OpenApiDocumentationTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.info.title").value("사용자 API"))
         .andExpect(jsonPath("$.servers[0].url").value("/"))
+        .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.type").value("http"))
+        .andExpect(jsonPath("$.components.securitySchemes.bearerAuth.scheme").value("bearer"))
+        .andExpect(jsonPath("$.security[0].bearerAuth").isArray())
         .andExpect(jsonPath("$.paths['/api/users/openapi-test'].get").exists())
         .andExpect(jsonPath("$.components.schemas.PublicResponse.properties.user_name").exists())
         .andExpect(
