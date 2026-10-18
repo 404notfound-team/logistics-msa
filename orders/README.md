@@ -82,43 +82,15 @@ Orders는 기본 Compose에서 서비스 탐색으로 Company·Hub·Delivery를 
 Java 21과 Docker가 필요합니다. 환경 설정·Compose 시작은 저장소 README를 따릅니다.
 JWT는 실제 Users 로그인으로 발급합니다. 개발 계정·샘플·발급 방법은 [개발용 샘플 데이터](../infra/dev-data/README.md)를 참고하세요.
 
-```bash
-bash scripts/init-env.sh
-docker compose up -d --build --wait --wait-timeout 300
-python3 scripts/smoke.py
-python3 scripts/check-dev-data.py
-python3 scripts/check-orders-flow.py
-```
-
-`check-orders-flow.py`는 실제 서비스의 내부 API 준비 상태를 먼저 확인하고,
-실제 로그인·Gateway를 거쳐 같은 키의 8개 동시 생성, 조회·소유권, 배송 생성, 취소·재고 복원,
-반복 취소·삭제와 감사·배송 경로 삭제를 확인합니다. 별도 개발 환경에서 실행하세요.
-검증 주문은 취소·논리 삭제하며 재고는 시작 수량으로 돌아와야 합니다. 감사·멱등·복원 기록은 남습니다.
-실패하면 출력된 주문 ID와 멱등 키로 상태를 확인하고, 새 키로 재시도하거나 재고를 추정 보정하지 않습니다.
-실제 서비스의 타임아웃·지연 커밋·Orders 재시작은 아래 전용 환경에서 추가로 검증합니다.
-
-```bash
-export COMPOSE_PROJECT_NAME=logistics-orders-recovery-local
-export GATEWAY_PORT=18080 EUREKA_PORT=18761 ZIPKIN_PORT=19411 POSTGRES_PORT=15432
-docker compose up -d --build --wait --wait-timeout 300
-python3 scripts/check-orders-recovery.py --gateway-url http://127.0.0.1:18080
-docker compose down -v --remove-orphans
-```
-
-이 검사는 실제 Delivery 생성·Hub 복원 기록의 INSERT를 잠시 잠가 호출 타임아웃을 만듭니다.
-Orders를 중지한 뒤 외부 커밋을 확인하고 다시 시작해, 재요청 없이 같은 주문이 복구되는지 확인합니다.
-주문·배송·복원 기록의 중복, 재고와 원래 요청자의 감사 정보도 검사합니다.
-기본 개발 스택의 중단을 막기 위해 `logistics-orders-recovery-`로 시작하는 별도 Compose 프로젝트만 허용합니다.
-Gateway 주소도 같은 프로젝트의 로컬 공개 포트와 일치해야 합니다.
-실패해도 자신의 DB 잠금을 해제하고 중지했던 Orders를 다시 시작합니다. 검증 주문이 남으면 출력된 키로 확인하세요.
-이는 두 서비스의 프로세스 재시작이나 모든 네트워크 장애를 검증하지는 않습니다.
-재고 차감 결과 불명의 안전한 복구와 배송 생성 실패 보상은 별도 범위입니다.
+실제 주문 생성·취소·삭제와 두 지연 커밋·Orders 재시작 시나리오는
+[Java 서비스 연동 테스트](../integration-tests/README.md)에서 실행합니다.
+같은 전용 Compose 스택을 공유하며 기존 Python 주문 검사 범위와 실패 시 복구 절차를 유지합니다.
 
 ```bash
 ./gradlew --no-daemon :orders:check :orders:bootJar
 ```
 
-Orders의 Java 테스트는 실제 HTTP·독립 PostgreSQL을 사용하며 외부 클라이언트와 Slack은 테스트 안에서 대체합니다.
+Orders 모듈의 Java 테스트는 실제 HTTP·독립 PostgreSQL을 사용하며 외부 클라이언트와 Slack은 테스트 안에서 대체합니다.
 테스트 JWT는 로컬에서 서명하며 테스트용 외부 HTTP 서버·Python 프로세스·SQLite를 실행하지 않습니다.
 타임아웃 전후 반영, 배송·복원 응답 유실, 잘못된 응답, 취소·출발 경합, 마지막 주문 저장 실패,
 앱 재시작 후 복구와 원래 요청자·최초 입력 보존을 검증합니다.

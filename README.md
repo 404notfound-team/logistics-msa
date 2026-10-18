@@ -119,7 +119,7 @@ Java 컴파일에 기본 타입 검사가 포함되므로 별도 typecheck 도�
 각 모듈의 업무·권한·응답 계약·저장·동시성·복구 테스트와 공통 API·감사 테스트를 실행합니다.
 DB 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로컬에서도 Docker가 필요합니다.
 업무 테스트는 각 모듈의 `src/test/java`에 추가합니다.
-인프라 연동은 `scripts/smoke.py`, 실제 주문 흐름은 [개발 데이터 연동 검사](infra/dev-data/README.md#검증-범위와-남은-연동)로 검증합니다.
+인프라 연동은 `scripts/smoke.py`, 실제 주문·장애 복구 흐름은 [Java 서비스 연동 테스트](integration-tests/README.md)로 검증합니다.
 
 ```bash
 ./gradlew spotlessApply            # Java 포맷 자동 수정

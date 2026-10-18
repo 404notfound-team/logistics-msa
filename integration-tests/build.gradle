@@ -1,0 +1,53 @@
+sourceSets {
+    e2e {
+        compileClasspath += sourceSets.test.output
+        runtimeClasspath += sourceSets.test.output
+    }
+}
+
+configurations {
+    e2eImplementation.extendsFrom testImplementation
+    e2eRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+dependencies {
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind'
+    testRuntimeOnly 'org.postgresql:postgresql'
+}
+
+// Each stage owns its report and uses the same already started Compose stack.
+def stages = [
+    ordersFlowTest: '*OrdersFlowTest',
+    deliveryRecoveryTest: '*OrdersRecoveryTest.recoversDeliveryCommittedAfterTimeoutAndOrdersShutdown',
+    stockRecoveryTest: '*OrdersRecoveryTest.recoversRestorationCommittedAfterTimeoutAndOrdersShutdown'
+]
+def predecessors = []
+stages.each { taskName, pattern ->
+    def earlier = predecessors.toList()
+    def stage = tasks.register(taskName, Test) {
+        description = "Verifies ${taskName} against the existing dedicated Compose stack."
+        group = 'verification'
+        testClassesDirs = sourceSets.e2e.output.classesDirs
+        classpath = sourceSets.e2e.runtimeClasspath
+        useJUnitPlatform()
+        filter { includeTestsMatching pattern }
+        systemProperty 'repository.root', rootProject.projectDir.absolutePath
+        systemProperty 'junit.jupiter.execution.parallel.enabled', 'false'
+        maxParallelForks = 1
+        mustRunAfter earlier
+        onlyIf { earlier.every { it.get().state.failure == null } }
+        outputs.upToDateWhen { false }
+        outputs.cacheIf { false }
+        testLogging {
+            events 'passed', 'failed', 'skipped'
+            exceptionFormat = 'full'
+        }
+    }
+    predecessors.add(stage)
+}
+
+tasks.register('e2eTest') {
+    description = 'Verifies order flow and both recovery stages sequentially in one existing stack.'
+    group = 'verification'
+    dependsOn predecessors
+}
