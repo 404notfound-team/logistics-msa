@@ -14,6 +14,7 @@ import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import com.notfound.logistics.users.presentation.exception.UserErrorCode;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -57,6 +58,7 @@ public class UserController {
 
   private final UserService userService;
 
+  @SecurityRequirements // 토큰 없이 호출하는 공개 API입니다.
   @PostMapping("/signup")
   public ResponseEntity<ApiResponse<UserRegisterResponseDto>> signup(
       @Valid @RequestBody UserRegisterRequestDto request) {
@@ -64,6 +66,7 @@ public class UserController {
     return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(response));
   }
 
+  @SecurityRequirements
   @PostMapping("/signin")
   public ApiResponse<UserSignInResponseDto> signin(
       @Valid @RequestBody UserSignInRequestDto request) {
