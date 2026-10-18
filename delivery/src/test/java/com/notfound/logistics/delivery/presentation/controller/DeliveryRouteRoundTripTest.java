@@ -1,6 +1,7 @@
 package com.notfound.logistics.delivery.presentation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -75,7 +76,7 @@ class DeliveryRouteRoundTripTest {
 
     String body =
         mockMvc
-            .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+            .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(jwt()))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
@@ -120,7 +121,7 @@ class DeliveryRouteRoundTripTest {
         620L);
 
     mockMvc
-        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(jwt()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.status").value("COMPANY_MOVING"))
         .andExpect(jsonPath("$.data.routes[0].status").value("ARRIVED"));

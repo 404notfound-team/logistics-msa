@@ -1,5 +1,8 @@
 server:
   port: 8080
+delivery:
+  jwt:
+    secret: ${JWT_SECRET:}
 springdoc:
   api-docs:
     enabled: false

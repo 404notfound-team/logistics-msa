@@ -113,6 +113,11 @@ public class Delivery extends AuditEntity {
     this.assigneeId = assigneeId;
   }
 
+  /** userId가 이 배송의 업체 배송 담당자인지. 담당자가 배정되지 않았으면 누구도 아니다. */
+  public boolean isAssignedTo(UUID userId) {
+    return assigneeId != null && assigneeId.equals(userId);
+  }
+
   private static String requireText(String value, String name) {
     if (value == null || value.isBlank()) {
       throw new IllegalArgumentException(name + " must not be blank");

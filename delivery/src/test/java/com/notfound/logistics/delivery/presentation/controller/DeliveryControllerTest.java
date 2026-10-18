@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -12,6 +13,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
@@ -22,6 +24,7 @@ import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliverySearchCondition;
+import com.notfound.logistics.delivery.infrastructure.security.DeliverySecurityConfiguration;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
@@ -33,6 +36,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
@@ -42,8 +46,10 @@ import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 @WebMvcTest(DeliveryController.class)
+@Import(DeliverySecurityConfiguration.class)
 class DeliveryControllerTest {
   private static final UUID ORDER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
   private static final UUID DEPARTURE_HUB_ID =
@@ -51,6 +57,9 @@ class DeliveryControllerTest {
   private static final UUID DESTINATION_HUB_ID =
       UUID.fromString("00000000-0000-0000-0000-000000000003");
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
+  private static final UUID MASTER_ID = UUID.fromString("00000000-0000-0000-0000-000000000009");
+  private static final DeliveryActor MASTER_ACTOR = new DeliveryActor(MASTER_ID, true);
+  private static final RequestPostProcessor MASTER_JWT = userJwt(MASTER_ID, "MASTER");
 
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DeliveryQueryService deliveryQueryService;
@@ -61,7 +70,7 @@ class DeliveryControllerTest {
     given(deliveryQueryService.search(any(), any())).willReturn(Page.empty());
 
     mockMvc
-        .perform(get("/api/deliveries"))
+        .perform(get("/api/deliveries").with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.page").value(0))
@@ -84,7 +93,8 @@ class DeliveryControllerTest {
             invocation -> new PageImpl<DeliveryResult>(List.of(), invocation.getArgument(1), 3));
 
     mockMvc
-        .perform(get("/api/deliveries").param("page", "2147483647").param("size", "20"))
+        .perform(
+            get("/api/deliveries").param("page", "2147483647").param("size", "20").with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content").isEmpty())
         .andExpect(jsonPath("$.data.page").value(Integer.MAX_VALUE))
@@ -134,7 +144,8 @@ class DeliveryControllerTest {
                 .param("assignee_id", ASSIGNEE_ID.toString())
                 .param("page", "1")
                 .param("size", "10")
-                .param("sort", "updated_at,asc"))
+                .param("sort", "updated_at,asc")
+                .with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.content[0].delivery_id").value(result.deliveryId().toString()))
         .andExpect(jsonPath("$.data.content[0].order_id").value(ORDER_ID.toString()))
@@ -178,7 +189,7 @@ class DeliveryControllerTest {
   @Test
   void unsupportedMethodKeepsTheAllowHeaderInTheCommonErrorFormat() throws Exception {
     mockMvc
-        .perform(post("/api/deliveries"))
+        .perform(post("/api/deliveries").with(MASTER_JWT))
         .andExpect(status().isMethodNotAllowed())
         .andExpect(header().string(HttpHeaders.ALLOW, "GET"))
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
@@ -230,7 +241,7 @@ class DeliveryControllerTest {
                 Instant.parse("2026-01-02T00:00:00Z")));
 
     mockMvc
-        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.order_id").value(ORDER_ID.toString()))
@@ -266,7 +277,7 @@ class DeliveryControllerTest {
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
 
     mockMvc
-        .perform(get("/api/deliveries/{delivery_id}", deliveryId))
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(MASTER_JWT))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("배송을 찾을 수 없습니다."))
@@ -276,7 +287,7 @@ class DeliveryControllerTest {
   @Test
   void malformedDeliveryIdIsRejectedWithTheCommonErrorFormat() throws Exception {
     mockMvc
-        .perform(get("/api/deliveries/{delivery_id}", "not-a-uuid"))
+        .perform(get("/api/deliveries/{delivery_id}", "not-a-uuid").with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("delivery_id"))
@@ -317,7 +328,7 @@ class DeliveryControllerTest {
                     null)));
 
     mockMvc
-        .perform(get("/api/deliveries/{id}/routes", deliveryId))
+        .perform(get("/api/deliveries/{id}/routes", deliveryId).with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.length()").value(2))
         .andExpect(jsonPath("$.data[0].delivery_route_id").value(firstRouteId.toString()))
@@ -343,7 +354,7 @@ class DeliveryControllerTest {
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
 
     mockMvc
-        .perform(get("/api/deliveries/{id}/routes", deliveryId))
+        .perform(get("/api/deliveries/{id}/routes", deliveryId).with(MASTER_JWT))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
         .andExpect(jsonPath("$.message").value("배송을 찾을 수 없습니다."))
@@ -366,7 +377,7 @@ class DeliveryControllerTest {
   void invalidParametersAreRejectedWithTheCommonErrorFormat(String field, String value)
       throws Exception {
     mockMvc
-        .perform(get("/api/deliveries").param(field, value))
+        .perform(get("/api/deliveries").param(field, value).with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value(field))
@@ -377,7 +388,9 @@ class DeliveryControllerTest {
   @Test
   void modifyPassesTheSnakeCaseBodyToTheServiceAndReturnsTheModifiedDelivery() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
-    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID))
+    given(
+            deliveryCommandService.modify(
+                deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID, MASTER_ACTOR))
         .willReturn(
             new DeliveryResult(
                 deliveryId,
@@ -400,7 +413,8 @@ class DeliveryControllerTest {
                     """
                     {"status": "HUB_MOVING", "assignee_id": "%s"}
                     """
-                        .formatted(ASSIGNEE_ID)))
+                        .formatted(ASSIGNEE_ID))
+                .with(MASTER_JWT))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.status").value("HUB_MOVING"))
@@ -408,7 +422,7 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.data.routes").isEmpty());
     then(deliveryCommandService)
         .should()
-        .modify(deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID);
+        .modify(deliveryId, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID, MASTER_ACTOR);
   }
 
   @ParameterizedTest
@@ -421,7 +435,7 @@ class DeliveryControllerTest {
   void modifyPassesOnlyTheGivenValueAndLeavesTheOtherNull(
       String body, DeliveryStatus status, UUID assigneeId) throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
-    given(deliveryCommandService.modify(any(), any(), any()))
+    given(deliveryCommandService.modify(any(), any(), any(), any()))
         .willReturn(
             new DeliveryResult(
                 deliveryId,
@@ -440,9 +454,10 @@ class DeliveryControllerTest {
         .perform(
             patch("/api/deliveries/{delivery_id}", deliveryId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(body)
+                .with(MASTER_JWT))
         .andExpect(status().isOk());
-    then(deliveryCommandService).should().modify(deliveryId, status, assigneeId);
+    then(deliveryCommandService).should().modify(deliveryId, status, assigneeId, MASTER_ACTOR);
   }
 
   @ParameterizedTest
@@ -452,12 +467,13 @@ class DeliveryControllerTest {
         .perform(
             patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(body)
+                .with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("$"))
         .andExpect(jsonPath("$.field_errors.length()").value(1));
-    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
   }
 
   @ParameterizedTest
@@ -473,12 +489,13 @@ class DeliveryControllerTest {
         .perform(
             patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(body)
+                .with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value(field))
         .andExpect(jsonPath("$.field_errors.length()").value(1));
-    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
   }
 
   @ParameterizedTest
@@ -488,11 +505,12 @@ class DeliveryControllerTest {
         .perform(
             patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(body))
+                .content(body)
+                .with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
-    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
   }
 
   @Test
@@ -501,24 +519,26 @@ class DeliveryControllerTest {
         .perform(
             patch("/api/deliveries/{delivery_id}", "not-a-uuid")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"HUB_MOVING\"}"))
+                .content("{\"status\": \"HUB_MOVING\"}")
+                .with(MASTER_JWT))
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("delivery_id"));
-    then(deliveryCommandService).should(never()).modify(any(), any(), any());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
   }
 
   @Test
   void reassigningADeliveryThatLeftHubWaitingIsAConflict() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
-    given(deliveryCommandService.modify(deliveryId, null, ASSIGNEE_ID))
+    given(deliveryCommandService.modify(deliveryId, null, ASSIGNEE_ID, MASTER_ACTOR))
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.ASSIGNMENT_NOT_ALLOWED));
 
     mockMvc
         .perform(
             patch("/api/deliveries/{delivery_id}", deliveryId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"assignee_id\": \"%s\"}".formatted(ASSIGNEE_ID)))
+                .content("{\"assignee_id\": \"%s\"}".formatted(ASSIGNEE_ID))
+                .with(MASTER_JWT))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("ASSIGNMENT_NOT_ALLOWED"))
         .andExpect(jsonPath("$.message").value("허브 대기중인 배송만 담당자를 배정할 수 있습니다."))
@@ -528,14 +548,15 @@ class DeliveryControllerTest {
   @Test
   void anInvalidStatusTransitionIsAConflict() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
-    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_WAITING, null))
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_WAITING, null, MASTER_ACTOR))
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.INVALID_STATUS_TRANSITION));
 
     mockMvc
         .perform(
             patch("/api/deliveries/{delivery_id}", deliveryId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"HUB_WAITING\"}"))
+                .content("{\"status\": \"HUB_WAITING\"}")
+                .with(MASTER_JWT))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("INVALID_STATUS_TRANSITION"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
@@ -544,14 +565,15 @@ class DeliveryControllerTest {
   @Test
   void aConcurrentModificationIsAConflict() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
-    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null))
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER_ACTOR))
         .willThrow(new ObjectOptimisticLockingFailureException(Delivery.class, deliveryId));
 
     mockMvc
         .perform(
             patch("/api/deliveries/{delivery_id}", deliveryId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"HUB_MOVING\"}"))
+                .content("{\"status\": \"HUB_MOVING\"}")
+                .with(MASTER_JWT))
         .andExpect(status().isConflict())
         .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
@@ -560,16 +582,85 @@ class DeliveryControllerTest {
   @Test
   void modifyOfAnUnknownDeliveryIsNotFound() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
-    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null))
+    given(deliveryCommandService.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER_ACTOR))
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
 
     mockMvc
         .perform(
             patch("/api/deliveries/{delivery_id}", deliveryId)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"status\": \"HUB_MOVING\"}"))
+                .content("{\"status\": \"HUB_MOVING\"}")
+                .with(MASTER_JWT))
         .andExpect(status().isNotFound())
         .andExpect(jsonPath("$.code").value("DELIVERY_NOT_FOUND"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  @Test
+  void requestWithoutAuthenticationIsUnauthorized() throws Exception {
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(header().string(HttpHeaders.WWW_AUTHENTICATE, "Bearer"))
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    mockMvc.perform(get("/api/deliveries")).andExpect(status().isUnauthorized());
+    then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
+  }
+
+  @Test
+  void modifyPassesTheUserIdAndNonMasterRoleOfTheTokenToTheService() throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(any(), any(), any(), any()))
+        .willReturn(
+            new DeliveryResult(
+                deliveryId,
+                ORDER_ID,
+                DeliveryStatus.HUB_MOVING,
+                DEPARTURE_HUB_ID,
+                DESTINATION_HUB_ID,
+                "서울특별시 송파구 송파대로 55",
+                "홍길동",
+                ASSIGNEE_ID,
+                List.of(),
+                Instant.parse("2026-01-01T00:00:00Z"),
+                Instant.parse("2026-01-02T00:00:00Z")));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}")
+                .with(userJwt(ASSIGNEE_ID, "USER")))
+        .andExpect(status().isOk());
+    then(deliveryCommandService)
+        .should()
+        .modify(deliveryId, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(ASSIGNEE_ID, false));
+  }
+
+  @ParameterizedTest
+  @CsvSource({"STATUS_CHANGE_FORBIDDEN", "ASSIGNMENT_FORBIDDEN"})
+  void modifyWithoutPermissionIsForbidden(DeliveryErrorCode errorCode) throws Exception {
+    UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000aa");
+    given(deliveryCommandService.modify(any(), any(), any(), any()))
+        .willThrow(new DeliveryBusinessException(errorCode));
+
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\": \"HUB_MOVING\"}")
+                .with(userJwt(UUID.randomUUID(), "USER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value(errorCode.name()))
+        .andExpect(jsonPath("$.message").value(errorCode.message()))
+        .andExpect(jsonPath("$.field_errors").isEmpty());
+  }
+
+  // 서명 검증은 DeliverySecurityIntegrationTest가 맡고, 여기서는 검증을 마친 토큰의 클레임만 넣는다.
+  private static RequestPostProcessor userJwt(UUID userId, String role) {
+    return jwt().jwt(token -> token.claim("user_id", userId.toString()).claim("role", role));
   }
 }

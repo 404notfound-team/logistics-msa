@@ -1,5 +1,6 @@
 package com.notfound.logistics.delivery.application.service;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
@@ -23,12 +24,23 @@ public class DeliveryCommandService {
    *
    * <p>동시 수정은 낙관적 락(Delivery.version)으로 막는다. 같은 배송을 읽은 두 요청 중 먼저 커밋한 쪽만 반영되고, 늦은 쪽은 커밋 시
    * OptimisticLockingFailureException으로 실패해 CONCURRENT_MODIFICATION(409)으로 응답한다. 서버에서 자동 재시도하지 않는다.
+   *
+   * <p>담당자 배정은 MASTER만(ASSIGNMENT_FORBIDDEN), 상태 변경은 MASTER 또는 요청 시점의 배송 담당자만
+   * (STATUS_CHANGE_FORBIDDEN) 할 수 있다. 하나라도 권한이 없으면 아무것도 바꾸지 않는다.
    */
-  public DeliveryResult modify(UUID deliveryId, DeliveryStatus status, UUID assigneeId) {
+  public DeliveryResult modify(
+      UUID deliveryId, DeliveryStatus status, UUID assigneeId, DeliveryActor actor) {
+    // 배정 권한은 역할만으로 정해지므로 배송을 읽기 전에 거른다.
+    if (assigneeId != null && !actor.master()) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.ASSIGNMENT_FORBIDDEN);
+    }
     Delivery delivery =
         deliveryRepository
             .findById(deliveryId)
             .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+    if (status != null && !actor.master() && !delivery.isAssignedTo(actor.userId())) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.STATUS_CHANGE_FORBIDDEN);
+    }
     // 배정 가능 여부는 요청 전의 현재 상태로 판단해야 하므로 상태보다 먼저 배정한다.
     // (예: HUB_WAITING인 배송에 담당자 배정과 HUB_MOVING 변경을 함께 요청하면 허용한다)
     if (assigneeId != null) {
