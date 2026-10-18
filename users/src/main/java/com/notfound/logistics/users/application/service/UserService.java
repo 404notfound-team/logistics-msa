@@ -167,7 +167,7 @@ public class UserService {
   /** 회원 탈퇴입니다. 대상은 JWT의 user_id, 삭제 작업자는 JWT의 sub(username)입니다. */
   @Transactional
   public void withdraw(UUID userId, String actorUsername) {
-    findUser(userId).markDeleted(actorUsername, clock.instant());
+    findUserForUpdate(userId).markDeleted(actorUsername, clock.instant());
   }
 
   @Transactional
@@ -199,7 +199,7 @@ public class UserService {
 
   @Transactional
   public UserResponseDto updateUser(UUID id, UserUpdateRequestDto request) {
-    User user = findUser(id);
+    User user = findUserForUpdate(id);
     UserRoleEnum role = request.role() != null ? request.role() : user.getRole();
     UUID companyId = request.changesAffiliation() ? request.companyId() : user.getCompanyId();
     UUID hubId = request.changesAffiliation() ? request.hubId() : user.getHubId();
@@ -227,12 +227,18 @@ public class UserService {
 
   @Transactional
   public void deleteUser(UUID id, String actorUsername) {
-    findUser(id).markDeleted(actorUsername, clock.instant());
+    findUserForUpdate(id).markDeleted(actorUsername, clock.instant());
   }
 
   private User findUser(UUID id) {
     return userRepository
         .findById(id)
+        .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+  }
+
+  private User findUserForUpdate(UUID id) {
+    return userRepository
+        .findByIdForUpdate(id)
         .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
   }
 

@@ -1,10 +1,12 @@
 package com.notfound.logistics.users.domain.repository;
 
 import com.notfound.logistics.users.domain.model.User;
+import jakarta.persistence.LockModeType;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -19,4 +21,9 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
   boolean existsByUsernameIncludingDeleted(@Param("username") String username);
 
   Optional<User> findByUsername(String username);
+
+  /** 수정·탈퇴·삭제가 같은 사용자의 이전 상태를 덮어쓰지 않도록 트랜잭션 종료까지 잠급니다. */
+  @Lock(LockModeType.PESSIMISTIC_WRITE)
+  @Query("select u from User u where u.id = :id")
+  Optional<User> findByIdForUpdate(@Param("id") UUID id);
 }

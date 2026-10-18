@@ -63,7 +63,7 @@ class UserServiceTest {
   @Test
   void withdrawRecordsActorAndClockTime() {
     User user = regularUser();
-    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
     userService.withdraw(USER_ID, "user01");
 
@@ -75,7 +75,7 @@ class UserServiceTest {
   @Test
   void deleteRecordsMasterAsActor() {
     User user = regularUser();
-    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
     userService.deleteUser(USER_ID, "master01");
 
@@ -140,7 +140,7 @@ class UserServiceTest {
   @Test
   void updateKeepsOmittedFieldsAndHashesNewPassword() {
     User user = regularUser();
-    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
     given(passwordEncoder.encode("N3wPassw0rd!")).willReturn("new-hash");
 
     var response =
@@ -158,7 +158,7 @@ class UserServiceTest {
   @Test
   void updateReplacesWholeAffiliationWhenOneIdIsGiven() {
     User user = regularUser();
-    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
     var response =
         userService.updateUser(
