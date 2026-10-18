@@ -79,7 +79,8 @@ Spring Boot 3.5와 호환되는 [springdoc 2.8 계열](https://springdoc.org/v2/
 문서와 UI는 기본 비활성이고, Compose가 사용하는 `local` 프로필에서 활성화합니다.
 서비스별 공개 API 접두사만 문서에 포함하며 `/internal/**`·Actuator·인프라 점검 경로는 제외합니다.
 응답 DTO의 필드명은 기존 Jackson 설정과 같은 `snake_case`로 표시합니다.
-각 서비스의 공개 업무 API가 문서에 나타납니다. 새 공개 컨트롤러를 추가하면 앱을 다시 빌드·실행해 확인합니다.
+상단 로그인 폼에서 실제 Users 계정으로 로그인하면 서비스 선택을 바꿔도 인증된 API를 실행할 수 있습니다.
+개발 계정·비밀번호·토큰 만료는 [개발용 샘플 데이터](infra/dev-data/README.md#바로-확인하기)를 참고하세요.
 
 ## 개발 DB 스키마
 
@@ -125,6 +126,7 @@ DB 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로�
 ./gradlew spotlessApply            # Java 포맷 자동 수정
 ./gradlew --parallel --build-cache --continue build  # 코드 검사·테스트·패키징
 ./gradlew :orders:test             # 특정 서비스 테스트
+node --test scripts/test_swagger_login.cjs  # Swagger 로그인 검사 (Node.js 18 이상)
 docker compose logs -f orders
 docker compose up -d --build orders
 docker compose down
