@@ -2,15 +2,25 @@ package com.notfound.logistics.users.domain.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.awaitility.Awaitility.await;
+import static org.mockito.BDDMockito.given;
 
+import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.audit.SignupAuditScope;
+import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
+import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,6 +35,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -80,6 +91,8 @@ class UserPersistenceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private TransactionTemplate transaction;
   @Autowired private JdbcTemplate jdbc;
+  @Autowired private UserService userService;
+  @MockitoBean private HubLookupClient hubLookupClient;
 
   @BeforeEach
   void cleanUp() {
@@ -132,6 +145,77 @@ class UserPersistenceTest {
     assertThat(userRepository.findByUsername("user01")).isEmpty();
     assertThat(userRepository.existsByUsernameIncludingDeleted("user01")).isTrue();
     assertThat(userRepository.existsByUsernameIncludingDeleted("user99")).isFalse();
+  }
+
+  @Test
+  void concurrentAccountUpdateDoesNotRestoreWithdrawnUser() throws Exception {
+    User saved = SignupAuditScope.run(() -> userRepository.save(user("user01")));
+    UUID nextHub = UUID.randomUUID();
+    var lookupStarted = new CountDownLatch(1);
+    var finishLookup = new CountDownLatch(1);
+    given(hubLookupClient.findById(nextHub))
+        .willAnswer(
+            invocation -> {
+              lookupStarted.countDown();
+              assertThat(finishLookup.await(10, TimeUnit.SECONDS)).isTrue();
+              return new ApiResponse<>(new HubLookupClient.AffiliationResponse(nextHub));
+            });
+
+    var workers = Executors.newFixedThreadPool(2);
+    try {
+      var update =
+          workers.submit(
+              () -> {
+                authenticateAs("master01");
+                try {
+                  return userService.updateUser(
+                      saved.getId(),
+                      new UserUpdateRequestDto(null, null, null, null, null, null, nextHub));
+                } finally {
+                  SecurityContextHolder.clearContext();
+                }
+              });
+      assertThat(lookupStarted.await(10, TimeUnit.SECONDS)).isTrue();
+      var withdrawal =
+          workers.submit(
+              () -> {
+                authenticateAs("user01");
+                try {
+                  userService.withdraw(saved.getId(), "user01");
+                } finally {
+                  SecurityContextHolder.clearContext();
+                }
+              });
+
+      // 수정이 멈춘 동안 탈퇴가 커밋되거나, DB에서 수정의 행 잠금을 기다릴 때까지 확인합니다.
+      await()
+          .atMost(Duration.ofSeconds(10))
+          .until(
+              () ->
+                  withdrawal.isDone()
+                      || Boolean.TRUE.equals(
+                          jdbc.queryForObject(
+                              """
+                              SELECT EXISTS (
+                                SELECT 1 FROM pg_stat_activity
+                                WHERE datname = current_database()
+                                  AND wait_event_type = 'Lock'
+                                  AND cardinality(pg_blocking_pids(pid)) > 0
+                              )
+                              """,
+                              Boolean.class)));
+      finishLookup.countDown();
+      update.get(10, TimeUnit.SECONDS);
+      withdrawal.get(10, TimeUnit.SECONDS);
+
+      assertThat(userRepository.findById(saved.getId())).isEmpty();
+      assertThat(userRepository.findByUsername("user01")).isEmpty();
+      assertThat(userService.getAuthorization(saved.getId()).active()).isFalse();
+    } finally {
+      finishLookup.countDown();
+      workers.shutdownNow();
+      assertThat(workers.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+    }
   }
 
   @Test
