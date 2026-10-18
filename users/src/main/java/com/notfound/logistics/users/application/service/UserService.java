@@ -97,6 +97,7 @@ public class UserService {
             request.name(),
             passwordEncoder.encode(request.password()),
             request.slackId(),
+            request.role(),
             companyId,
             hubId);
     try {

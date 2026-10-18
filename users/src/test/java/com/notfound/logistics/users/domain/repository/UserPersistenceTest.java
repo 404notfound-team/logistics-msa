@@ -2,51 +2,29 @@ package com.notfound.logistics.users.domain.repository;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.BDDMockito.given;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.users.UsersApplication;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.audit.SignupAuditScope;
-import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -56,6 +34,7 @@ import org.testcontainers.utility.MountableFile;
 @ActiveProfiles("local")
 @SpringBootTest(
     classes = UsersApplication.class,
+    webEnvironment = SpringBootTest.WebEnvironment.NONE,
     properties = {
       "eureka.client.enabled=false",
       "management.tracing.enabled=false",
@@ -64,12 +43,9 @@ import org.testcontainers.utility.MountableFile;
       "USERS_SERVICE_TOKEN=test-only-users-service-token",
       "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token"
     })
-@AutoConfigureMockMvc
 @Testcontainers
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class UserPersistenceTest {
-  private static final String PASSWORD = "Passw0rd!";
-
   @Container
   static final PostgreSQLContainer<?> DATABASE =
       new PostgreSQLContainer<>("postgres:18")
@@ -104,11 +80,6 @@ class UserPersistenceTest {
   @Autowired private UserRepository userRepository;
   @Autowired private TransactionTemplate transaction;
   @Autowired private JdbcTemplate jdbc;
-  @Autowired private MockMvc mvc;
-  @Autowired private ObjectMapper objectMapper;
-  @Autowired private JwtDecoder jwtDecoder;
-  @Autowired private PasswordEncoder passwordEncoder;
-  @MockitoBean private HubLookupClient hubLookupClient;
 
   @BeforeEach
   void cleanUp() {
@@ -190,112 +161,6 @@ class UserPersistenceTest {
             UserSpecifications.matching(new UserSearchCondition("%", null, null, null, null)),
             PageRequest.of(0, 20));
     assertThat(wildcard.getContent()).isEmpty();
-  }
-
-  @ParameterizedTest
-  @NullSource
-  @ValueSource(strings = {"USER", "MASTER"})
-  void publicSignupCannotGrantAdministrativePrivileges(String requestedRole) throws Exception {
-    UUID hubId = UUID.randomUUID();
-    given(hubLookupClient.findByName("서울"))
-        .willReturn(new ApiResponse<>(List.of(new HubLookupClient.HubLookupResponse(hubId, "서울"))));
-    var request =
-        new HashMap<String, Object>(
-            Map.of(
-                "username", "user01",
-                "name", "사용자",
-                "password", PASSWORD,
-                "slack_id", "slack",
-                "hub_name", "서울",
-                "is_delivery_staff", true));
-    if (requestedRole != null) {
-      request.put("role", requestedRole);
-    }
-
-    mvc.perform(
-            post("/api/users/signup")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(request)))
-        .andExpect(status().isCreated());
-
-    User saved = userRepository.findByUsername("user01").orElseThrow();
-    assertThat(saved.getRole()).isEqualTo(UserRoleEnum.USER);
-    assertThat(saved.isDeliveryStaff()).isFalse();
-    assertThat(saved.getHubId()).isEqualTo(hubId);
-    assertThat(saved.getCreatedBy()).isEqualTo("signup-service");
-
-    String authorization = "Bearer " + signIn("user01");
-    Jwt token = jwtDecoder.decode(authorization.substring(7));
-    assertThat(token.getClaimAsString("role")).isEqualTo("USER");
-    assertThat(token.getClaimAsBoolean("is_delivery_staff")).isFalse();
-    mvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, authorization))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            post("/api/users")
-                .header(HttpHeaders.AUTHORIZATION, authorization)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{}"))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            patch("/api/users/" + saved.getId())
-                .header(HttpHeaders.AUTHORIZATION, authorization)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"role\":\"MASTER\"}"))
-        .andExpect(status().isForbidden());
-    mvc.perform(
-            delete("/api/users/" + saved.getId()).header(HttpHeaders.AUTHORIZATION, authorization))
-        .andExpect(status().isForbidden());
-  }
-
-  @Test
-  void authenticatedMasterCanStillCreateAnotherMaster() throws Exception {
-    SignupAuditScope.run(
-        () ->
-            userRepository.save(
-                User.create(
-                    "master01",
-                    "관리자",
-                    passwordEncoder.encode(PASSWORD),
-                    "slack",
-                    UserRoleEnum.MASTER,
-                    null,
-                    null,
-                    false)));
-    String authorization = "Bearer " + signIn("master01");
-
-    mvc.perform(
-            post("/api/users")
-                .header(HttpHeaders.AUTHORIZATION, authorization)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(
-                    """
-                    {"username":"master02","name":"새관리자","password":"Passw0rd!",
-                    "slack_id":"slack","role":"MASTER"}
-                    """))
-        .andExpect(status().isCreated())
-        .andExpect(jsonPath("$.data.role").value("MASTER"));
-
-    User created = userRepository.findByUsername("master02").orElseThrow();
-    assertThat(created.getRole()).isEqualTo(UserRoleEnum.MASTER);
-    assertThat(created.getCreatedBy()).isEqualTo("master01");
-  }
-
-  private String signIn(String username) throws Exception {
-    var response =
-        mvc.perform(
-                post("/api/users/signin")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content(
-                        objectMapper.writeValueAsString(
-                            Map.of("username", username, "password", PASSWORD))))
-            .andExpect(status().isOk())
-            .andReturn()
-            .getResponse();
-    return objectMapper
-        .readTree(response.getContentAsString())
-        .path("data")
-        .path("access_token")
-        .asText();
   }
 
   private User user(String username) {

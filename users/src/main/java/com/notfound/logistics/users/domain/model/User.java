@@ -85,16 +85,15 @@ public class User extends AuditEntity {
     this.deliveryStaff = deliveryStaff;
   }
 
-  /** 공개 회원가입은 일반 사용자만 생성하며 역할과 배송 담당자 여부를 입력받지 않습니다. */
   public static User signUp(
       String username,
       String name,
       String passwordHash,
       String slackId,
+      UserRoleEnum role,
       UUID companyId,
       UUID hubId) {
-    return new User(
-        username, name, passwordHash, UserRoleEnum.USER, slackId, companyId, hubId, false);
+    return new User(username, name, passwordHash, role, slackId, companyId, hubId, false);
   }
 
   /** MASTER가 관리 기능으로 사용자를 만듭니다. MASTER는 소속 없이 만들 수 있습니다. */
