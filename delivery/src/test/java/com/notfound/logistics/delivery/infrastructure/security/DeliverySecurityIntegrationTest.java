@@ -13,6 +13,7 @@ import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
+import com.notfound.logistics.delivery.application.service.DeliveryCreationService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import java.nio.charset.StandardCharsets;
@@ -48,6 +49,7 @@ class DeliverySecurityIntegrationTest {
   @Autowired private MockMvc mockMvc;
   @MockitoBean private DeliveryQueryService deliveryQueryService;
   @MockitoBean private DeliveryCommandService deliveryCommandService;
+  @MockitoBean private DeliveryCreationService deliveryCreationService;
 
   @BeforeEach
   void stubModify() {

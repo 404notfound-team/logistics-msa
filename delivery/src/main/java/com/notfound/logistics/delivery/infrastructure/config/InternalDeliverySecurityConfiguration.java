@@ -24,7 +24,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(InternalAuthProperties.class)
-public class DeliverySecurityConfiguration {
+public class InternalDeliverySecurityConfiguration {
   @Bean
   AuthenticationEntryPoint deliveryAuthenticationEntryPoint(ObjectMapper objectMapper) {
     return (request, response, exception) -> {
@@ -71,13 +71,9 @@ public class DeliverySecurityConfiguration {
         .build();
   }
 
-  /**
-   * 내부 배송 API 외의 요청은 지금처럼 인증 없이 통과시킨다.
-   *
-   * <p>TODO: 사용자 API(/api/deliveries/**)에 JWT 인증과 권한 검사 적용하기
-   */
+  /** 내부 서비스 인증과 공개 API의 JWT 인증 뒤에 Actuator·문서 요청을 처리한다. */
   @Bean
-  @Order(2)
+  @Order(3)
   SecurityFilterChain defaultSecurityFilterChain(HttpSecurity http) throws Exception {
     return stateless(http)
         .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())

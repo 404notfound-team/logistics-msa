@@ -3,6 +3,8 @@ package com.notfound.logistics.delivery.presentation.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasSize;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -70,7 +72,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.sql.init.mode=always",
       "spring.sql.init.schema-locations=classpath:db/test-schema.sql,"
           + "classpath:db/migration/V1__create_p_deliveries.sql,"
-          + "classpath:db/migration/V2__create_p_delivery_routes.sql"
+          + "classpath:db/migration/V2__create_p_delivery_routes.sql,"
+          + "classpath:db/migration/V3__add_p_deliveries_version.sql"
     })
 @AutoConfigureMockMvc
 @Testcontainers(disabledWithoutDocker = true)
@@ -360,6 +363,55 @@ class InternalDeliveryCreationIntegrationTest {
     assertThat(hub.requests())
         .extracting(HubRequest::path)
         .containsExactly("/internal/hubs/" + SEOUL_HUB);
+  }
+
+  @Test
+  void internalCreationAndJwtModificationKeepSeparateAuthenticationAndAuditActors()
+      throws Exception {
+    UUID orderId = UUID.randomUUID();
+    String response =
+        create(request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
+            .andExpect(status().isCreated())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+    UUID deliveryId =
+        UUID.fromString(objectMapper.readTree(response).path("data").path("delivery_id").asText());
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .with(
+                    jwt()
+                        .jwt(
+                            token ->
+                                token
+                                    .subject("master-user")
+                                    .claim("role", "MASTER")
+                                    .claim("user_id", UUID.randomUUID().toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"HUB_MOVING\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT created_by FROM p_deliveries WHERE delivery_id = ?",
+                String.class,
+                deliveryId))
+        .isEqualTo(ACTOR);
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT updated_by FROM p_deliveries WHERE delivery_id = ?",
+                String.class,
+                deliveryId))
+        .isEqualTo("master-user");
+    mockMvc
+        .perform(
+            patch("/api/deliveries/{delivery_id}", deliveryId)
+                .header("X-Service-Token", ORDERS_TOKEN)
+                .header("X-Actor-Username", "spoofed-user")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"DELIVERED\"}"))
+        .andExpect(status().isUnauthorized());
   }
 
   private ResultActions create(String body) throws Exception {

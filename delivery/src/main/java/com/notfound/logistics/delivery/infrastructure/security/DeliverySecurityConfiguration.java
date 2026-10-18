@@ -14,6 +14,7 @@ import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -39,6 +40,7 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration(proxyBeanMethods = false)
 public class DeliverySecurityConfiguration {
   @Bean
+  @Order(2)
   SecurityFilterChain deliverySecurityFilterChain(
       HttpSecurity http, JwtDecoder deliveryJwtDecoder, ObjectMapper mapper) throws Exception {
     JwtGrantedAuthoritiesConverter authorities = new JwtGrantedAuthoritiesConverter();
