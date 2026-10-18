@@ -52,7 +52,9 @@ python3 scripts/check-dev-data.py
 업체 목록은 `/api/companies`, 첫 업체의 상품은 `/api/companies/c0ffee39-0000-4000-8000-000000000001/products`에서 확인합니다.
 `size=2&page=1`로 상품 페이지를 넘기거나 존재하지 않는 이름으로 빈 검색을 확인할 수 있습니다.
 
-공개 회원가입·로그인 외의 업무 API는 Gateway에서 JWT가 필요합니다. 아래 도구는 개발 계정으로 실제 로그인해 15분짜리 JWT를 받습니다. 비밀번호는 실행 중인 Users 환경에서 메모리로만 읽고, `--token`을 명시했을 때만 JWT를 출력합니다. Swagger의 Authorize에도 사용할 수 있습니다.
+공개 회원가입·로그인 외의 업무 API는 Gateway에서 JWT가 필요합니다. Swagger 상단의 아이디·비밀번호 입력으로 로그인하면 서비스 선택을 바꿔도 인증이 자동 적용됩니다. 개발 계정의 최초 비밀번호는 로컬 `.env`의 `DEV_DATA_PASSWORD`입니다. 비밀번호와 토큰은 브라우저 저장소에 보관하지 않으며, 페이지를 새로 열거나 15분이 지나면 다시 로그인합니다. 로그아웃하면 인증이 해제됩니다. Users의 `POST /api/users/signin`을 직접 실행해도 반환된 토큰이 자동 적용됩니다.
+
+터미널에서 호출할 때는 아래 도구로 개발 계정의 JWT를 받을 수 있습니다. 비밀번호는 실행 중인 Users 환경에서 메모리로만 읽고, `--token`을 명시했을 때만 JWT를 출력합니다.
 
 ```bash
 TOKEN=$(python3 scripts/check-dev-data.py --token)

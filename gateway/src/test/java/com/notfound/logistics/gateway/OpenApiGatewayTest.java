@@ -78,8 +78,30 @@ class OpenApiGatewayTest {
     assertThat(urls.keySet()).containsExactlyInAnyOrderElementsOf(PUBLIC_PATHS.keySet());
     urls.forEach((service, url) -> assertThat(url).isEqualTo("/v3/api-docs/" + service));
     assertThat(config.path("urls.primaryName").asText()).isEqualTo("users");
+    assertThat(config.path("persistAuthorization").asBoolean()).isFalse();
     client.get().uri("/swagger-ui.html").exchange().expectStatus().is3xxRedirection();
     client.get().uri("/swagger-ui/index.html").exchange().expectStatus().isOk();
+  }
+
+  @Test
+  void localSwaggerInitializerIncludesLoginAndKeepsStandardPlugins() {
+    String script =
+        client
+            .get()
+            .uri("/swagger-ui/swagger-initializer.js")
+            .exchange()
+            .expectStatus()
+            .isOk()
+            .expectBody(String.class)
+            .returnResult()
+            .getResponseBody();
+    assertThat(script)
+        .contains(
+            "const logisticsSwaggerLogin",
+            "requestInterceptor: logisticsSwaggerLogin.request",
+            "responseInterceptor: logisticsSwaggerLogin.response",
+            "onComplete: logisticsSwaggerLogin.complete",
+            "SwaggerUIBundle.plugins.DownloadUrl, logisticsSwaggerLogin.plugin");
   }
 
   @ParameterizedTest

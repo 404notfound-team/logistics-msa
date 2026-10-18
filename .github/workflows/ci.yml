@@ -29,7 +29,9 @@ jobs:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' }}
       - name: Check formatting, lint, compile and test
-        run: ./gradlew --no-daemon --parallel --build-cache --continue check
+        run: |
+          node --test scripts/test_swagger_login.cjs
+          ./gradlew --no-daemon --parallel --build-cache --continue check
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v7.0.2
