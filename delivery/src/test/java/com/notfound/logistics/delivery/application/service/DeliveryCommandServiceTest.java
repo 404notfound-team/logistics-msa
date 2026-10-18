@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
@@ -28,6 +29,10 @@ class DeliveryCommandServiceTest {
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
   private static final UUID OTHER_ASSIGNEE_ID =
       UUID.fromString("00000000-0000-0000-0000-000000000008");
+  private static final DeliveryActor MASTER =
+      new DeliveryActor(UUID.fromString("00000000-0000-0000-0000-000000000009"), true);
+  private static final DeliveryActor ASSIGNEE = new DeliveryActor(ASSIGNEE_ID, false);
+  private static final DeliveryActor OTHER_USER = new DeliveryActor(OTHER_ASSIGNEE_ID, false);
 
   private final DeliveryRepository deliveryRepository = mock(DeliveryRepository.class);
   private final DeliveryCommandService service = new DeliveryCommandService(deliveryRepository);
@@ -37,7 +42,7 @@ class DeliveryCommandServiceTest {
     Delivery delivery = existingDelivery();
     delivery.assign(ASSIGNEE_ID);
 
-    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null);
+    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, MASTER);
 
     assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
     assertThat(delivery.getAssigneeId()).isEqualTo(ASSIGNEE_ID);
@@ -50,7 +55,7 @@ class DeliveryCommandServiceTest {
     Delivery delivery = existingDelivery();
     delivery.assign(ASSIGNEE_ID);
 
-    DeliveryResult result = service.modify(DELIVERY_ID, null, OTHER_ASSIGNEE_ID);
+    DeliveryResult result = service.modify(DELIVERY_ID, null, OTHER_ASSIGNEE_ID, MASTER);
 
     assertThat(delivery.getAssigneeId()).isEqualTo(OTHER_ASSIGNEE_ID);
     assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
@@ -61,7 +66,8 @@ class DeliveryCommandServiceTest {
   void assignmentIsJudgedByTheCurrentStatusSoAssigningAndLeavingHubWaitingTogetherIsAllowed() {
     Delivery delivery = existingDelivery();
 
-    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID);
+    DeliveryResult result =
+        service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID, MASTER);
 
     assertThat(delivery.getAssigneeId()).isEqualTo(ASSIGNEE_ID);
     assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
@@ -76,7 +82,8 @@ class DeliveryCommandServiceTest {
     delivery.changeStatus(DeliveryStatus.HUB_MOVING);
 
     assertThatThrownBy(
-            () -> service.modify(DELIVERY_ID, DeliveryStatus.HUB_WAITING, OTHER_ASSIGNEE_ID))
+            () ->
+                service.modify(DELIVERY_ID, DeliveryStatus.HUB_WAITING, OTHER_ASSIGNEE_ID, MASTER))
         .isInstanceOf(DeliveryBusinessException.class)
         .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
         .isEqualTo(DeliveryErrorCode.ASSIGNMENT_NOT_ALLOWED);
@@ -88,11 +95,63 @@ class DeliveryCommandServiceTest {
   void skippingAStatusFailsWithInvalidStatusTransitionAndChangesNothing() {
     Delivery delivery = existingDelivery();
 
-    assertThatThrownBy(() -> service.modify(DELIVERY_ID, DeliveryStatus.DELIVERED, null))
+    assertThatThrownBy(() -> service.modify(DELIVERY_ID, DeliveryStatus.DELIVERED, null, MASTER))
         .isInstanceOf(DeliveryBusinessException.class)
         .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
         .isEqualTo(DeliveryErrorCode.INVALID_STATUS_TRANSITION);
     assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+  }
+
+  @Test
+  void theAssigneeCanChangeTheStatusOfTheirDelivery() {
+    Delivery delivery = existingDelivery();
+    delivery.assign(ASSIGNEE_ID);
+
+    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, ASSIGNEE);
+
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_MOVING);
+    assertThat(result.status()).isEqualTo(DeliveryStatus.HUB_MOVING);
+  }
+
+  @Test
+  void aUserWhoIsNotTheAssigneeCannotChangeTheStatus() {
+    Delivery delivery = existingDelivery();
+    delivery.assign(ASSIGNEE_ID);
+
+    assertThatThrownBy(
+            () -> service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, OTHER_USER))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.STATUS_CHANGE_FORBIDDEN);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+  }
+
+  @Test
+  void aUserCannotChangeTheStatusOfAnUnassignedDelivery() {
+    Delivery delivery = existingDelivery();
+
+    assertThatThrownBy(
+            () -> service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, OTHER_USER))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.STATUS_CHANGE_FORBIDDEN);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+  }
+
+  @Test
+  void onlyMasterCanAssignSoEvenTheAssigneeCannotReassignWithoutReadingTheDelivery() {
+    Delivery delivery = existingDelivery();
+    delivery.assign(ASSIGNEE_ID);
+
+    assertThatThrownBy(
+            () ->
+                service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, OTHER_ASSIGNEE_ID, ASSIGNEE))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.ASSIGNMENT_FORBIDDEN);
+    assertThat(delivery.getAssigneeId()).isEqualTo(ASSIGNEE_ID);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+    then(deliveryRepository).should(never()).findById(any());
   }
 
   @Test
@@ -103,7 +162,7 @@ class DeliveryCommandServiceTest {
     given(deliveryRepository.findRoutesByDeliveryId(DELIVERY_ID))
         .willReturn(List.of(first, second));
 
-    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null);
+    DeliveryResult result = service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, MASTER);
 
     assertThat(result.routes())
         .containsExactly(DeliveryRouteResult.from(first), DeliveryRouteResult.from(second));
@@ -113,7 +172,8 @@ class DeliveryCommandServiceTest {
   void modifyOfAnUnknownDeliveryFailsWithDeliveryNotFoundWithoutReadingRoutes() {
     given(deliveryRepository.findById(DELIVERY_ID)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID))
+    assertThatThrownBy(
+            () -> service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, ASSIGNEE_ID, MASTER))
         .isInstanceOf(DeliveryBusinessException.class)
         .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
         .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);

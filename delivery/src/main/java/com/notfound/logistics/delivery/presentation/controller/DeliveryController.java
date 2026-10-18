@@ -2,6 +2,7 @@ package com.notfound.logistics.delivery.presentation.controller;
 
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.service.DeliveryCommandService;
 import com.notfound.logistics.delivery.application.service.DeliveryQueryService;
@@ -22,6 +23,8 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -102,9 +105,13 @@ class DeliveryController {
         deliveryQueryService.searchRoutes(id).stream().map(DeliveryRouteResponse::from).toList());
   }
 
-  @Operation(summary = "배송 정보 수정·수동 배정", description = "id에 해당하는 배송의 상태 또는 담당자를 수정합니다.")
+  @Operation(
+      summary = "배송 정보 수정·수동 배정",
+      description =
+          "id에 해당하는 배송의 상태 또는 담당자를 수정합니다. 상태 변경은 MASTER 또는 해당 배송 담당자, 담당자 배정은 MASTER만 할 수 있습니다.")
   @PatchMapping("/{delivery_id}")
   ApiResponse<DeliveryResponse> modify(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId,
       @RequestBody DeliveryModifyRequest request) {
     DeliveryStatus status = request.status();
@@ -112,8 +119,15 @@ class DeliveryController {
     if (status == null && assigneeId == null) {
       throw new InvalidRequestException("$", "status 또는 assignee_id 중 하나 이상을 입력해야 합니다.");
     }
-    // TODO: 권한 검사하기
     return new ApiResponse<>(
-        DeliveryResponse.from(deliveryCommandService.modify(deliveryId, status, assigneeId)));
+        DeliveryResponse.from(
+            deliveryCommandService.modify(deliveryId, status, assigneeId, actor(principal))));
+  }
+
+  // user_id·role 클레임 형식은 JwtDecoder가 검증했다.
+  private static DeliveryActor actor(Jwt principal) {
+    return new DeliveryActor(
+        UUID.fromString(principal.getClaimAsString("user_id")),
+        "MASTER".equals(principal.getClaimAsString("role")));
   }
 }

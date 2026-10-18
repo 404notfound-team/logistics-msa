@@ -3,6 +3,7 @@ package com.notfound.logistics.delivery.application.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
@@ -42,6 +43,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class DeliveryConcurrentModificationTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
+  private static final DeliveryActor MASTER = new DeliveryActor(UUID.randomUUID(), true);
 
   @Container
   static final PostgreSQLContainer<?> DATABASE = new PostgreSQLContainer<>("postgres:18-alpine");
@@ -73,7 +75,8 @@ class DeliveryConcurrentModificationTest {
                       Delivery stale = deliveryRepository.findById(deliveryId).orElseThrow();
                       stale.assign(ASSIGNEE_ID);
                       statusChange.executeWithoutResult(
-                          inner -> service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null));
+                          inner ->
+                              service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER));
                     }))
         .isInstanceOf(ObjectOptimisticLockingFailureException.class);
 
@@ -90,8 +93,8 @@ class DeliveryConcurrentModificationTest {
   void eachSuccessfulModificationIncreasesTheVersion() {
     UUID deliveryId = insertHubWaitingDelivery();
 
-    service.modify(deliveryId, null, ASSIGNEE_ID);
-    service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null);
+    service.modify(deliveryId, null, ASSIGNEE_ID, MASTER);
+    service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER);
 
     assertThat(
             jdbc.queryForObject(
