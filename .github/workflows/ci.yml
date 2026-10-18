@@ -56,7 +56,6 @@ jobs:
       - name: Verify environment initialization preserves existing settings
         run: |
           python3 scripts/test_init_env.py
-          python3 scripts/test_orders_flow.py
       - name: Configure local environment
         id: configure-env
         run: bash scripts/init-env.sh
@@ -92,10 +91,18 @@ jobs:
         run: python3 scripts/smoke.py
       - name: Verify linked development scenarios
         run: python3 scripts/check-dev-data.py
-      - name: Verify real Orders service flow
-        run: python3 scripts/check-orders-flow.py
-      - name: Verify real service timeouts and Orders restart recovery
-        run: python3 scripts/check-orders-recovery.py
+      - name: Verify real Orders flow, timeouts and restart recovery
+        run: ./gradlew --no-daemon :integration-tests:e2eTest
+      - name: Upload service integration reports
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: service-integration-reports
+          path: |
+            integration-tests/build/reports/tests/
+            integration-tests/build/test-results/*/*.xml
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Show service status on failure
         if: failure() && steps.configure-env.outcome == 'success'
         run: |

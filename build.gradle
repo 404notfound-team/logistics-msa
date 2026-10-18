@@ -9,7 +9,7 @@ ext.springdocVersion = '2.8.17'
 def applicationProjects = ['eureka', 'gateway', 'users', 'company', 'hub', 'orders', 'delivery'].collect { project(":${it}") }
 def libraryProjects = [project(':common:api'), project(':common:audit')]
 
-configure(applicationProjects + libraryProjects) {
+configure(applicationProjects + libraryProjects + project(':integration-tests')) {
     apply plugin: 'java'
     apply plugin: 'io.spring.dependency-management'
     apply plugin: 'com.diffplug.spotless'
