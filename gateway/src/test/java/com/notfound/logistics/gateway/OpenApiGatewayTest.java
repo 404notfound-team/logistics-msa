@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -14,8 +15,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.cloud.client.DefaultServiceInstance;
+import org.springframework.cloud.client.discovery.simple.reactive.SimpleReactiveDiscoveryProperties;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -47,6 +51,7 @@ class OpenApiGatewayTest {
   private static final Map<String, DisposableServer> DOWNSTREAMS = startDownstreams();
 
   @LocalServerPort private int port;
+  @Autowired private SimpleReactiveDiscoveryProperties discovery;
   private WebTestClient client;
 
   @DynamicPropertySource
@@ -114,6 +119,37 @@ class OpenApiGatewayTest {
     assertThat(operation).isEqualTo(PUBLIC_PATHS.get(service));
     JsonNode response = getJson(server + operation.substring(1));
     assertThat(response.path("service").asText()).isEqualTo(service);
+  }
+
+  @Test
+  void routingFollowsRegistryRemovalAndReregistrationWithoutStaleInstances() {
+    String path = PUBLIC_PATHS.get("orders");
+    assertThat(getJson(path).path("service").asText()).isEqualTo("orders");
+    Map<String, List<DefaultServiceInstance>> instances = new LinkedHashMap<>();
+    DOWNSTREAMS.forEach(
+        (service, server) ->
+            instances.put(
+                service,
+                List.of(
+                    new DefaultServiceInstance(
+                        service, service, "127.0.0.1", server.port(), false))));
+    try {
+      Map<String, List<DefaultServiceInstance>> withoutOrders = new LinkedHashMap<>(instances);
+      withoutOrders.remove("orders");
+      discovery.setInstances(withoutOrders);
+      client
+          .get()
+          .uri(path)
+          .headers(headers -> headers.setBearerAuth(testUserToken()))
+          .exchange()
+          .expectStatus()
+          .isEqualTo(503);
+
+      discovery.setInstances(instances);
+      assertThat(getJson(path).path("service").asText()).isEqualTo("orders");
+    } finally {
+      discovery.setInstances(instances);
+    }
   }
 
   @Test
