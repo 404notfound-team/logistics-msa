@@ -14,7 +14,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 // 서비스 간 호출 전용. Gateway는 /api/** 만 라우팅하고 Swagger도 공개 경로만 문서화하므로 외부에 노출되지 않는다.
-// CompanySecurityConfiguration의 서비스 인증(X-Service-Token)으로 호출한다. 단건 조회는 orders, 이름 조회는 users만 허용한다.
+// CompanySecurityConfiguration의 서비스 인증(X-Service-Token)으로 호출한다. 단건 조회는 orders·users, 이름 조회는 users만
+// 허용한다.
 @RestController
 @RequestMapping("/internal/companies")
 @RequiredArgsConstructor
@@ -34,7 +35,10 @@ public class InternalCompanyController {
             .toList());
   }
 
-  /** orders: 주문 생성 시 업체 정보·관리 허브·관리자를 조회한다. 없거나 삭제된 업체는 404 COMPANY_NOT_FOUND. */
+  /**
+   * orders: 주문 생성 시 업체 정보·관리 허브·관리자를 조회한다. users: 사용자 생성·수정 시 소속 업체가 있는지 확인한다. 없거나 삭제된 업체는 404
+   * COMPANY_NOT_FOUND.
+   */
   @GetMapping("/{company_id}")
   public ApiResponse<InternalCompanyResponse> getCompany(
       @PathVariable("company_id") UUID companyId) {

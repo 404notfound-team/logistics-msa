@@ -36,7 +36,8 @@ import org.springframework.web.bind.annotation.RestController;
     properties = {
       "company.jwt.secret=" + CompanySecurityTestTokens.SECRET,
       "company.security.internal.orders-token=" + CompanySecurityTestTokens.ORDERS_TOKEN,
-      "company.security.internal.users-token=" + CompanySecurityTestTokens.USERS_TOKEN
+      "company.security.internal.users-token=" + CompanySecurityTestTokens.USERS_TOKEN,
+      "company.security.internal.hub-token=" + CompanySecurityTestTokens.HUB_TOKEN
     })
 @ContextConfiguration(
     classes = {
@@ -221,18 +222,59 @@ class CompanySecurityIntegrationTest {
     }
 
     @Test
-    void eachServiceReachesOnlyItsOwnInternalApi() throws Exception {
-      // users는 단건 조회를, orders는 이름 조회를 쓸 수 없다.
+    void usersCanLookUpACompanyByIdForUserManagement() throws Exception {
       mvc.perform(
               get(PATH)
                   .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN)
-                  .header("X-Actor-Username", "member"))
-          .andExpect(status().isForbidden());
+                  .header("X-Actor-Username", "admin"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.username").value("admin"))
+          .andExpect(jsonPath("$.authorities[0]").value("SERVICE_USERS"));
+    }
+
+    @Test
+    void hubCanLookUpAProductByIdForStockCreation() throws Exception {
+      mvc.perform(
+              get("/internal/products/security-fixture")
+                  .header("X-Service-Token", CompanySecurityTestTokens.HUB_TOKEN)
+                  .header("X-Actor-Username", "admin"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.username").value("admin"))
+          .andExpect(jsonPath("$.authorities[0]").value("SERVICE_HUB"));
+    }
+
+    @Test
+    void hubMustSendActor() throws Exception {
+      mvc.perform(
+              get("/internal/products/security-fixture")
+                  .header("X-Service-Token", CompanySecurityTestTokens.HUB_TOKEN))
+          .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void eachServiceReachesOnlyItsOwnInternalApi() throws Exception {
+      // orders는 이름 조회를, users는 상품 조회를, hub는 업체 조회를 쓸 수 없다.
       mvc.perform(
               get("/internal/companies")
                   .param("name", "물류")
                   .header("X-Service-Token", CompanySecurityTestTokens.ORDERS_TOKEN)
                   .header("X-Actor-Username", "orderer"))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              get("/internal/products/security-fixture")
+                  .header("X-Service-Token", CompanySecurityTestTokens.USERS_TOKEN)
+                  .header("X-Actor-Username", "admin"))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              get(PATH)
+                  .header("X-Service-Token", CompanySecurityTestTokens.HUB_TOKEN)
+                  .header("X-Actor-Username", "admin"))
+          .andExpect(status().isForbidden());
+      mvc.perform(
+              get("/internal/companies")
+                  .param("name", "물류")
+                  .header("X-Service-Token", CompanySecurityTestTokens.HUB_TOKEN)
+                  .header("X-Actor-Username", "admin"))
           .andExpect(status().isForbidden());
     }
   }

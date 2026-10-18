@@ -53,12 +53,13 @@ public class CompanySecurityConfiguration {
       HttpSecurity http,
       ObjectMapper mapper,
       @Value("${company.security.internal.orders-token:}") String orders,
-      @Value("${company.security.internal.users-token:}") String users)
+      @Value("${company.security.internal.users-token:}") String users,
+      @Value("${company.security.internal.hub-token:}") String hub)
       throws Exception {
     AuthenticationEntryPoint unauthorized = unauthorized(mapper, false);
     var filter =
         new CompanyServiceAuthenticationFilter(
-            Map.of("ORDERS", orders, "USERS", users), unauthorized);
+            Map.of("ORDERS", orders, "USERS", users, "HUB", hub), unauthorized);
     return stateless(http)
         .securityMatcher("/internal/companies", "/internal/companies/**", "/internal/products/**")
         .addFilterBefore(filter, AnonymousAuthenticationFilter.class)
@@ -72,9 +73,11 @@ public class CompanySecurityConfiguration {
                 requests
                     .requestMatchers(HttpMethod.GET, "/internal/companies")
                     .hasAuthority("SERVICE_USERS")
-                    .requestMatchers(
-                        HttpMethod.GET, "/internal/companies/*", "/internal/products/*")
-                    .hasAuthority("SERVICE_ORDERS")
+                    // users는 사용자 관리에서 소속 업체를, hub는 재고 생성에서 상품을 확인한다.
+                    .requestMatchers(HttpMethod.GET, "/internal/companies/*")
+                    .hasAnyAuthority("SERVICE_ORDERS", "SERVICE_USERS")
+                    .requestMatchers(HttpMethod.GET, "/internal/products/*")
+                    .hasAnyAuthority("SERVICE_ORDERS", "SERVICE_HUB")
                     .anyRequest()
                     .denyAll())
         .build();

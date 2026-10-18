@@ -18,6 +18,8 @@ public final class CompanySecurityTestTokens {
   public static final String ORDERS_TOKEN = "orders-test-only-service-token";
   // 회원가입 업체명 조회(users)의 테스트용 X-Service-Token.
   public static final String USERS_TOKEN = "users-test-only-service-token";
+  // 재고 생성의 상품 확인(hub)용 테스트 X-Service-Token.
+  public static final String HUB_TOKEN = "hub-test-only-service-token";
   public static final UUID USER_ID = UUID.fromString("66666666-6666-6666-6666-666666666666");
 
   private CompanySecurityTestTokens() {}
