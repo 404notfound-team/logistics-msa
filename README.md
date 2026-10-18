@@ -126,7 +126,6 @@ DB 통합 테스트는 Docker에서 독립 PostgreSQL 18을 기동하므로 로�
 ./gradlew spotlessApply            # Java 포맷 자동 수정
 ./gradlew --parallel --build-cache --continue build  # 코드 검사·테스트·패키징
 ./gradlew :orders:test             # 특정 서비스 테스트
-node --test scripts/test_swagger_login.cjs  # Swagger 로그인 검사 (Node.js 18 이상)
 docker compose logs -f orders
 docker compose up -d --build orders
 docker compose down

@@ -56,7 +56,6 @@ class LocalSwaggerLoginConfiguration {
                                     marker,
                                     marker
                                         + "\nrequestInterceptor: logisticsSwaggerLogin.request,"
-                                        + "\nresponseInterceptor: logisticsSwaggerLogin.response,"
                                         + "\nonComplete: logisticsSwaggerLogin.complete,")
                                 .replace(
                                     "SwaggerUIBundle.plugins.DownloadUrl",
