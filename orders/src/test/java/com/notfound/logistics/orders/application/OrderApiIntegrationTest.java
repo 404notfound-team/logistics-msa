@@ -56,7 +56,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.hibernate.ddl-auto=create-drop",
       "spring.jpa.properties.hibernate.default_schema=public",
       "orders.recovery.enabled=false",
-      "orders.recovery.retry-delay-ms=0",
       "orders.clients.read-timeout-ms=1000",
       "springdoc.api-docs.enabled=true"
     })
@@ -487,16 +486,52 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void recoveryWaitsUntilItsPersistedDueTime() throws Exception {
+  void theNextRecoveryPassRetriesWithoutAPerOrderSchedule() throws Exception {
     fault("stock.deduct", Map.of("status", 503, "code", "SERVICE_UNAVAILABLE"));
     UUID id = id(create(UUID.randomUUID(), body(), alice));
-    jdbc.update("UPDATE p_orders SET next_recovery_at=NOW()+INTERVAL '1 hour' WHERE id=?", id);
-    service.recover();
     assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-    jdbc.update("UPDATE p_orders SET next_recovery_at=NOW()-INTERVAL '1 second' WHERE id=?", id);
     service.recover();
     assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
     assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void legacyDeliveryRecoveryKeepsItsPhaseAfterAnotherLookupFailure() throws Exception {
+    fault("delivery.get", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update(
+        "UPDATE p_orders SET stock_contract_version=NULL, recovery_phase=NULL, last_error='DELIVERY_RESULT_UNKNOWN' WHERE id=?",
+        id);
+    fault("delivery.get", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    service.recover();
+    var pending = repository.findById(id).orElseThrow();
+    assertThat(pending.getRecoveryPhase().name()).isEqualTo("DELIVERY_CREATION");
+    assertThat(pending.getLastError()).isEqualTo("UPSTREAM_UNAVAILABLE");
+    assertThat(pending.isRecoveryBlocked()).isFalse();
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void legacyRestorationRecoveryDoesNotReturnToDeliveryAfterAnotherFailure() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    fault("stock.restore", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, admin, null), 202);
+    jdbc.update(
+        "UPDATE p_orders SET stock_contract_version=NULL, recovery_phase=NULL, last_error='STOCK_RESTORATION_PENDING' WHERE id=?",
+        id);
+    int lookups = fixture.state().at("/counts/delivery.get").asInt();
+    fault("stock.restore", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getRecoveryPhase().name())
+        .isEqualTo("STOCK_RESTORATION");
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(fixture.state().at("/counts/delivery.get").asInt()).isEqualTo(lookups);
+    assertThat(fixture.state().at("/actors/stock.restore").asText()).isEqualTo("admin");
+    assertInventory(1000, 1, 1);
   }
 
   @Test
@@ -996,10 +1031,7 @@ class OrderApiIntegrationTest {
     fixture.awaitIdle();
     doReturn(List.of(stale))
         .when(repository)
-        .findRecoveryCandidates(
-            anyCollection(),
-            org.mockito.ArgumentMatchers.any(),
-            org.mockito.ArgumentMatchers.any());
+        .findRecoveryCandidates(anyCollection(), org.mockito.ArgumentMatchers.any());
     service.recover();
     var cancelled = repository.findById(id).orElseThrow();
     assertThat(cancelled.getStatus().name()).isEqualTo("CANCELLED");
@@ -1099,10 +1131,7 @@ class OrderApiIntegrationTest {
       service.recover();
       doReturn(List.of(candidate))
           .when(repository)
-          .findRecoveryCandidates(
-              anyCollection(),
-              org.mockito.ArgumentMatchers.any(),
-              org.mockito.ArgumentMatchers.any());
+          .findRecoveryCandidates(anyCollection(), org.mockito.ArgumentMatchers.any());
     }
     var paused = new CountDownLatch(1);
     var proceed = new CountDownLatch(1);

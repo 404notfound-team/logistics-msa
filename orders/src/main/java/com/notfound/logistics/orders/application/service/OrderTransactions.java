@@ -5,6 +5,7 @@ import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.domain.model.RecoveryAction;
+import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import java.time.Instant;
 import java.util.UUID;
@@ -41,6 +42,7 @@ public class OrderTransactions {
             OrderStatus.CONFIRMED,
             OrderStatus.CANCELLING,
             RecoveryAction.CANCEL,
+            RecoveryPhase.DELIVERY_CANCELLATION,
             actor,
             Instant.now())
         == 1;

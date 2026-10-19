@@ -38,22 +38,19 @@ class OrderTest {
   @Test
   void recoveryPreservesUncertainDeliveryPhase() {
     Order order = order(1L, 1);
-    order.recordAttempt("DELIVERY_RESULT_UNKNOWN");
+    order.recordAttempt(RecoveryPhase.DELIVERY_CREATION);
     order.requireRecovery("UPSTREAM_UNAVAILABLE");
     assertThat(order.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
     assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
-    assertThat(order.getLastError()).isEqualTo("DELIVERY_RESULT_UNKNOWN");
+    assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
+    assertThat(order.getLastError()).isEqualTo("UPSTREAM_UNAVAILABLE");
   }
 
   @Test
-  void recoveryBackoffIsBoundedAndExhaustionPreservesUncertainty() {
+  void exhaustedRetriesPreserveThePhaseAndUncertainOutcome() {
     Order order = order(1L, 1);
-    var now = java.time.Instant.parse("2026-10-19T00:00:00Z");
-    long[] expectedDelays = {5000, 10000, 20000, 40000, 80000, 160000, 300000, 300000};
     for (int i = 0; i < 8; i++) {
-      order.deferRecovery("TIMEOUT", now, 5000, 8);
-      assertThat(java.time.Duration.between(now, order.getNextRecoveryAt()).toMillis())
-          .isEqualTo(expectedDelays[i]);
+      order.deferRecovery("TIMEOUT", 8);
       assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.STOCK_DEDUCTION);
       if (i < 7) {
         org.springframework.test.util.ReflectionTestUtils.setField(
@@ -68,12 +65,12 @@ class OrderTest {
   @Test
   void movingToTheDeliveryPhaseResetsThePreviousRetryBudget() {
     Order order = order(1L, 1);
-    order.deferRecovery("TIMEOUT", java.time.Instant.now(), 5000, 20);
+    order.deferRecovery("TIMEOUT", 20);
     org.springframework.test.util.ReflectionTestUtils.setField(
         order, "status", OrderStatus.PROCESSING);
-    order.recordAttempt("DELIVERY_RESULT_UNKNOWN");
+    order.recordAttempt(RecoveryPhase.DELIVERY_CREATION);
     assertThat(order.getRecoveryAttempts()).isZero();
-    assertThat(order.getNextRecoveryAt()).isNull();
+    assertThat(order.getLastError()).isNull();
     assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
   }
 

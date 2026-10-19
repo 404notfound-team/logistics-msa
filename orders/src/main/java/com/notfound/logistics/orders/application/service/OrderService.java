@@ -43,7 +43,6 @@ import org.springframework.stereotype.Service;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
-  private static final String STOCK_UNKNOWN = "STOCK_RESULT_UNKNOWN";
   private static final String DELIVERY_UNKNOWN = "DELIVERY_RESULT_UNKNOWN";
   private static final Set<String> DELIVERY_STATES =
       Set.of(
@@ -61,9 +60,6 @@ public class OrderService {
   private final StockClient stocks;
   private final DeliveryClient deliveries;
   private final SlackNotifier notifications;
-
-  @Value("${orders.recovery.retry-delay-ms:5000}")
-  private long retryDelayMillis;
 
   @Value("${orders.recovery.max-attempts:20}")
   private int maxRecoveryAttempts;
@@ -162,7 +158,7 @@ public class OrderService {
     Order order = load(id);
     if (!order.usesRecordedStockContract()) return blocked(id, "LEGACY_STOCK_CONTRACT");
     // 외부 호출 전에 재개 지점을 커밋해 호출 도중 종료되어도 같은 요청을 이어간다.
-    transactions.change(id, value -> value.recordAttempt(STOCK_UNKNOWN));
+    transactions.change(id, value -> value.recordAttempt(RecoveryPhase.STOCK_DEDUCTION));
     try {
       var response =
           stocks.deduct(
@@ -184,7 +180,7 @@ public class OrderService {
     } catch (FeignException exception) {
       return recovery(id, "STOCK_RESULT_UNKNOWN");
     }
-    transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
+    transactions.change(id, value -> value.recordAttempt(RecoveryPhase.DELIVERY_CREATION));
     return processDeliveryCreation(id, false);
   }
 
@@ -193,7 +189,7 @@ public class OrderService {
     try {
       Delivery delivery = delivery(id);
       if (delivery == null) {
-        transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
+        transactions.change(id, value -> value.recordAttempt(RecoveryPhase.DELIVERY_CREATION));
         try {
           var response =
               deliveries.create(
@@ -455,7 +451,6 @@ public class OrderService {
     for (Order candidate :
         repository.findRecoveryCandidates(
             List.of(OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED),
-            Instant.now(),
             PageRequest.of(0, 50))) {
       UUID id = candidate.getId();
       if (active.begin(id, Operation.RECOVER) != null) continue;
@@ -472,16 +467,13 @@ public class OrderService {
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
               if (transactions.resume(id, action, username)) {
-                if (action == RecoveryAction.CREATE) {
-                  switch (current.resumePhase()) {
-                    case STOCK_DEDUCTION -> processCreate(id);
-                    case DELIVERY_CREATION -> processDeliveryCreation(id, true);
-                    case STOCK_COMPENSATION -> restoreStock(load(id));
-                    default -> blocked(id, "INCONSISTENT_RECOVERY_PHASE");
-                  }
-                } else if (current.resumePhase() == RecoveryPhase.DELIVERY_CANCELLATION
-                    || current.resumePhase() == RecoveryPhase.STOCK_RESTORATION) processCancel(id);
-                else blocked(id, "INCONSISTENT_RECOVERY_PHASE");
+                switch (current.resumePhase()) {
+                  case STOCK_DEDUCTION -> processCreate(id);
+                  case DELIVERY_CREATION -> processDeliveryCreation(id, true);
+                  case STOCK_COMPENSATION -> restoreStock(load(id));
+                  case DELIVERY_CANCELLATION, STOCK_RESTORATION -> processCancel(id);
+                  default -> blocked(id, "INCONSISTENT_RECOVERY_PHASE");
+                }
               }
             });
       } catch (RuntimeException exception) {
@@ -539,10 +531,7 @@ public class OrderService {
   private OrderOperationResult recovery(UUID id, String code) {
     Order updated =
         transactions.change(
-            id,
-            value ->
-                value.deferRecovery(
-                    code, Instant.now(), retryDelayMillis, Math.max(1, maxRecoveryAttempts)));
+            id, value -> value.deferRecovery(code, Math.max(1, maxRecoveryAttempts)));
     if (updated.isRecoveryBlocked()) {
       org.slf4j.LoggerFactory.getLogger(OrderService.class)
           .warn(
