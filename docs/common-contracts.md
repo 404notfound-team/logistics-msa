@@ -44,9 +44,21 @@ Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에�
 Users의 알림용 identities 조회는 주문자 username과 선택적인 담당자 user_id 두 명으로 제한하며,
 활성 사용자의 `{id, username, name}` 목록만 반환합니다. 동일 사용자는 한 번만, 없거나 삭제된 사용자는 제외합니다.
 Users에 `ORDERS_SERVICE_TOKEN`이 설정된 경우에만 Orders의 해당 조회를 허용합니다(Compose에는 기본 연결).
-차감의 `order_id`는 추적용이며 멱등 키가 아닙니다. 복원은 `{order_id, hub_id, product_id, quantity}`를 받아
-200·`data: {id, hub_id, product_id, quantity}`를 반환합니다. 응답 quantity는 최초 복원 직후 잔량입니다.
-대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.
+
+차감·복원은 `{order_id, hub_id, product_id, quantity}`를 받으며 `order_id`가 주문별 멱등 키입니다.
+성공은 최초·반복 모두 200·`data: {id, hub_id, product_id, quantity}`입니다. 응답 quantity는 현재 조회값이 아닌 최초 처리 직후 잔량입니다.
+Hub는 `p_stock_deductions`에 최초 요청·성공 또는 확정 거절을 저장하고, 재고 변경과 결과 저장을 한 트랜잭션으로 커밋합니다.
+404 `STOCK_NOT_FOUND`·409 `INSUFFICIENT_STOCK` 거절도 재현합니다. 이후 입고돼도 같은 주문을 새로 차감하지 않습니다.
+다른 차감 입력은 409 `STOCK_DEDUCTION_CONFLICT`, 복원 완료 주문의 차감은 409 `STOCK_ALREADY_RESTORED`입니다.
+통신·DB·잠금 장애는 확정 거절로 저장하지 않습니다. 잠금 대기 초과는 503이며 같은 입력으로 재시도합니다.
+
+최초 복원은 성공한 차감의 재고 ID·허브·상품·수량과 일치해야 합니다. 차감 기록 없음은 404 `STOCK_DEDUCTION_NOT_FOUND`,
+차감 거절은 409 `STOCK_DEDUCTION_REJECTED`, 복원 입력 불일치는 409 `STOCK_RESTORATION_CONFLICT`입니다.
+기록 없음은 진행 중 차감이 실패했다는 증거가 아닙니다. 대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.
+기존 복원 기록은 차감 기록보다 먼저 확인하여 과거 성공 응답도 재현합니다. 완료 기록은 주문 삭제와 함께 제거하지 않습니다.
+차감·복원은 같은 주문별 트랜잭션 advisory lock 후 재고 행을 잠급니다. PostgreSQL 전용 잠금은 persistence 구현에 둡니다.
+동일 주문 잠금 대기는 1.5초, 획득 후 재고·기록 잠금 대기는 10초로 제한합니다. 호출자 타임아웃만으로 Hub 작업을 실패 확정하지 않습니다.
+기존 주문의 기록을 추정 생성하지 않으며, 계약 전환과 Orders의 재시도·보상은 [주문 복구](../orders/README.md)를 따릅니다.
 
 ## 개발 DB 스키마
 

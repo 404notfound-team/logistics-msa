@@ -79,3 +79,5 @@ orders:
   recovery:
     enabled: ${ORDERS_RECOVERY_ENABLED:true}
     delay-ms: ${ORDERS_RECOVERY_DELAY_MS:5000}
+    retry-delay-ms: ${ORDERS_RECOVERY_RETRY_DELAY_MS:5000}
+    max-attempts: ${ORDERS_RECOVERY_MAX_ATTEMPTS:20}

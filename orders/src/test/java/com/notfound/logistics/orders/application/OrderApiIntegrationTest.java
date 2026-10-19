@@ -56,6 +56,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.hibernate.ddl-auto=create-drop",
       "spring.jpa.properties.hibernate.default_schema=public",
       "orders.recovery.enabled=false",
+      "orders.recovery.retry-delay-ms=0",
       "orders.clients.read-timeout-ms=1000",
       "springdoc.api-docs.enabled=true"
     })
@@ -270,13 +271,15 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void definiteDeliveryFailureDoesNotRestoreOrRepeatDeduction() throws Exception {
+  void definiteDeliveryFailureRestoresStockBeforeFailingAndDoesNotRepeatDeduction()
+      throws Exception {
     fault("delivery.create", Map.of("status", 404, "code", "HUB_ROUTE_NOT_FOUND"));
     UUID key = UUID.randomUUID();
     var failure = create(key, body(), alice);
     assertStatus(failure, 502);
     assertThat(json(failure).path("code").asText()).isEqualTo("DELIVERY_CREATION_FAILED");
-    assertInventory(997, 0, 0);
+    assertInventory(1000, 0, 0);
+    assertThat(fixture.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
     assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
         .isEqualTo("FAILED");
     assertStatus(create(key, body(), alice), 200);
@@ -333,17 +336,17 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void deductionTimeoutAfterCommitNeverRepeatsDeduction() throws Exception {
-    assertUncertainDeductionStopsWithoutRetry("delay_after_ms", 997);
+  void deductionTimeoutAfterCommitIsRecoveredByIdempotentRetry() throws Exception {
+    assertUncertainDeductionRecoversWithoutAnotherEffect("delay_after_ms", 997);
   }
 
   @Test
-  void deductionTimeoutBeforeCommitNeverRepeatsDeduction() throws Exception {
-    assertUncertainDeductionStopsWithoutRetry("delay_before_ms", 1000);
+  void deductionTimeoutBeforeCommitIsRecoveredByIdempotentRetry() throws Exception {
+    assertUncertainDeductionRecoversWithoutAnotherEffect("delay_before_ms", 1000);
   }
 
   @Test
-  void malformedDeductionAcknowledgementsFailWithoutDeliveryOrRetry() throws Exception {
+  void malformedDeductionAcknowledgementsAreRecoveredWithoutAnotherStockEffect() throws Exception {
     var missingQuantity =
         Map.of(
             "data",
@@ -358,19 +361,22 @@ class OrderApiIntegrationTest {
       fault("stock.deduct", options);
       UUID key = UUID.randomUUID();
       var failed = create(key, body(), alice);
-      assertStatus(failed, 503);
+      assertStatus(failed, 202);
       assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
-          .isEqualTo("FAILED");
-      assertStatus(create(key, body(), alice), 200);
+          .isEqualTo("RECOVERY_REQUIRED");
+      assertStatus(create(key, body(), alice), 202);
       service.recover();
       attempts++;
-      assertInventory(1000 - 3L * attempts, 0, 0);
-      assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(attempts);
+      assertInventory(1000 - 3L * attempts, attempts, attempts);
+      assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(attempts * 2);
+      assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
+          .isEqualTo("CONFIRMED");
     }
   }
 
   @Test
-  void interruptedStockPhaseIsNotAutomaticallyDeductedAgain() throws Exception {
+  void interruptedStockPhaseReplaysItsDeductionAndCompletes() throws Exception {
+    fault("stock.deduct", Map.of("response", Map.of()));
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     jdbc.update(
         "UPDATE p_orders SET status='PROCESSING', recovery_action='CREATE', last_error='STOCK_RESULT_UNKNOWN', delivery_id=null WHERE id=?",
@@ -378,30 +384,171 @@ class OrderApiIntegrationTest {
     service.recover();
     service.recover();
     var failed = repository.findById(id).orElseThrow();
-    assertThat(failed.getStatus().name()).isEqualTo("FAILED");
-    assertThat(failed.getLastError()).isEqualTo("UPSTREAM_UNAVAILABLE");
+    assertThat(failed.getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(failed.getLastError()).isNull();
     assertThat(failed.getRecoveryAction()).isNull();
     assertInventory(997, 1, 1);
-    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(2);
   }
 
-  private void assertUncertainDeductionStopsWithoutRetry(String delay, long immediateStock)
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void malformedDeliveryAcknowledgementIsRecheckedWithoutAnotherDeductionOrCreation(
+      boolean nullEnvelope) throws Exception {
+    var options = new HashMap<String, Object>();
+    options.put("response", nullEnvelope ? null : Map.of());
+    fault("delivery.create", options);
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    assertThat(repository.findById(id).orElseThrow().getStatus().name())
+        .isEqualTo("RECOVERY_REQUIRED");
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertThat(fixture.state().at("/counts/delivery.create").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void nullDeliveryLookupRemainsUnknownUntilAValidResultIsReceived() throws Exception {
+    fault("delivery.create", Map.of("response", Map.of()));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    var options = new HashMap<String, Object>();
+    options.put("response", null);
+    fault("delivery.get", options);
+    service.recover();
+    var pending = repository.findById(id).orElseThrow();
+    assertThat(pending.getStatus().name()).isEqualTo("RECOVERY_REQUIRED");
+    assertThat(pending.getRecoveryAttempts()).isEqualTo(2);
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertThat(fixture.state().at("/counts/delivery.create").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void nullCancellationAcknowledgementIsRecoveredBeforeRestoringStock() throws Exception {
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    var options = new HashMap<String, Object>();
+    options.put("response", null);
+    fault("delivery.cancel", options);
+    assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, admin, null), 202);
+    assertThat(fixture.state().at("/counts/stock.restore").asInt()).isZero();
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CANCELLED");
+    assertThat(fixture.state().at("/counts/stock.restore").asInt()).isEqualTo(1);
+    assertInventory(1000, 1, 1);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"company.get", "product.get"})
+  void nullReferenceLookupIsUnavailableBeforeAnOrderOrStockEffectIsCreated(String operation)
       throws Exception {
+    var options = new HashMap<String, Object>();
+    options.put("response", null);
+    fault(operation, options);
+    assertStatus(create(UUID.randomUUID(), body(), alice), 503);
+    assertThat(repository.count()).isZero();
+    assertInventory(1000, 0, 0);
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isZero();
+  }
+
+  private void assertUncertainDeductionRecoversWithoutAnotherEffect(
+      String delay, long immediateStock) throws Exception {
     fault("stock.deduct", Map.of(delay, 3000));
     UUID key = UUID.randomUUID();
     var response = create(key, body(), alice);
-    assertStatus(response, 503);
-    assertThat(json(response).path("code").asText()).isEqualTo("UPSTREAM_UNAVAILABLE");
+    assertStatus(response, 202);
     var failed = repository.findReservedKey("alice", key).orElseThrow();
-    assertThat(failed.getStatus().name()).isEqualTo("FAILED");
+    assertThat(failed.getStatus().name()).isEqualTo("RECOVERY_REQUIRED");
     assertInventory(immediateStock, 0, 0);
-    assertStatus(create(key, body(), alice), 200);
+    assertStatus(create(key, body(), alice), 202);
     service.recover();
     fixture.awaitIdle();
     service.recover();
-    assertInventory(997, 0, 0);
-    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertInventory(997, 1, 1);
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(2);
+    assertThat(repository.findReservedKey("alice", key).orElseThrow().getStatus().name())
+        .isEqualTo("CONFIRMED");
     assertThat(fixture.state().has("operations")).isFalse();
+  }
+
+  @Test
+  void permanentDeductionConflictIsPreservedWithoutAutomaticRetry() throws Exception {
+    fault("stock.deduct", Map.of("status", 409, "code", "STOCK_DEDUCTION_CONFLICT"));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    var blocked = repository.findById(id).orElseThrow();
+    assertThat(blocked.getStatus().name()).isEqualTo("RECOVERY_REQUIRED");
+    assertThat(blocked.isRecoveryBlocked()).isTrue();
+    assertThat(blocked.getLastError()).isEqualTo("STOCK_DEDUCTION_CONFLICT");
+    service.recover();
+    service.recover();
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    assertInventory(1000, 0, 0);
+  }
+
+  @Test
+  void recoveryWaitsUntilItsPersistedDueTime() throws Exception {
+    fault("stock.deduct", Map.of("status", 503, "code", "SERVICE_UNAVAILABLE"));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update("UPDATE p_orders SET next_recovery_at=NOW()+INTERVAL '1 hour' WHERE id=?", id);
+    service.recover();
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    jdbc.update("UPDATE p_orders SET next_recovery_at=NOW()-INTERVAL '1 second' WHERE id=?", id);
+    service.recover();
+    assertThat(repository.findById(id).orElseThrow().getStatus().name()).isEqualTo("CONFIRMED");
+    assertInventory(997, 1, 1);
+  }
+
+  @Test
+  void exhaustedRetriesKeepTheUnknownOrderAndStopCallingHub() throws Exception {
+    fault("stock.deduct", Map.of("status", 503, "code", "SERVICE_UNAVAILABLE", "remaining", 100));
+    UUID id = id(create(UUID.randomUUID(), body(), alice));
+    for (int i = 0; i < 25; i++) service.recover();
+    var order = repository.findById(id).orElseThrow();
+    assertThat(order.getStatus().name()).isEqualTo("RECOVERY_REQUIRED");
+    assertThat(order.isRecoveryBlocked()).isTrue();
+    assertThat(order.getRecoveryAttempts()).isEqualTo(20);
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(20);
+    assertInventory(1000, 0, 0);
+  }
+
+  @Test
+  void legacyDeductionCannotBeAutomaticallyReplayedAndLegacyCancellationDoesNotTouchDelivery()
+      throws Exception {
+    fault("stock.deduct", Map.of("response", Map.of()));
+    UUID pending = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update("UPDATE p_orders SET stock_contract_version=NULL WHERE id=?", pending);
+    service.recover();
+    var blocked = repository.findById(pending).orElseThrow();
+    assertThat(blocked.isRecoveryBlocked()).isTrue();
+    assertThat(blocked.getLastError()).isEqualTo("LEGACY_STOCK_CONTRACT");
+    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+    UUID confirmed = id(create(UUID.randomUUID(), body(), alice));
+    jdbc.update("UPDATE p_orders SET stock_contract_version=NULL WHERE id=?", confirmed);
+    assertStatus(request("POST", "/api/orders/" + confirmed + "/cancel", null, alice, null), 409);
+    assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isZero();
+  }
+
+  @Test
+  void creationCompensationRecoversLostResponseAndFinishesFailedRatherThanCancelled()
+      throws Exception {
+    fault("delivery.create", Map.of("status", 404, "code", "HUB_ROUTE_NOT_FOUND"));
+    fault("stock.restore", Map.of("delay_after_ms", 3000));
+    UUID key = UUID.randomUUID();
+    var response = create(key, body(), alice);
+    assertStatus(response, 202);
+    UUID id = id(response);
+    assertThat(repository.findById(id).orElseThrow().resumePhase().name())
+        .isEqualTo("STOCK_COMPENSATION");
+    fixture.awaitIdle();
+    service.recover();
+    var order = repository.findById(id).orElseThrow();
+    assertThat(order.getStatus().name()).isEqualTo("FAILED");
+    assertThat(order.getLastError()).isEqualTo("DELIVERY_CREATION_FAILED");
+    assertInventory(1000, 0, 0);
+    assertThat(fixture.state().path("restorations")).hasSize(1);
+    assertThat(fixture.state().at("/counts/stock.restore").asInt()).isEqualTo(2);
+    assertStatus(create(key, body(), alice), 200);
   }
 
   @Test
@@ -849,7 +996,10 @@ class OrderApiIntegrationTest {
     fixture.awaitIdle();
     doReturn(List.of(stale))
         .when(repository)
-        .findTop50ByStatusInOrderByUpdatedAtAsc(anyCollection());
+        .findRecoveryCandidates(
+            anyCollection(),
+            org.mockito.ArgumentMatchers.any(),
+            org.mockito.ArgumentMatchers.any());
     service.recover();
     var cancelled = repository.findById(id).orElseThrow();
     assertThat(cancelled.getStatus().name()).isEqualTo("CANCELLED");
@@ -949,7 +1099,10 @@ class OrderApiIntegrationTest {
       service.recover();
       doReturn(List.of(candidate))
           .when(repository)
-          .findTop50ByStatusInOrderByUpdatedAtAsc(anyCollection());
+          .findRecoveryCandidates(
+              anyCollection(),
+              org.mockito.ArgumentMatchers.any(),
+              org.mockito.ArgumentMatchers.any());
     }
     var paused = new CountDownLatch(1);
     var proceed = new CountDownLatch(1);
@@ -1110,7 +1263,7 @@ class OrderApiIntegrationTest {
     var fault = new HashMap<String, Object>(options);
     fault.put("action", "fault");
     fault.put("operation", operation);
-    fault.put("remaining", 1);
+    fault.putIfAbsent("remaining", 1);
     fixture.control(fault);
   }
 }

@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Lock;
@@ -33,7 +34,7 @@ public interface OrderRepository
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
-      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, "
+      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, o.recoveryPhase = null, o.recoveryAttempts = 0, o.recoveryBlocked = false, o.nextRecoveryAt = null, "
           + "o.updatedBy = :actor, o.updatedAt = :now where o.id = :id and o.status = :expected and o.deletedAt is null")
   int beginCancellation(
       @Param("id") UUID id,
@@ -46,7 +47,7 @@ public interface OrderRepository
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       "update Order o set o.status = :next, o.updatedBy = :actor, o.updatedAt = :now "
-          + "where o.id = :id and o.status = :expected and o.deletedAt is null")
+          + "where o.id = :id and o.status = :expected and o.deletedAt is null and o.recoveryBlocked = false and (o.nextRecoveryAt is null or o.nextRecoveryAt <= :now)")
   int resume(
       @Param("id") UUID id,
       @Param("expected") OrderStatus expected,
@@ -54,5 +55,11 @@ public interface OrderRepository
       @Param("actor") String actor,
       @Param("now") Instant now);
 
-  List<Order> findTop50ByStatusInOrderByUpdatedAtAsc(Collection<OrderStatus> statuses);
+  // 실행 시각이 된 주문만 조회하며 자동 차단 건은 제외한다.
+  @Query(
+      "select o from Order o where o.status in :statuses and o.recoveryBlocked = false and (o.nextRecoveryAt is null or o.nextRecoveryAt <= :now) order by coalesce(o.nextRecoveryAt, o.updatedAt), o.id")
+  List<Order> findRecoveryCandidates(
+      @Param("statuses") Collection<OrderStatus> statuses,
+      @Param("now") Instant now,
+      Pageable pageable);
 }

@@ -12,6 +12,7 @@ public enum OrderErrorCode {
   IDEMPOTENCY_KEY_REUSED("같은 멱등 키로 다른 주문을 요청할 수 없습니다."),
   INSUFFICIENT_STOCK("재고가 부족합니다."),
   STOCK_NOT_FOUND("재고를 찾을 수 없습니다."),
+  LEGACY_STOCK_CONTRACT("기존 주문의 차감 이력이 없어 자동 재고 처리가 제한됩니다."),
   DELIVERY_CREATION_FAILED("배송 생성에 실패했습니다."),
   UPSTREAM_UNAVAILABLE("연동 서비스의 처리 결과를 확인할 수 없습니다.");
 

@@ -87,6 +87,7 @@ class OrdersStockContractIntegrationTest {
 
   @BeforeEach
   void createStockThroughAuthenticatedExternalApi() throws Exception {
+    jdbc.update("DELETE FROM hub.p_stock_deductions");
     jdbc.update("DELETE FROM hub.p_stock_restorations");
     jdbc.update("DELETE FROM hub.p_stocks");
     product = UUID.randomUUID();
@@ -117,8 +118,9 @@ class OrdersStockContractIntegrationTest {
   @Test
   void restorationReplaysTheCommittedReceiptWithoutChangingQuantityOrAudit() throws Exception {
     var client = client(HubSecurityTestTokens.ORDERS, "alice");
-    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 7));
     var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    client.deduct(request);
     var restored = client.restore(request);
     assertThat(restored.data()).isEqualTo(new Stock(stock, hub, product, Long.MAX_VALUE - 7));
     var receipt =
@@ -141,8 +143,9 @@ class OrdersStockContractIntegrationTest {
   @Test
   void theSameRestorationKeyRejectsAnyDifferentHubProductOrQuantity() throws Exception {
     var client = client(HubSecurityTestTokens.ORDERS, "alice");
-    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 7));
     UUID order = UUID.randomUUID();
+    client.deduct(new Deduction(order, hub, product, 3));
     client.restore(new Deduction(order, hub, product, 3));
     var before = row();
     for (var changed :
@@ -163,8 +166,9 @@ class OrdersStockContractIntegrationTest {
   @Test
   void concurrentRestorationsOfOneOrderIncreaseStockOnlyOnce() throws Exception {
     var client = client(HubSecurityTestTokens.ORDERS, "alice");
-    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 10));
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 7));
     var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    client.deduct(request);
     var start = new CountDownLatch(1);
     try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
       var calls = new java.util.ArrayList<java.util.concurrent.Future<HttpResponse<String>>>();
@@ -193,6 +197,7 @@ class OrdersStockContractIntegrationTest {
         hub,
         otherProduct);
     UUID order = UUID.randomUUID();
+    client(HubSecurityTestTokens.ORDERS, "alice").deduct(new Deduction(order, hub, product, 3));
     var start = new CountDownLatch(1);
     try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
       var first =
@@ -222,16 +227,18 @@ class OrdersStockContractIntegrationTest {
         jdbc.queryForMap("SELECT * FROM hub.p_stock_restorations WHERE order_id=?", order);
     long restored = (Long) receipt.get("quantity");
     assertThat(jdbc.queryForObject("SELECT sum(quantity) FROM hub.p_stocks", Long.class))
-        .isEqualTo(20 + restored);
+        .isEqualTo(20);
+    assertThat(restored).isEqualTo(3);
     assertThat(
             jdbc.queryForObject("SELECT count(*) FROM hub.p_stocks WHERE quantity=10", Long.class))
-        .isEqualTo(1);
+        .isEqualTo(2);
   }
 
   @Test
   void receiptWriteFailureRollsBackStockAndAllowsALaterRestoration() throws Exception {
-    jdbc.update("UPDATE hub.p_stocks SET quantity=10 WHERE id=?", stock);
+    jdbc.update("UPDATE hub.p_stocks SET quantity=13 WHERE id=?", stock);
     var request = new Deduction(UUID.randomUUID(), hub, product, 3);
+    client(HubSecurityTestTokens.ORDERS, "alice").deduct(request);
     jdbc.execute(
         "CREATE FUNCTION hub.reject_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$");
     jdbc.execute(
@@ -347,12 +354,235 @@ class OrdersStockContractIntegrationTest {
   }
 
   @Test
-  void repeatedOrderIdDeductsAgainAsDocumentedByOrders() {
+  void repeatedOrderIdReplaysTheFirstDeductionWithoutAnotherDecrement() {
     var client = client(HubSecurityTestTokens.ORDERS, "alice");
     var request = new Deduction(UUID.randomUUID(), hub, product, 3);
     assertThat(client.deduct(request).data().quantity()).isEqualTo(Long.MAX_VALUE - 3);
-    assertThat(client.deduct(request).data().quantity()).isEqualTo(Long.MAX_VALUE - 6);
-    assertThat(row().get("quantity")).isEqualTo(Long.MAX_VALUE - 6);
+    assertThat(client.deduct(request).data().quantity()).isEqualTo(Long.MAX_VALUE - 3);
+    assertThat(row().get("quantity")).isEqualTo(Long.MAX_VALUE - 3);
+  }
+
+  @Test
+  void deductionReplayPreservesTheOriginalResponseAndAuditAfterOtherStockChanges() {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    var original = client.deduct(request);
+    var receipt =
+        jdbc.queryForMap(
+            "SELECT * FROM hub.p_stock_deductions WHERE order_id=?", request.orderId());
+    client.deduct(new Deduction(UUID.randomUUID(), hub, product, 20));
+    var before = row();
+    assertThat(client(HubSecurityTestTokens.ORDERS, "admin").deduct(request)).isEqualTo(original);
+    assertThat(row()).isEqualTo(before);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT * FROM hub.p_stock_deductions WHERE order_id=?", request.orderId()))
+        .isEqualTo(receipt);
+    jdbc.update("UPDATE hub.p_stocks SET deleted_at=NOW(),deleted_by='alice' WHERE id=?", stock);
+    assertThat(client.deduct(request)).isEqualTo(original);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void definiteRejectionsRemainRejectedAfterInventoryBecomesAvailable(boolean missing) {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    jdbc.update("UPDATE hub.p_stocks SET quantity=10 WHERE id=?", stock);
+    if (missing)
+      jdbc.update("UPDATE hub.p_stocks SET deleted_at=NOW(),deleted_by='alice' WHERE id=?", stock);
+    int status = missing ? 404 : 409;
+    String code = missing ? "STOCK_NOT_FOUND" : "INSUFFICIENT_STOCK";
+    assertFailure(client, request, status, code);
+    var receipt =
+        jdbc.queryForMap(
+            "SELECT * FROM hub.p_stock_deductions WHERE order_id=?", request.orderId());
+    assertThat(receipt.get("failure_code")).isEqualTo(code);
+    jdbc.update(
+        "UPDATE hub.p_stocks SET quantity=100,deleted_at=NULL,deleted_by=NULL WHERE id=?", stock);
+    var before = row();
+    assertFailure(client, request, status, code);
+    assertThat(row()).isEqualTo(before);
+    assertThat(
+            jdbc.queryForMap(
+                "SELECT * FROM hub.p_stock_deductions WHERE order_id=?", request.orderId()))
+        .isEqualTo(receipt);
+  }
+
+  @Test
+  void aDeductionKeyRejectsChangedInputAndCannotBeUsedAfterRestoration() throws Exception {
+    var client = client(HubSecurityTestTokens.ORDERS, "alice");
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    client.deduct(request);
+    for (var changed :
+        List.of(
+            new Deduction(request.orderId(), hub, product, 31),
+            new Deduction(request.orderId(), UUID.randomUUID(), product, 30),
+            new Deduction(request.orderId(), hub, UUID.randomUUID(), 30))) {
+      assertFailure(client, changed, 409, "STOCK_DEDUCTION_CONFLICT");
+    }
+    client.restore(request);
+    assertFailure(client, request, 409, "STOCK_ALREADY_RESTORED");
+    assertThat(row().get("quantity")).isEqualTo(Long.MAX_VALUE);
+  }
+
+  @Test
+  void restorationRequiresASuccessfulMatchingDeduction() throws Exception {
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    assertThat(restore(request, HubSecurityTestTokens.ORDERS, "alice").statusCode()).isEqualTo(404);
+    jdbc.update("UPDATE hub.p_stocks SET quantity=10 WHERE id=?", stock);
+    assertFailure(
+        client(HubSecurityTestTokens.ORDERS, "alice"), request, 409, "INSUFFICIENT_STOCK");
+    var response = restore(request, HubSecurityTestTokens.ORDERS, "alice");
+    assertThat(response.statusCode()).isEqualTo(409);
+    assertThat(mapper.readTree(response.body()).path("code").asText())
+        .isEqualTo("STOCK_DEDUCTION_REJECTED");
+    assertThat(row().get("quantity")).isEqualTo(10L);
+  }
+
+  @Test
+  void concurrentDeductionsApplyOnlyOnce() throws Exception {
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    var start = new CountDownLatch(1);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var calls = new java.util.ArrayList<java.util.concurrent.Future<ApiResponse<Stock>>>();
+      for (int i = 0; i < 8; i++)
+        calls.add(
+            executor.submit(
+                () -> {
+                  assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                  return client(HubSecurityTestTokens.ORDERS, "alice").deduct(request);
+                }));
+      start.countDown();
+      for (var call : calls)
+        assertThat(call.get(15, TimeUnit.SECONDS).data().quantity()).isEqualTo(Long.MAX_VALUE - 30);
+    }
+    assertThat(row().get("quantity")).isEqualTo(Long.MAX_VALUE - 30);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+        .isEqualTo(1);
+  }
+
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void deductionReceiptFailureRollsBackBothSuccessfulAndRejectedAttempts(boolean rejected)
+      throws Exception {
+    jdbc.update("UPDATE hub.p_stocks SET quantity=? WHERE id=?", rejected ? 10 : 100, stock);
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    jdbc.execute(
+        "CREATE FUNCTION hub.reject_deduction() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture'; END $$");
+    jdbc.execute(
+        "CREATE TRIGGER reject_deduction BEFORE INSERT ON hub.p_stock_deductions FOR EACH ROW EXECUTE FUNCTION hub.reject_deduction()");
+    var before = row();
+    try {
+      assertFailure(client(HubSecurityTestTokens.ORDERS, "alice"), request, 500, "INTERNAL_ERROR");
+      assertThat(row()).isEqualTo(before);
+      assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+          .isZero();
+    } finally {
+      jdbc.execute("DROP TRIGGER reject_deduction ON hub.p_stock_deductions");
+      jdbc.execute("DROP FUNCTION hub.reject_deduction()");
+    }
+    if (rejected)
+      assertFailure(
+          client(HubSecurityTestTokens.ORDERS, "alice"), request, 409, "INSUFFICIENT_STOCK");
+    else
+      assertThat(client(HubSecurityTestTokens.ORDERS, "alice").deduct(request).data().quantity())
+          .isEqualTo(70);
+  }
+
+  @Test
+  void existingLegacyRestorationReplaysWithoutInventingADeduction() throws Exception {
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    jdbc.update(
+        "INSERT INTO hub.p_stock_restorations(order_id,hub_id,product_id,quantity,stock_id,remaining_quantity,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,?,NOW(),'legacy',NOW(),'legacy')",
+        request.orderId(),
+        hub,
+        product,
+        30,
+        stock,
+        100);
+    var before = row();
+    var response = client(HubSecurityTestTokens.ORDERS, "alice").restore(request);
+    assertThat(response.data().quantity()).isEqualTo(100);
+    assertThat(row()).isEqualTo(before);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+        .isZero();
+    assertFailure(
+        client(HubSecurityTestTokens.ORDERS, "alice"), request, 409, "STOCK_ALREADY_RESTORED");
+  }
+
+  @Test
+  void lockWaitTimeoutDoesNotReserveOrChangeTheOrderAndALaterRetrySucceeds() throws Exception {
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    try (var connection = jdbc.getDataSource().getConnection()) {
+      connection.setAutoCommit(false);
+      try (var statement =
+          connection.prepareStatement(
+              "SELECT pg_advisory_xact_lock(hashtextextended(cast(? AS text), 0))")) {
+        statement.setObject(1, request.orderId());
+        statement.execute();
+      }
+      var before = row();
+      var response =
+          post(
+              "/internal/stocks/deductions",
+              mapper.writeValueAsString(request),
+              Map.of("X-Service-Token", HubSecurityTestTokens.ORDERS, "X-Actor-Username", "alice"));
+      assertThat(response.statusCode()).as(response.body()).isEqualTo(503);
+      assertThat(row()).isEqualTo(before);
+      assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+          .isZero();
+      connection.rollback();
+    }
+    assertThat(client(HubSecurityTestTokens.ORDERS, "alice").deduct(request).data().quantity())
+        .isEqualTo(Long.MAX_VALUE - 30);
+  }
+
+  @Test
+  void concurrentDeductionAndRestorationKeepOneEffectPerOperation() throws Exception {
+    jdbc.update("UPDATE hub.p_stocks SET quantity=100 WHERE id=?", stock);
+    var request = new Deduction(UUID.randomUUID(), hub, product, 30);
+    var start = new CountDownLatch(1);
+    try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+      var deduction =
+          executor.submit(
+              () -> {
+                start.await();
+                return client(HubSecurityTestTokens.ORDERS, "alice").deduct(request);
+              });
+      var restoration =
+          executor.submit(
+              () -> {
+                start.await();
+                return restore(request, HubSecurityTestTokens.ORDERS, "alice");
+              });
+      start.countDown();
+      assertThat(deduction.get(10, TimeUnit.SECONDS).data().quantity()).isEqualTo(70);
+      assertThat(restoration.get(10, TimeUnit.SECONDS).statusCode()).isIn(200, 404);
+    }
+    client(HubSecurityTestTokens.ORDERS, "alice").restore(request);
+    assertThat(row().get("quantity")).isEqualTo(100L);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+        .isEqualTo(1);
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_restorations", Long.class))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void deductionDatabaseConstraintRejectsAnIncompleteOrUnsupportedOutcome() {
+    for (String failure : java.util.Arrays.asList(null, "STOCK_ALREADY_EXISTS")) {
+      assertThatThrownBy(
+              () ->
+                  jdbc.update(
+                      "INSERT INTO hub.p_stock_deductions(order_id,hub_id,product_id,quantity,failure_code,created_at,created_by,updated_at,updated_by) VALUES(?,?,?,?,?,NOW(),'alice',NOW(),'alice')",
+                      UUID.randomUUID(),
+                      hub,
+                      product,
+                      1,
+                      failure))
+          .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    }
+    assertThat(jdbc.queryForObject("SELECT count(*) FROM hub.p_stock_deductions", Long.class))
+        .isZero();
   }
 
   private OrdersStockClient client(String token, String actor) {

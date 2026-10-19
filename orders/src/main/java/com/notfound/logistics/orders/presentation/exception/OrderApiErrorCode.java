@@ -23,6 +23,7 @@ record OrderApiErrorCode(OrderErrorCode errorCode) implements ApiErrorCode {
       case ORDER_FORBIDDEN -> 403;
       case ORDER_NOT_FOUND, COMPANY_NOT_FOUND, PRODUCT_NOT_FOUND, STOCK_NOT_FOUND -> 404;
       case ORDER_STATE_CONFLICT,
+          LEGACY_STOCK_CONTRACT,
           PRODUCT_SUPPLIER_MISMATCH,
           IDEMPOTENCY_KEY_REUSED,
           INSUFFICIENT_STOCK ->
