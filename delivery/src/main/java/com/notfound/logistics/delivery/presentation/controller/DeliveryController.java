@@ -41,9 +41,12 @@ class DeliveryController {
   private final DeliveryQueryService deliveryQueryService;
   private final DeliveryCommandService deliveryCommandService;
 
-  @Operation(summary = "배송 목록 조회·검색", description = "지정한 조건을 모두 만족하는 배송을 페이지로 조회합니다.")
+  @Operation(
+      summary = "배송 목록 조회·검색",
+      description = "MASTER·일반 USER는 전체, 배송 담당자는 본인 배정 배송에서 검색 조건에 맞는 항목을 조회합니다.")
   @GetMapping
   ApiResponse<PageResponse<DeliveryResponse>> search(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "주문 ID") @RequestParam(name = "order_id", required = false)
           UUID orderId,
       @Parameter(description = "배송 상태") @RequestParam(name = "status", required = false)
@@ -77,7 +80,7 @@ class DeliveryController {
             orderId, status, departureHubId, destinationHubId, address, recipientName, assigneeId);
     Page<DeliveryResult> result =
         deliveryQueryService.search(
-            condition, PageRequest.of(page, size, DeliverySort.parse(sort)));
+            condition, PageRequest.of(page, size, DeliverySort.parse(sort)), actor(principal));
 
     return new ApiResponse<>(
         new PageResponse<>(
@@ -87,21 +90,30 @@ class DeliveryController {
             result.getTotalElements()));
   }
 
-  @Operation(summary = "배송 정보 조회", description = "id에 해당하는 배송 정보를 조회합니다")
+  @Operation(
+      summary = "배송 정보 조회",
+      description = "MASTER·일반 USER는 전체, 배송 담당자는 본인 배정 배송만 조회합니다. 타인·미배정 배송은 403입니다.")
   @GetMapping("/{delivery_id}")
   ApiResponse<DeliveryResponse> searchDetail(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "배송 ID") @PathVariable("delivery_id") UUID deliveryId) {
 
-    return new ApiResponse<>(DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId)));
+    return new ApiResponse<>(
+        DeliveryResponse.from(deliveryQueryService.searchDetail(deliveryId, actor(principal))));
   }
 
-  @Operation(summary = "배송 경로 조회", description = "id에 해당하는 배송 경로를 조회합니다")
+  @Operation(
+      summary = "배송 경로 조회",
+      description = "MASTER·일반 USER는 전체, 배송 담당자는 본인 배정 배송의 경로만 조회합니다. 타인·미배정 배송은 403입니다.")
   @GetMapping("/{id}/routes")
   ApiResponse<List<DeliveryRouteResponse>> searchRoutes(
+      @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal,
       @Parameter(description = "배송 ID") @PathVariable() UUID id) {
 
     return new ApiResponse<>(
-        deliveryQueryService.searchRoutes(id).stream().map(DeliveryRouteResponse::from).toList());
+        deliveryQueryService.searchRoutes(id, actor(principal)).stream()
+            .map(DeliveryRouteResponse::from)
+            .toList());
   }
 
   @Operation(
@@ -123,10 +135,11 @@ class DeliveryController {
             deliveryCommandService.modify(deliveryId, status, assigneeId, actor(principal))));
   }
 
-  // user_id·role 클레임 형식은 JwtDecoder가 검증했다.
+  // user_id·role·is_delivery_staff 클레임 형식은 JwtDecoder가 검증했다.
   private static DeliveryActor actor(Jwt principal) {
     return new DeliveryActor(
         UUID.fromString(principal.getClaimAsString("user_id")),
-        "MASTER".equals(principal.getClaimAsString("role")));
+        "MASTER".equals(principal.getClaimAsString("role")),
+        Boolean.TRUE.equals(principal.getClaim("is_delivery_staff")));
   }
 }

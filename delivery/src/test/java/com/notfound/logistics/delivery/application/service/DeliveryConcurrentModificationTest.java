@@ -45,7 +45,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class DeliveryConcurrentModificationTest {
   private static final Instant BASE = Instant.parse("2026-01-01T00:00:00Z");
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
-  private static final DeliveryActor MASTER = new DeliveryActor(UUID.randomUUID(), true);
+  private static final DeliveryActor MASTER = new DeliveryActor(UUID.randomUUID(), true, false);
 
   @Container
   static final PostgreSQLContainer<?> DATABASE =

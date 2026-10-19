@@ -99,7 +99,8 @@ public class DeliverySecurityConfiguration {
                 "sub", value -> value != null && !value.isBlank() && value.length() <= 100),
             new JwtClaimValidator<String>(
                 "role", value -> Set.of("USER", "MASTER").contains(value == null ? "" : value)),
-            new JwtClaimValidator<String>("user_id", DeliverySecurityConfiguration::isUuid)));
+            new JwtClaimValidator<String>("user_id", DeliverySecurityConfiguration::isUuid),
+            new JwtClaimValidator<Object>("is_delivery_staff", value -> value instanceof Boolean)));
     return decoder;
   }
 

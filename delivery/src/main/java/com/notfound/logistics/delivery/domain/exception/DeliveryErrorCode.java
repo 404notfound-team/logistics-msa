@@ -2,6 +2,7 @@ package com.notfound.logistics.delivery.domain.exception;
 
 public enum DeliveryErrorCode {
   DELIVERY_NOT_FOUND("배송을 찾을 수 없습니다."),
+  DELIVERY_READ_FORBIDDEN("본인에게 배정된 배송만 조회할 수 있습니다."),
   ASSIGNMENT_NOT_ALLOWED("허브 대기중인 배송만 담당자를 배정할 수 있습니다."),
   STATUS_CHANGE_FORBIDDEN("MASTER 또는 해당 배송의 담당자만 배송 상태를 변경할 수 있습니다."),
   ASSIGNMENT_FORBIDDEN("MASTER만 배송 담당자를 배정할 수 있습니다."),

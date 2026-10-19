@@ -33,9 +33,9 @@ class DeliveryCommandServiceTest {
   private static final UUID OTHER_ASSIGNEE_ID =
       UUID.fromString("00000000-0000-0000-0000-000000000008");
   private static final DeliveryActor MASTER =
-      new DeliveryActor(UUID.fromString("00000000-0000-0000-0000-000000000009"), true);
-  private static final DeliveryActor ASSIGNEE = new DeliveryActor(ASSIGNEE_ID, false);
-  private static final DeliveryActor OTHER_USER = new DeliveryActor(OTHER_ASSIGNEE_ID, false);
+      new DeliveryActor(UUID.fromString("00000000-0000-0000-0000-000000000009"), true, false);
+  private static final DeliveryActor ASSIGNEE = new DeliveryActor(ASSIGNEE_ID, false, true);
+  private static final DeliveryActor OTHER_USER = new DeliveryActor(OTHER_ASSIGNEE_ID, false, true);
 
   private final DeliveryRepository deliveryRepository = mock(DeliveryRepository.class);
   private final DeliveryCommandService service =

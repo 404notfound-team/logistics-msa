@@ -58,7 +58,7 @@ class DeliveryControllerTest {
       UUID.fromString("00000000-0000-0000-0000-000000000003");
   private static final UUID ASSIGNEE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
   private static final UUID MASTER_ID = UUID.fromString("00000000-0000-0000-0000-000000000009");
-  private static final DeliveryActor MASTER_ACTOR = new DeliveryActor(MASTER_ID, true);
+  private static final DeliveryActor MASTER_ACTOR = new DeliveryActor(MASTER_ID, true, false);
   private static final RequestPostProcessor MASTER_JWT = userJwt(MASTER_ID, "MASTER");
 
   @Autowired private MockMvc mockMvc;
@@ -67,7 +67,7 @@ class DeliveryControllerTest {
 
   @Test
   void defaultSearchUsesFirstPageAndNewestFirstWithPrimaryKeyTieBreaker() throws Exception {
-    given(deliveryQueryService.search(any(), any())).willReturn(Page.empty());
+    given(deliveryQueryService.search(any(), any(), any())).willReturn(Page.empty());
 
     mockMvc
         .perform(get("/api/deliveries").with(MASTER_JWT))
@@ -79,7 +79,7 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.data.total_pages").value(0));
 
     ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-    then(deliveryQueryService).should().search(any(), pageable.capture());
+    then(deliveryQueryService).should().search(any(), pageable.capture(), any());
     assertThat(pageable.getValue().getPageNumber()).isZero();
     assertThat(pageable.getValue().getPageSize()).isEqualTo(20);
     assertThat(pageable.getValue().getSort())
@@ -88,7 +88,7 @@ class DeliveryControllerTest {
 
   @Test
   void largestPageNumberIsAcceptedAndReturnsAnEmptyPage() throws Exception {
-    given(deliveryQueryService.search(any(), any()))
+    given(deliveryQueryService.search(any(), any(), any()))
         .willAnswer(
             invocation -> new PageImpl<DeliveryResult>(List.of(), invocation.getArgument(1), 3));
 
@@ -129,7 +129,7 @@ class DeliveryControllerTest {
                     ASSIGNEE_ID)),
             Instant.parse("2026-01-01T00:00:00Z"),
             Instant.parse("2026-01-01T01:00:00Z"));
-    given(deliveryQueryService.search(any(), any()))
+    given(deliveryQueryService.search(any(), any(), any()))
         .willReturn(new PageImpl<>(List.of(result), Pageable.ofSize(10).withPage(1), 11));
 
     mockMvc
@@ -171,7 +171,7 @@ class DeliveryControllerTest {
     ArgumentCaptor<DeliverySearchCondition> condition =
         ArgumentCaptor.forClass(DeliverySearchCondition.class);
     ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
-    then(deliveryQueryService).should().search(condition.capture(), pageable.capture());
+    then(deliveryQueryService).should().search(condition.capture(), pageable.capture(), any());
     assertThat(condition.getValue())
         .isEqualTo(
             new DeliverySearchCondition(
@@ -194,7 +194,7 @@ class DeliveryControllerTest {
         .andExpect(header().string(HttpHeaders.ALLOW, "GET"))
         .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"))
         .andExpect(jsonPath("$.field_errors").isEmpty());
-    then(deliveryQueryService).should(never()).search(any(), any());
+    then(deliveryQueryService).should(never()).search(any(), any(), any());
   }
 
   @Test
@@ -203,7 +203,7 @@ class DeliveryControllerTest {
     UUID relayHubId = UUID.fromString("00000000-0000-0000-0000-000000000004");
     UUID firstRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
     UUID secondRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
-    given(deliveryQueryService.searchDetail(deliveryId))
+    given(deliveryQueryService.searchDetail(deliveryId, MASTER_ACTOR))
         .willReturn(
             new DeliveryResult(
                 deliveryId,
@@ -273,7 +273,7 @@ class DeliveryControllerTest {
   @Test
   void unknownDeliveryIsNotFoundInTheCommonErrorFormat() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
-    given(deliveryQueryService.searchDetail(deliveryId))
+    given(deliveryQueryService.searchDetail(deliveryId, MASTER_ACTOR))
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
 
     mockMvc
@@ -292,7 +292,7 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("delivery_id"))
         .andExpect(jsonPath("$.field_errors.length()").value(1));
-    then(deliveryQueryService).should(never()).searchDetail(any());
+    then(deliveryQueryService).should(never()).searchDetail(any(), any());
   }
 
   @Test
@@ -301,7 +301,7 @@ class DeliveryControllerTest {
     UUID firstRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000e1");
     UUID secondRouteId = UUID.fromString("00000000-0000-0000-0000-0000000000e2");
     UUID relayHubId = UUID.fromString("00000000-0000-0000-0000-000000000004");
-    given(deliveryQueryService.searchRoutes(deliveryId))
+    given(deliveryQueryService.searchRoutes(deliveryId, MASTER_ACTOR))
         .willReturn(
             List.of(
                 new DeliveryRouteResult(
@@ -350,7 +350,7 @@ class DeliveryControllerTest {
   @Test
   void routesOfAnUnknownDeliveryAreNotFoundInTheCommonErrorFormat() throws Exception {
     UUID deliveryId = UUID.fromString("00000000-0000-0000-0000-0000000000bb");
-    given(deliveryQueryService.searchRoutes(deliveryId))
+    given(deliveryQueryService.searchRoutes(deliveryId, MASTER_ACTOR))
         .willThrow(new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
 
     mockMvc
@@ -382,7 +382,7 @@ class DeliveryControllerTest {
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value(field))
         .andExpect(jsonPath("$.field_errors.length()").value(1));
-    then(deliveryQueryService).should(never()).search(any(), any());
+    then(deliveryQueryService).should(never()).search(any(), any(), any());
   }
 
   @Test
@@ -637,7 +637,11 @@ class DeliveryControllerTest {
         .andExpect(status().isOk());
     then(deliveryCommandService)
         .should()
-        .modify(deliveryId, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(ASSIGNEE_ID, false));
+        .modify(
+            deliveryId,
+            DeliveryStatus.HUB_MOVING,
+            null,
+            new DeliveryActor(ASSIGNEE_ID, false, false));
   }
 
   @ParameterizedTest
@@ -661,6 +665,12 @@ class DeliveryControllerTest {
 
   // 서명 검증은 DeliverySecurityIntegrationTest가 맡고, 여기서는 검증을 마친 토큰의 클레임만 넣는다.
   private static RequestPostProcessor userJwt(UUID userId, String role) {
-    return jwt().jwt(token -> token.claim("user_id", userId.toString()).claim("role", role));
+    return jwt()
+        .jwt(
+            token ->
+                token
+                    .claim("user_id", userId.toString())
+                    .claim("role", role)
+                    .claim("is_delivery_staff", false));
   }
 }

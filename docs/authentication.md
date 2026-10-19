@@ -30,9 +30,12 @@ sequenceDiagram
 | Gateway | JWT·현재 사용자·경로별 역할 검사 적용. 업무 데이터의 소유권은 판단하지 않음 |
 | 주문 조회·취소·삭제 | 조회·취소는 MASTER 또는 작성자, 삭제는 MASTER |
 | 배송 상태 변경·담당자 배정 | 상태 변경은 MASTER 또는 해당 배송 담당자, 배정은 MASTER |
-| 배송 목록·상세·경로 조회 | JWT 인증만 적용. **소유권 검사는 미구현(TODO)** |
+| 배송 목록·상세·경로 조회 | MASTER·일반 USER는 전체, 배송 담당자는 본인 배정 배송만 |
 
 배송 조회 대상은 `GET /api/deliveries`, `GET /api/deliveries/{id}`, `GET /api/deliveries/{id}/routes`입니다.
+배송 담당자는 목록의 전체 건수도 본인 배정 배송 기준이며, 다른 담당자 조건은 빈 목록입니다.
+타인·미배정 배송의 상세·경로 조회는 403 `DELIVERY_READ_FORBIDDEN`, 없거나 삭제된 배송은 404입니다.
+MASTER는 `is_delivery_staff=true`여도 전체 조회합니다. 배송 담당 여부가 없거나 boolean이 아닌 JWT는 401입니다.
 근거: [배송 조회](../delivery/src/main/java/com/notfound/logistics/delivery/presentation/controller/DeliveryController.java), [배송 변경 권한](../delivery/src/main/java/com/notfound/logistics/delivery/application/service/DeliveryCommandService.java), [배송 JWT 인증](../delivery/src/main/java/com/notfound/logistics/delivery/infrastructure/security/DeliverySecurityConfiguration.java).
 
 ## JWT·서비스 인증 계약

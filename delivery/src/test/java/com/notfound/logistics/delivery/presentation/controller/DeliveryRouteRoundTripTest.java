@@ -144,7 +144,7 @@ class DeliveryRouteRoundTripTest {
 
     String body =
         mockMvc
-            .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(jwt()))
+            .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(viewer()))
             .andExpect(status().isOk())
             .andReturn()
             .getResponse()
@@ -189,10 +189,21 @@ class DeliveryRouteRoundTripTest {
         620L);
 
     mockMvc
-        .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(jwt()))
+        .perform(get("/api/deliveries/{delivery_id}", deliveryId).with(viewer()))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.status").value("COMPANY_MOVING"))
         .andExpect(jsonPath("$.data.routes[0].status").value("ARRIVED"));
+  }
+
+  private static org.springframework.test.web.servlet.request.RequestPostProcessor viewer() {
+    return jwt()
+        .jwt(
+            token ->
+                token
+                    .subject("tester")
+                    .claim("user_id", "00000000-0000-0000-0000-000000000001")
+                    .claim("role", "USER")
+                    .claim("is_delivery_staff", false));
   }
 
   private UUID insertDelivery(DeliveryStatus status) {
