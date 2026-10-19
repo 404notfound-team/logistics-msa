@@ -151,7 +151,15 @@ public class UserService {
 
   @Transactional(readOnly = true)
   public PageResponse<UserResponseDto> getUsers(UserSearchCondition condition, Pageable pageable) {
-    Page<User> users = userRepository.findAll(UserSpecifications.matching(condition), pageable);
+    var specification = UserSpecifications.matching(condition);
+    if (pageable.getOffset() > Integer.MAX_VALUE) {
+      return new PageResponse<>(
+          List.of(),
+          pageable.getPageNumber(),
+          pageable.getPageSize(),
+          userRepository.count(specification));
+    }
+    Page<User> users = userRepository.findAll(specification, pageable);
     return new PageResponse<>(
         users.getContent().stream().map(UserResponseDto::from).toList(),
         users.getNumber(),
