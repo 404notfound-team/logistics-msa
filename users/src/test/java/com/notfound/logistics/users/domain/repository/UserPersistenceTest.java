@@ -124,6 +124,20 @@ class UserPersistenceTest {
   }
 
   @Test
+  void aPageBeyondJpaOffsetRangeReturnsEmptyContentWithTheFilteredCount() {
+    SignupAuditScope.run(() -> userRepository.save(user("user01")));
+    SignupAuditScope.run(() -> userRepository.save(user("user02")));
+    var condition = new UserSearchCondition("user01", null, null, null, null);
+    var result = userService.getUsers(condition, PageRequest.of(Integer.MAX_VALUE, 20));
+
+    assertThat(result.content()).isEmpty();
+    assertThat(result.page()).isEqualTo(Integer.MAX_VALUE);
+    assertThat(result.size()).isEqualTo(20);
+    assertThat(result.totalElements()).isEqualTo(1);
+    assertThat(result.totalPages()).isEqualTo(1);
+  }
+
+  @Test
   void writeWithoutActorFails() {
     assertThatThrownBy(() -> userRepository.save(user("user01")))
         .hasRootCauseInstanceOf(IllegalStateException.class);
