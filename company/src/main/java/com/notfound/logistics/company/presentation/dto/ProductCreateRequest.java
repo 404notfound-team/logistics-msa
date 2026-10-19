@@ -13,5 +13,7 @@ public record ProductCreateRequest(
         String name,
     @Schema(description = "상품 설명 (선택, 최대 1000자)", example = "블루투스 5.0 무선 키보드") @Size(max = 1000)
         String description,
-    @Schema(description = "가격 (원 단위, 0 이상)", example = "35000") @NotNull @PositiveOrZero
+    @Schema(description = "가격 (원 단위 정수, 0 이상, 소수·지수 표기 불가)", example = "35000")
+        @NotNull
+        @PositiveOrZero
         Long price) {}
