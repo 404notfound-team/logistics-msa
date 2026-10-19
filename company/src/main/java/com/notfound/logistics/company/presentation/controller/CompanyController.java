@@ -261,11 +261,18 @@ public class CompanyController {
                 examples = @ExampleObject(value = ErrorExamples.UPDATE_INVALID_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "업체를 찾을 수 없음 (COMPANY_NOT_FOUND)",
+        description = "업체 또는 변경할 허브를 찾을 수 없음 (COMPANY_NOT_FOUND, HUB_NOT_FOUND)",
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE))),
+                examples = {
+                  @ExampleObject(
+                      name = "COMPANY_NOT_FOUND",
+                      value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE),
+                  @ExampleObject(
+                      name = "HUB_NOT_FOUND",
+                      value = ErrorExamples.HUB_NOT_FOUND_EXAMPLE)
+                })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "403",
         description = "MASTER 또는 해당 업체 관리자가 아님 (COMPANY_ACCESS_DENIED)",
