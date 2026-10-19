@@ -207,7 +207,7 @@ public class OrderService {
       UUID deliveryId = delivery.deliveryId();
       transactions.change(id, value -> value.confirm(deliveryId));
       Order confirmed = load(id);
-      notifications.confirmed(confirmed.getId(), confirmed.getDeliveryId());
+      notifications.confirmed(confirmed, delivery);
       return operation(confirmed, Outcome.CREATED, null);
     } catch (RemoteFailure | FeignException exception) {
       return recovery(id, "UPSTREAM_UNAVAILABLE");

@@ -7,6 +7,9 @@ import com.notfound.logistics.users.infrastructure.security.InternalApiAuthoriza
 import com.notfound.logistics.users.infrastructure.security.InternalAuthProperties;
 import com.notfound.logistics.users.infrastructure.security.ServiceTokenAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
+import java.util.HashMap;
+import java.util.List;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -54,22 +57,32 @@ public class UserSecurityConfiguration {
   SecurityFilterChain internalApiSecurityFilterChain(
       HttpSecurity http,
       InternalAuthProperties internalAuthProperties,
+      @Value("${users.internal-auth.orders-token:}") String ordersToken,
       AuthenticationEntryPoint userAuthenticationEntryPoint,
       AccessDeniedHandler userAccessDeniedHandler)
       throws Exception {
+    // Orders 토큰이 설정된 환경에서만 알림용 최소 표시 정보 조회를 허용합니다.
+    var clients = new HashMap<>(internalAuthProperties.clients());
+    if (!ordersToken.isBlank()) {
+      clients.putIfAbsent(
+          "orders",
+          new InternalAuthProperties.Client(
+              ordersToken, List.of("GET /internal/users/identities")));
+    }
+    var effectiveProperties = new InternalAuthProperties(clients);
     return http.securityMatcher("/internal/**")
         .csrf(AbstractHttpConfigurer::disable)
         .sessionManagement(
             session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
         .addFilterBefore(
-            new ServiceTokenAuthenticationFilter(internalAuthProperties), AuthorizationFilter.class)
+            new ServiceTokenAuthenticationFilter(effectiveProperties), AuthorizationFilter.class)
         .authorizeHttpRequests(
             authorize ->
                 authorize
                     .requestMatchers(HttpMethod.GET, "/internal/infra/ping")
                     .permitAll()
                     .anyRequest()
-                    .access(new InternalApiAuthorizationManager(internalAuthProperties)))
+                    .access(new InternalApiAuthorizationManager(effectiveProperties)))
         .exceptionHandling(
             exceptions ->
                 exceptions

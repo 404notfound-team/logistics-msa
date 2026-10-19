@@ -96,7 +96,7 @@ class InternalDeliveryCancellationIntegrationTest {
 
     cancel(deliveryId)
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.*", hasSize(3)))
+        .andExpect(jsonPath("$.data.*", hasSize(4)))
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
         .andExpect(jsonPath("$.data.status").value("CANCELLED"));
