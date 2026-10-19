@@ -3,6 +3,7 @@ package com.notfound.logistics.orders.domain.repository;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.domain.model.RecoveryAction;
+import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
 import java.util.Collection;
@@ -34,20 +35,21 @@ public interface OrderRepository
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
-      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, o.recoveryPhase = null, o.recoveryAttempts = 0, o.recoveryBlocked = false, o.nextRecoveryAt = null, "
+      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, o.recoveryPhase = :phase, o.recoveryAttempts = 0, o.recoveryBlocked = false, "
           + "o.updatedBy = :actor, o.updatedAt = :now where o.id = :id and o.status = :expected and o.deletedAt is null")
   int beginCancellation(
       @Param("id") UUID id,
       @Param("expected") OrderStatus expected,
       @Param("next") OrderStatus next,
       @Param("action") RecoveryAction action,
+      @Param("phase") RecoveryPhase phase,
       @Param("actor") String actor,
       @Param("now") Instant now);
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
       "update Order o set o.status = :next, o.updatedBy = :actor, o.updatedAt = :now "
-          + "where o.id = :id and o.status = :expected and o.deletedAt is null and o.recoveryBlocked = false and (o.nextRecoveryAt is null or o.nextRecoveryAt <= :now)")
+          + "where o.id = :id and o.status = :expected and o.deletedAt is null and o.recoveryBlocked = false")
   int resume(
       @Param("id") UUID id,
       @Param("expected") OrderStatus expected,
@@ -55,11 +57,9 @@ public interface OrderRepository
       @Param("actor") String actor,
       @Param("now") Instant now);
 
-  // 실행 시각이 된 주문만 조회하며 자동 차단 건은 제외한다.
+  // 고정 간격으로 오래된 작업부터 재개하며 자동 차단 건은 제외한다.
   @Query(
-      "select o from Order o where o.status in :statuses and o.recoveryBlocked = false and (o.nextRecoveryAt is null or o.nextRecoveryAt <= :now) order by coalesce(o.nextRecoveryAt, o.updatedAt), o.id")
+      "select o from Order o where o.status in :statuses and o.recoveryBlocked = false order by o.updatedAt, o.id")
   List<Order> findRecoveryCandidates(
-      @Param("statuses") Collection<OrderStatus> statuses,
-      @Param("now") Instant now,
-      Pageable pageable);
+      @Param("statuses") Collection<OrderStatus> statuses, Pageable pageable);
 }

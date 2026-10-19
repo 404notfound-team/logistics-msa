@@ -52,7 +52,7 @@ sequenceDiagram
     D-->>O: 현재 배송 상태
     O->>D: 출발 전 배송 취소
     D-->>O: CANCELLED · 구간도 취소
-    Note over O: STOCK_RESTORATION_PENDING 저장
+    Note over O: STOCK_RESTORATION 단계 저장
     O->>H: POST /internal/stocks/restorations + order_id
     Note over H: 주문 잠금 · 재고와 완료 기록 함께 커밋
     H-->>O: 최초 복원 직후 잔량
@@ -103,8 +103,8 @@ stateDiagram-v2
     RECOVERY_REQUIRED --> CANCELLING: CANCEL 재개
 ```
 
-복구 작업은 기본 실행 종료 후 5초 간격으로, 실행 시각이 된 최대 50건을 확인하고 진행 중·자동 차단 작업은 건너뜁니다.
-저장된 CREATE/CANCEL 의도와 처리 단계로 재개하며 **Orders 단일 인스턴스**가 전제입니다.
+복구 작업은 기본 실행 종료 후 5초 간격으로 오래된 작업부터 최대 50건을 확인하고, 진행 중·자동 차단 작업은 건너뜁니다.
+저장된 처리 단계에서 재개하며 **Orders 단일 인스턴스**가 전제입니다. 주문별 예약 시각이나 지수 백오프는 두지 않습니다.
 `STOCK_DEDUCTION`·`DELIVERY_CREATION`·`DELIVERY_CANCELLATION`·`STOCK_RESTORATION`·`STOCK_COMPENSATION`을 저장하여 오류 원인과 재개 지점을 구분합니다.
 생성 실패 보상은 복원 후 FAILED, 사용자 취소는 복원 후 CANCELLED로 종료합니다. 배송 결과가 불명인 요청의 후속 404만으로 보상하지 않습니다.
 삭제는 CANCELLED·FAILED 또는 배송 완료가 확인된 CONFIRMED에서 처리하고 진행 중·복구 중에는 거절합니다.
@@ -114,15 +114,16 @@ stateDiagram-v2
 | 항목 | 값·역할 |
 | --- | --- |
 | `orders.recovery.delay-ms` | 스케줄러 실행 종료 후 간격, 기본 5000ms |
-| `orders.recovery.retry-delay-ms` | 첫 복구 대기, 기본 5000ms. 같은 단계 실패마다 증가하며 최대 300초 |
 | `orders.recovery.max-attempts` | 단계별 실패 예산, 기본 20회. 최초 결과 불명도 한 회로 계산 |
 | `recovery_phase` | 커밋된 재개 지점. 업무 단계가 진행되면 이전 재시도 예산 초기화 |
-| `recovery_attempts`, `next_recovery_at` | 재시작 후에도 유지하는 실패 횟수·다음 실행 시각 |
+| `recovery_attempts` | 재시작 후에도 유지하는 단계별 실패 횟수 |
 | `recovery_blocked` | 영구 오류·예산 소진 시 true. 조회 대상에서 제외해 다른 주문을 막지 않음 |
 
 Feign의 전역 자동 재시도는 끈 상태를 유지합니다. 재시도는 원래 작업자의 감사 컨텍스트에서 주문별 처리권을 확보한 작업만 수행합니다.
 자동 차단은 운영 확인 대상이며 새로운 사용자 복구 API는 추가하지 않습니다. 원격 결과와 원인을 확인한 뒤 담당자가 재개 여부를 결정합니다.
 재개 시 수량·주문 입력·차감 기록은 수정하지 않고 처리 의도와 원래 작업자를 보존합니다.
+`recovery_phase`는 다음 작업, `last_error`는 최근 오류 사유입니다. 단계가 없는 기존 주문은 과거 표식을 단계로 고정한 뒤 오류 사유를 갱신합니다.
+기존 `recovery_action`은 과거 주문의 CREATE/CANCEL 의도와 감사 주체를 보존하는 데 사용합니다.
 
 ## 기존 주문과 적용 순서
 
@@ -134,7 +135,7 @@ Hub의 멱등 구현을 먼저 배포하고 Orders를 적용합니다. 두 버�
 | --- | --- |
 | 차감 단계 중단·결과 불명 | 자동 재차감 차단·확인 대상 보존 |
 | CONFIRMED 주문의 신규 취소 | 배송을 건드리기 전에 409 `LEGACY_STOCK_CONTRACT`. 기존 차감 증거·호환 정책 확인 필요 |
-| 기존 배송 결과 불명 | 기존 멱등 배송 조회·생성 복구 유지 |
+| 기존 배송 결과 불명 | 배송 단계를 저장한 뒤 멱등 조회·생성 복구. 추가 통신 오류에도 차감 단계로 돌아가지 않음 |
 | 이미 복원한 요청 | Hub의 기존 복원 영수증 재현 |
 | 기존 취소 진행 중 차감 기록 없음 | 복원을 추정하지 않고 확인 대상으로 보존 |
 

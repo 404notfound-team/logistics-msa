@@ -410,7 +410,7 @@ class OrderRestartIntegrationTest {
       try (var connection = DATABASE.createConnection("");
           var statement = connection.createStatement()) {
         statement.execute(
-            "ALTER TABLE p_orders DROP COLUMN stock_contract_version, DROP COLUMN recovery_phase, DROP COLUMN recovery_attempts, DROP COLUMN next_recovery_at, DROP COLUMN recovery_blocked");
+            "ALTER TABLE p_orders DROP COLUMN stock_contract_version, DROP COLUMN recovery_phase, DROP COLUMN recovery_attempts, DROP COLUMN recovery_blocked");
         try (var update =
             connection.prepareStatement(
                 "UPDATE p_orders SET status='PROCESSING', recovery_action='CREATE', last_error='STOCK_RESULT_UNKNOWN' WHERE id=?")) {
@@ -464,7 +464,6 @@ class OrderRestartIntegrationTest {
             Map.entry("orders.recovery.enabled", Boolean.toString(recover)),
             Map.entry("orders.recovery.delay-ms", "50"))
         .forEach((name, value) -> arguments.add("--" + name + "=" + value));
-    arguments.add("--orders.recovery.retry-delay-ms=0");
     return (ServletWebServerApplicationContext)
         new SpringApplicationBuilder(OrdersApplication.class, OrderClientTestConfiguration.class)
             .initializers(

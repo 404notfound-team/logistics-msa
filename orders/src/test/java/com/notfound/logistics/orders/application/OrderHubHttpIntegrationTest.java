@@ -52,7 +52,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
       "spring.jpa.properties.hibernate.default_schema=public",
       "orders.recovery.enabled=false",
       "slack.enabled=false",
-      "orders.recovery.retry-delay-ms=0",
       "orders.clients.connect-timeout-ms=500",
       "orders.clients.read-timeout-ms=500"
     })

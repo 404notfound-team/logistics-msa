@@ -11,7 +11,6 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigInteger;
-import java.time.Instant;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -93,12 +92,10 @@ public class Order extends AuditEntity {
   @Column(length = 32)
   private RecoveryPhase recoveryPhase;
 
-  // 단계별 실패 횟수와 다음 실행 시각, 자동 복구 중단 여부를 재시작 후에도 유지한다.
+  // 단계별 실패 횟수와 자동 복구 중단 여부를 재시작 후에도 유지한다.
   @ColumnDefault("0")
   @Column(nullable = false)
   private int recoveryAttempts;
-
-  private Instant nextRecoveryAt;
 
   @ColumnDefault("false")
   @Column(nullable = false)
@@ -190,20 +187,19 @@ public class Order extends AuditEntity {
     clearRecovery();
   }
 
-  public void recordAttempt(String code) {
+  public void recordAttempt(RecoveryPhase nextPhase) {
     if (status != OrderStatus.PROCESSING && status != OrderStatus.CANCELLING)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
-    lastError = code;
-    if ("STOCK_RESULT_UNKNOWN".equals(code)) phase(RecoveryPhase.STOCK_DEDUCTION);
-    if ("DELIVERY_RESULT_UNKNOWN".equals(code)) phase(RecoveryPhase.DELIVERY_CREATION);
+    phase(Objects.requireNonNull(nextPhase));
   }
 
   public void requireRecovery(String code) {
     if (status != OrderStatus.PROCESSING && status != OrderStatus.CANCELLING)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+    // 기존 주문의 오류 표식은 진단 사유를 바꾸기 전에 명시적인 단계로 고정한다.
+    phase(resumePhase());
     status = OrderStatus.RECOVERY_REQUIRED;
-    // 기존 주문의 복구 단계 판단에 사용하는 오류 표식을 보존한다.
-    if (lastError == null) lastError = code;
+    lastError = code;
   }
 
   public boolean usesRecordedStockContract() {
@@ -214,7 +210,7 @@ public class Order extends AuditEntity {
     if (recoveryPhase != null) return recoveryPhase;
     // 기존 배송·취소 복구는 유지하되, 불명확한 과거 차감은 별도로 차단한다.
     if (recoveryAction == RecoveryAction.CANCEL) {
-      return awaitingStockRestoration()
+      return STOCK_RESTORATION_PENDING.equals(lastError)
           ? RecoveryPhase.STOCK_RESTORATION
           : RecoveryPhase.DELIVERY_CANCELLATION;
     }
@@ -224,22 +220,15 @@ public class Order extends AuditEntity {
     return RecoveryPhase.UNKNOWN;
   }
 
-  public void deferRecovery(String code, Instant now, long baseDelayMillis, int maxAttempts) {
+  public void deferRecovery(String code, int maxAttempts) {
     requireRecovery(code);
-    lastError = code;
     recoveryAttempts++;
     recoveryBlocked = recoveryAttempts >= maxAttempts;
-    // 같은 단계의 실패마다 대기를 늘리며 최대 5분으로 제한한다.
-    long multiplier = 1L << Math.min(recoveryAttempts - 1, 6);
-    long delay = Math.min(300_000L, Math.max(0, baseDelayMillis)) * multiplier;
-    nextRecoveryAt = now.plusMillis(Math.min(300_000L, delay));
   }
 
   public void blockRecovery(String code) {
     requireRecovery(code);
-    lastError = code;
     recoveryBlocked = true;
-    nextRecoveryAt = null;
   }
 
   public void beginCompensation() {
@@ -259,15 +248,14 @@ public class Order extends AuditEntity {
     if (recoveryPhase != phase) {
       recoveryPhase = phase;
       recoveryAttempts = 0;
-      nextRecoveryAt = null;
       recoveryBlocked = false;
+      lastError = null;
     }
   }
 
   private void clearRecovery() {
     recoveryPhase = null;
     recoveryAttempts = 0;
-    nextRecoveryAt = null;
     recoveryBlocked = false;
   }
 
@@ -280,14 +268,11 @@ public class Order extends AuditEntity {
 
   public void awaitStockRestoration() {
     require(OrderStatus.CANCELLING);
-    lastError = STOCK_RESTORATION_PENDING;
     phase(RecoveryPhase.STOCK_RESTORATION);
   }
 
   public boolean awaitingStockRestoration() {
-    return recoveryAction == RecoveryAction.CANCEL
-        && (recoveryPhase == RecoveryPhase.STOCK_RESTORATION
-            || STOCK_RESTORATION_PENDING.equals(lastError));
+    return resumePhase() == RecoveryPhase.STOCK_RESTORATION;
   }
 
   public void rejectCancellation() {
