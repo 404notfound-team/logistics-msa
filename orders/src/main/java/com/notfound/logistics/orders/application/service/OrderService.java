@@ -24,7 +24,6 @@ import com.notfound.logistics.orders.infrastructure.client.RemoteFailure;
 import com.notfound.logistics.orders.infrastructure.client.StockClient;
 import com.notfound.logistics.orders.infrastructure.notification.SlackNotifier;
 import feign.FeignException;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -100,9 +99,9 @@ public class OrderService {
         || product.name().length() > 100
         || product.price() == null
         || product.price().signum() < 0) throw unavailable();
+    long unitPrice;
     try {
-      if (product.price().setScale(2, RoundingMode.UNNECESSARY).precision() > 15)
-        throw unavailable();
+      unitPrice = product.price().longValueExact();
     } catch (ArithmeticException exception) {
       throw unavailable();
     }
@@ -114,7 +113,7 @@ public class OrderService {
         command.productId(),
         command.quantity(),
         product.name(),
-        product.price(),
+        unitPrice,
         supplier.hubId(),
         receiver.hubId(),
         command.deliveryAddress(),

@@ -129,6 +129,31 @@ class OrderApiIntegrationTest {
   }
 
   @Test
+  void acceptsTheFullCompanyPriceRangeAndReturnsAnExactIntegerTotal() throws Exception {
+    fixture.control(Map.of("action", "product", "price", Long.toString(Long.MAX_VALUE)));
+    UUID orderId = id(create(UUID.randomUUID(), body(), alice));
+    var details = json(request("GET", "/api/orders/" + orderId, null, alice, null)).path("data");
+    assertThat(details.path("unit_price").isIntegralNumber()).isTrue();
+    assertThat(details.path("unit_price").longValue()).isEqualTo(Long.MAX_VALUE);
+    assertThat(details.path("total_price").bigIntegerValue())
+        .isEqualTo(
+            java.math.BigInteger.valueOf(Long.MAX_VALUE).multiply(java.math.BigInteger.valueOf(3)));
+    assertThat(
+            jdbc.queryForObject("select unit_price from p_orders where id=?", Long.class, orderId))
+        .isEqualTo(Long.MAX_VALUE);
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"-1", "0.01", "9223372036854775808"})
+  void rejectsPricesOutsideTheCompanyIntegerContractBeforeSideEffects(String price)
+      throws Exception {
+    fixture.control(Map.of("action", "product", "price", price));
+    assertStatus(create(UUID.randomUUID(), body(), alice), 503);
+    assertThat(repository.count()).isZero();
+    assertInventory(1000, 0, 0);
+  }
+
+  @Test
   void verifiedPrincipalControlsAuditAndInternalRequestsDespiteForgedIdentityHeaders()
       throws Exception {
     var request =
@@ -641,14 +666,9 @@ class OrderApiIntegrationTest {
     assertThat(docs.path("paths").toString()).doesNotContain("/internal/");
     assertThat(
             jdbc.queryForObject(
-                "select numeric_precision from information_schema.columns where table_name='p_orders' and column_name='unit_price'",
-                Integer.class))
-        .isEqualTo(15);
-    assertThat(
-            jdbc.queryForObject(
-                "select numeric_scale from information_schema.columns where table_name='p_orders' and column_name='unit_price'",
-                Integer.class))
-        .isEqualTo(2);
+                "select data_type from information_schema.columns where table_name='p_orders' and column_name='unit_price'",
+                String.class))
+        .isEqualTo("bigint");
   }
 
   @Test
