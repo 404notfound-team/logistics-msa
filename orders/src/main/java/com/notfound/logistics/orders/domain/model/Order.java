@@ -178,7 +178,31 @@ public class Order extends AuditEntity {
   public void recordAttempt(RecoveryPhase nextPhase) {
     if (status != OrderStatus.PROCESSING && status != OrderStatus.CANCELLING)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
-    phase(Objects.requireNonNull(nextPhase));
+    phase(nextPhase);
+  }
+
+  public boolean isRecoveryPending() {
+    return status == OrderStatus.PROCESSING
+        || status == OrderStatus.CANCELLING
+        || status == OrderStatus.RECOVERY_REQUIRED;
+  }
+
+  /** 업무 상태와 재개 단계의 조합을 확인하며, 종료된 주문은 단계가 없어야 한다. */
+  public boolean hasConsistentRecoveryPhase() {
+    return allowsPhase(recoveryPhase);
+  }
+
+  private boolean allowsPhase(RecoveryPhase phase) {
+    return switch (status) {
+      case PROCESSING ->
+          phase == RecoveryPhase.STOCK_DEDUCTION
+              || phase == RecoveryPhase.DELIVERY_CREATION
+              || phase == RecoveryPhase.STOCK_COMPENSATION;
+      case CANCELLING ->
+          phase == RecoveryPhase.DELIVERY_CANCELLATION || phase == RecoveryPhase.STOCK_RESTORATION;
+      case RECOVERY_REQUIRED -> phase != null;
+      case CONFIRMED, CANCELLED, FAILED -> phase == null;
+    };
   }
 
   public void requireRecovery(String code) {
@@ -200,7 +224,10 @@ public class Order extends AuditEntity {
   }
 
   public void blockRecovery(String code) {
-    requireRecovery(code);
+    if (!isRecoveryPending()) throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+    if (recoveryBlocked) return;
+    lastError = Objects.requireNonNull(code);
+    status = OrderStatus.RECOVERY_REQUIRED;
     recoveryBlocked = true;
   }
 
@@ -217,6 +244,8 @@ public class Order extends AuditEntity {
   }
 
   private void phase(RecoveryPhase phase) {
+    if (phase == null || !allowsPhase(phase))
+      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
     // 실제 업무 단계가 바뀔 때만 재시도 예산을 초기화한다.
     if (recoveryPhase != phase) {
       recoveryPhase = phase;
