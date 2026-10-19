@@ -41,6 +41,45 @@ import org.springframework.web.bind.annotation.RestController;
 
 // 상품은 Company Aggregate의 내부 엔티티라서 별도 서비스 없이 CompanyService를 통해 다룬다.
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
+
+@ApiResponses({
+  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+      responseCode = "500",
+      description = "예상 밖 서버 오류",
+      content =
+          @Content(
+              mediaType = "application/json",
+              schema = @Schema(implementation = ApiErrorResponse.class),
+              examples =
+                  @ExampleObject(
+                      name = "INTERNAL_ERROR",
+                      value =
+                          "{\"code\": \"INTERNAL_ERROR\", \"message\": \"요청 처리 중 오류가 발생했습니다.\", \"trace_id\": null, \"field_errors\": []}"))),
+  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+      responseCode = "401",
+      description = "토큰 누락·만료·위조 또는 현재 사용자 인증 실패",
+      content =
+          @Content(
+              mediaType = "application/json",
+              schema = @Schema(implementation = ApiErrorResponse.class),
+              examples =
+                  @ExampleObject(
+                      name = "UNAUTHORIZED",
+                      value =
+                          "{\"code\": \"UNAUTHORIZED\", \"message\": \"인증이 필요합니다.\", \"trace_id\": null, \"field_errors\": []}"))),
+  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+      responseCode = "503",
+      description = "Gateway가 현재 사용자 정보를 확인할 수 없음",
+      content =
+          @Content(
+              mediaType = "application/json",
+              schema = @Schema(implementation = ApiErrorResponse.class),
+              examples =
+                  @ExampleObject(
+                      name = "SERVICE_UNAVAILABLE",
+                      value =
+                          "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")))
+})
 @Tag(name = "Product", description = "업체 상품 API")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
@@ -80,7 +119,19 @@ public class ProductController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "415",
+        description = "지원하지 않는 요청 본문 형식",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "UNSUPPORTED_MEDIA_TYPE",
+                        value =
+                            "{\"code\": \"UNSUPPORTED_MEDIA_TYPE\", \"message\": \"지원하지 않는 요청 형식입니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
@@ -215,7 +266,19 @@ public class ProductController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "415",
+        description = "지원하지 않는 요청 본문 형식",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "UNSUPPORTED_MEDIA_TYPE",
+                        value =
+                            "{\"code\": \"UNSUPPORTED_MEDIA_TYPE\", \"message\": \"지원하지 않는 요청 형식입니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @PatchMapping("/{product_id}")
   public ResponseEntity<ApiResponse<ProductResponse>> updateProduct(
