@@ -280,6 +280,172 @@ class OrderRestartIntegrationTest {
     }
   }
 
+  @ParameterizedTest
+  @ValueSource(booleans = {false, true})
+  void deductionRecoveryAndPermanentBlockSurviveAnOrdersRestart(boolean blocked) throws Exception {
+    try (var fixture = new OrderClientFixture();
+        var http = HttpClient.newHttpClient()) {
+      fixture.timeout(300);
+      UUID id;
+      try (var first = application(fixture, "create", false)) {
+        fixture.control(
+            blocked
+                ? Map.of(
+                    "action",
+                    "fault",
+                    "operation",
+                    "stock.deduct",
+                    "status",
+                    409,
+                    "code",
+                    "STOCK_DEDUCTION_CONFLICT")
+                : Map.of("action", "fault", "operation", "stock.deduct", "delay_after_ms", 800));
+        String body =
+            new ObjectMapper()
+                .writeValueAsString(
+                    Map.of(
+                        "receiver_company_id",
+                        OrderClientFixture.RECEIVER,
+                        "supplier_company_id",
+                        OrderClientFixture.SUPPLIER,
+                        "product_id",
+                        OrderClientFixture.PRODUCT,
+                        "quantity",
+                        3,
+                        "delivery_address",
+                        "original address",
+                        "recipient_name",
+                        "recipient"));
+        var request =
+            HttpRequest.newBuilder(
+                    URI.create(
+                        "http://127.0.0.1:" + first.getWebServer().getPort() + "/api/orders"))
+                .header("Authorization", "Bearer " + fixture.token("alice", "USER"))
+                .header("Idempotency-Key", UUID.randomUUID().toString())
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build();
+        var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(202);
+        id =
+            UUID.fromString(
+                new ObjectMapper().readTree(response.body()).at("/data/order_id").asText());
+      }
+      fixture.awaitIdle();
+      fixture.control(
+          Map.of(
+              "action",
+              "company_hub",
+              "company_id",
+              OrderClientFixture.SUPPLIER,
+              "hub_id",
+              "00000000-0000-0000-0000-000000000099"));
+      try (var restarted = application(fixture, "validate", true)) {
+        var repository = restarted.getBean(OrderRepository.class);
+        if (blocked) {
+          Thread.sleep(300);
+          var order = repository.findById(id).orElseThrow();
+          assertThat(order.isRecoveryBlocked()).isTrue();
+          assertThat(order.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
+          assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+          assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(1000);
+        } else {
+          org.awaitility.Awaitility.await()
+              .atMost(Duration.ofSeconds(10))
+              .untilAsserted(
+                  () ->
+                      assertThat(repository.findById(id).orElseThrow().getStatus())
+                          .isEqualTo(OrderStatus.CONFIRMED));
+          var order = repository.findById(id).orElseThrow();
+          assertThat(order.getDepartureHubId().toString()).endsWith("000000000002");
+          assertThat(order.getCreatedBy()).isEqualTo("alice");
+          assertThat(order.getUpdatedBy()).isEqualTo("alice");
+          assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(2);
+          assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+          assertThat(fixture.state().path("deliveries")).hasSize(1);
+        }
+      }
+    }
+  }
+
+  @Test
+  void schemaUpdatePreservesLegacyOrdersWithoutMarkingThemAsRecorded() throws Exception {
+    try (var fixture = new OrderClientFixture();
+        var http = HttpClient.newHttpClient()) {
+      UUID id;
+      try (var first = application(fixture, "create", false)) {
+        String body =
+            new ObjectMapper()
+                .writeValueAsString(
+                    Map.of(
+                        "receiver_company_id",
+                        OrderClientFixture.RECEIVER,
+                        "supplier_company_id",
+                        OrderClientFixture.SUPPLIER,
+                        "product_id",
+                        OrderClientFixture.PRODUCT,
+                        "quantity",
+                        3,
+                        "delivery_address",
+                        "legacy",
+                        "recipient_name",
+                        "recipient"));
+        var response =
+            http.send(
+                HttpRequest.newBuilder(
+                        URI.create(
+                            "http://127.0.0.1:" + first.getWebServer().getPort() + "/api/orders"))
+                    .header("Authorization", "Bearer " + fixture.token("alice", "USER"))
+                    .header("Idempotency-Key", UUID.randomUUID().toString())
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(body))
+                    .build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(response.statusCode()).as(response.body()).isEqualTo(201);
+        id =
+            UUID.fromString(
+                new ObjectMapper().readTree(response.body()).at("/data/order_id").asText());
+      }
+      // Only this disposable test database is reduced to the pre-feature schema.
+      try (var connection = DATABASE.createConnection("");
+          var statement = connection.createStatement()) {
+        statement.execute(
+            "ALTER TABLE p_orders DROP COLUMN stock_contract_version, DROP COLUMN recovery_phase, DROP COLUMN recovery_attempts, DROP COLUMN next_recovery_at, DROP COLUMN recovery_blocked");
+        try (var update =
+            connection.prepareStatement(
+                "UPDATE p_orders SET status='PROCESSING', recovery_action='CREATE', last_error='STOCK_RESULT_UNKNOWN' WHERE id=?")) {
+          update.setObject(1, id);
+          update.executeUpdate();
+        }
+      }
+      try (var updated = application(fixture, "update", false)) {
+        var repository = updated.getBean(OrderRepository.class);
+        var before = repository.findById(id).orElseThrow();
+        assertThat(before.getStockContractVersion()).isNull();
+        assertThat(before.getRecoveryAttempts()).isZero();
+        assertThat(before.isRecoveryBlocked()).isFalse();
+        updated
+            .getBean(com.notfound.logistics.orders.application.service.OrderService.class)
+            .recover();
+        var after = repository.findById(id).orElseThrow();
+        assertThat(after.isRecoveryBlocked()).isTrue();
+        assertThat(after.getLastError()).isEqualTo("LEGACY_STOCK_CONTRACT");
+        assertThat(after.getStockContractVersion()).isNull();
+        assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
+        assertThat(fixture.state().at("/stocks/0/quantity").asLong()).isEqualTo(997);
+      }
+      try (var validated = application(fixture, "validate", false)) {
+        assertThat(
+                validated
+                    .getBean(OrderRepository.class)
+                    .findById(id)
+                    .orElseThrow()
+                    .isRecoveryBlocked())
+            .isTrue();
+      }
+    }
+  }
+
   private ServletWebServerApplicationContext application(
       OrderClientFixture fixture, String ddl, boolean recover) {
     var arguments = new ArrayList<String>();
@@ -298,6 +464,7 @@ class OrderRestartIntegrationTest {
             Map.entry("orders.recovery.enabled", Boolean.toString(recover)),
             Map.entry("orders.recovery.delay-ms", "50"))
         .forEach((name, value) -> arguments.add("--" + name + "=" + value));
+    arguments.add("--orders.recovery.retry-delay-ms=0");
     return (ServletWebServerApplicationContext)
         new SpringApplicationBuilder(OrdersApplication.class, OrderClientTestConfiguration.class)
             .initializers(

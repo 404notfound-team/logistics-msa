@@ -70,6 +70,9 @@ public class OrderClientFixture implements AutoCloseable {
   private final Map<UUID, DeliveryRequest> requests = new LinkedHashMap<>();
   private final Map<UUID, Delivery> shipping = new LinkedHashMap<>();
   private final Map<UUID, Stock> restorations = new LinkedHashMap<>();
+  private final Map<UUID, Deduction> deductionRequests = new LinkedHashMap<>();
+  private final Map<UUID, Stock> deductions = new LinkedHashMap<>();
+  private final Map<UUID, RemoteFailure> rejectedDeductions = new LinkedHashMap<>();
   private final List<UUID> notices = new ArrayList<>();
   private long quantity;
   private String productName;
@@ -112,10 +115,24 @@ public class OrderClientFixture implements AutoCloseable {
                     Stock.class,
                     () -> {
                       Deduction request = call.getArgument(0);
-                      if (quantity < request.quantity())
-                        throw new RemoteFailure(409, "INSUFFICIENT_STOCK");
+                      var previous = deductionRequests.putIfAbsent(request.orderId(), request);
+                      if (previous != null && !previous.equals(request))
+                        throw new RemoteFailure(409, "STOCK_DEDUCTION_CONFLICT");
+                      if (restorations.containsKey(request.orderId()))
+                        throw new RemoteFailure(409, "STOCK_ALREADY_RESTORED");
+                      if (rejectedDeductions.containsKey(request.orderId()))
+                        throw rejectedDeductions.get(request.orderId());
+                      if (deductions.containsKey(request.orderId()))
+                        return deductions.get(request.orderId());
+                      if (quantity < request.quantity()) {
+                        var rejection = new RemoteFailure(409, "INSUFFICIENT_STOCK");
+                        rejectedDeductions.put(request.orderId(), rejection);
+                        throw rejection;
+                      }
                       quantity -= request.quantity();
-                      return stock();
+                      var result = stock();
+                      deductions.put(request.orderId(), result);
+                      return result;
                     }));
     when(stocks.restore(any()))
         .thenAnswer(
@@ -125,6 +142,13 @@ public class OrderClientFixture implements AutoCloseable {
                     Stock.class,
                     () -> {
                       Restoration request = call.getArgument(0);
+                      var deduction = deductionRequests.get(request.orderId());
+                      if (!deductions.containsKey(request.orderId()))
+                        throw new RemoteFailure(404, "STOCK_DEDUCTION_NOT_FOUND");
+                      if (!deduction.hubId().equals(request.hubId())
+                          || !deduction.productId().equals(request.productId())
+                          || deduction.quantity() != request.quantity())
+                        throw new RemoteFailure(409, "STOCK_RESTORATION_CONFLICT");
                       return restorations.computeIfAbsent(
                           request.orderId(),
                           id -> {
@@ -292,6 +316,9 @@ public class OrderClientFixture implements AutoCloseable {
     requests.clear();
     shipping.clear();
     restorations.clear();
+    deductionRequests.clear();
+    deductions.clear();
+    rejectedDeductions.clear();
     notices.clear();
     hubs.put(RECEIVER, DESTINATION);
     hubs.put(SUPPLIER, ORIGIN);

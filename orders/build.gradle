@@ -16,3 +16,14 @@ dependencies {
     testImplementation 'org.testcontainers:junit-jupiter'
     testImplementation 'org.testcontainers:postgresql'
 }
+
+tasks.named('test') {
+    def simulationUrl = providers.gradleProperty('ordersSimulationUrl')
+    if (simulationUrl.isPresent()) {
+        systemProperty 'orders.simulation-url', simulationUrl.get()
+    }
+    def realHubJar = providers.gradleProperty('ordersRealHubJar')
+    if (realHubJar.isPresent()) {
+        systemProperty 'orders.real-hub-jar', rootProject.file(realHubJar.get()).absolutePath
+    }
+}

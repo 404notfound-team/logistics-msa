@@ -24,7 +24,8 @@ public class InternalStockDeductionController {
   @PostMapping("/deductions")
   public ApiResponse<StockResponse> deduct(@Valid @RequestBody StockDeductRequest request) {
     StockResult result =
-        stockCommandService.deduct(request.hubId(), request.productId(), request.quantity());
+        stockCommandService.deduct(
+            request.orderId(), request.hubId(), request.productId(), request.quantity());
 
     return new ApiResponse<>(StockResponse.from(result));
   }

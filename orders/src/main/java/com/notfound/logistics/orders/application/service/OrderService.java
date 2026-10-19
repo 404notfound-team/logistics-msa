@@ -11,6 +11,7 @@ import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import com.notfound.logistics.orders.domain.model.RecoveryAction;
+import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
 import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
@@ -32,6 +33,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -59,6 +61,12 @@ public class OrderService {
   private final StockClient stocks;
   private final DeliveryClient deliveries;
   private final SlackNotifier notifications;
+
+  @Value("${orders.recovery.retry-delay-ms:5000}")
+  private long retryDelayMillis;
+
+  @Value("${orders.recovery.max-attempts:20}")
+  private int maxRecoveryAttempts;
 
   public OrderOperationResult create(CreateOrderCommand command, String username) {
     var reserved = repository.findReservedKey(username, command.idempotencyKey());
@@ -126,7 +134,9 @@ public class OrderService {
       java.util.function.Supplier<com.notfound.logistics.common.api.ApiResponse<T>> lookup,
       OrderErrorCode notFound) {
     try {
-      return lookup.get().data();
+      var response = lookup.get();
+      if (response == null || response.data() == null) throw unavailable();
+      return response.data();
     } catch (RemoteFailure failure) {
       if (failure.status() == 404) throw business(notFound);
       throw unavailable();
@@ -150,6 +160,8 @@ public class OrderService {
 
   private OrderOperationResult processCreate(UUID id) {
     Order order = load(id);
+    if (!order.usesRecordedStockContract()) return blocked(id, "LEGACY_STOCK_CONTRACT");
+    // 외부 호출 전에 재개 지점을 커밋해 호출 도중 종료되어도 같은 요청을 이어간다.
     transactions.change(id, value -> value.recordAttempt(STOCK_UNKNOWN));
     try {
       var response =
@@ -162,16 +174,15 @@ public class OrderService {
           || !Objects.equals(stock.hubId(), order.getDepartureHubId())
           || !Objects.equals(stock.productId(), order.getProductId())
           || stock.quantity() == null
-          || stock.quantity() < 0) return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+          || stock.quantity() < 0) return recovery(id, "INVALID_STOCK_RESPONSE");
     } catch (RemoteFailure failure) {
       if (failure.status() == 409 && failure.code().equals("INSUFFICIENT_STOCK"))
         return fail(id, OrderErrorCode.INSUFFICIENT_STOCK);
       if (failure.status() == 404 && failure.code().equals("STOCK_NOT_FOUND"))
         return fail(id, OrderErrorCode.STOCK_NOT_FOUND);
-      return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+      return retryable(failure) ? recovery(id, failure.code()) : blocked(id, failure.code());
     } catch (FeignException exception) {
-      // Without a stock operation record, an uncertain deduction must never be retried.
-      return fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
+      return recovery(id, "STOCK_RESULT_UNKNOWN");
     }
     transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
     return processDeliveryCreation(id, false);
@@ -184,32 +195,39 @@ public class OrderService {
       if (delivery == null) {
         transactions.change(id, value -> value.recordAttempt(DELIVERY_UNKNOWN));
         try {
-          delivery =
-              deliveries
-                  .create(
-                      new DeliveryRequest(
-                          id,
-                          order.getDepartureHubId(),
-                          order.getDestinationHubId(),
-                          order.getDeliveryAddress(),
-                          order.getRecipientName()))
-                  .data();
+          var response =
+              deliveries.create(
+                  new DeliveryRequest(
+                      id,
+                      order.getDepartureHubId(),
+                      order.getDestinationHubId(),
+                      order.getDeliveryAddress(),
+                      order.getRecipientName()));
+          delivery = response == null ? null : response.data();
         } catch (RemoteFailure failure) {
-          // A later rejection/404 cannot prove that an earlier timed-out call did not commit.
+          // 후속 거절·404만으로 이전 타임아웃 요청의 미반영을 확정하지 않는다.
           if (!uncertainDelivery && definiteDeliveryRejection(failure)) {
-            return fail(id, OrderErrorCode.DELIVERY_CREATION_FAILED);
+            if (!order.usesRecordedStockContract()) return blocked(id, "LEGACY_STOCK_CONTRACT");
+            transactions.change(id, Order::beginCompensation);
+            return restoreStock(load(id));
           }
-          return recovery(id, DELIVERY_UNKNOWN);
+          return retryable(failure) || definiteDeliveryRejection(failure)
+              ? recovery(id, DELIVERY_UNKNOWN)
+              : blocked(id, failure.code());
         }
       }
-      if (!validDelivery(order, delivery) || "CANCELLED".equals(delivery.status()))
-        return recovery(id, "INCONSISTENT_RESULT");
+      if (!validDelivery(order, delivery)) return recovery(id, "INVALID_DELIVERY_RESPONSE");
+      if ("CANCELLED".equals(delivery.status())) return blocked(id, "INCONSISTENT_RESULT");
       UUID deliveryId = delivery.deliveryId();
       transactions.change(id, value -> value.confirm(deliveryId));
       Order confirmed = load(id);
       notifications.confirmed(confirmed, delivery);
       return operation(confirmed, Outcome.CREATED, null);
-    } catch (RemoteFailure | FeignException exception) {
+    } catch (RemoteFailure failure) {
+      return retryable(failure)
+          ? recovery(id, "UPSTREAM_UNAVAILABLE")
+          : blocked(id, failure.code());
+    } catch (FeignException exception) {
       return recovery(id, "UPSTREAM_UNAVAILABLE");
     }
   }
@@ -219,6 +237,8 @@ public class OrderService {
     if (order.getStatus() == OrderStatus.CANCELLED) return operation(order, Outcome.RETURNED, null);
     if (order.getStatus() == OrderStatus.FAILED)
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    if (order.getStatus() == OrderStatus.CONFIRMED && !order.usesRecordedStockContract())
+      throw business(OrderErrorCode.LEGACY_STOCK_CONTRACT);
     if (inProgress(order) && order.getRecoveryAction() != RecoveryAction.CANCEL)
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
     Operation running = active.begin(id, Operation.CANCEL);
@@ -271,10 +291,13 @@ public class OrderService {
       if (!validDelivery(order, delivery)) return recovery(id, "DELIVERY_RESULT_UNKNOWN");
       if ("HUB_WAITING".equals(delivery.status())) {
         try {
-          delivery = deliveries.cancel(delivery.deliveryId()).data();
+          var response = deliveries.cancel(delivery.deliveryId());
+          delivery = response == null ? null : response.data();
         } catch (RemoteFailure failure) {
           if (failure.status() != 409 || !failure.code().equals("DELIVERY_ALREADY_STARTED"))
-            return recovery(id, "DELIVERY_CANCELLATION_UNKNOWN");
+            return retryable(failure)
+                ? recovery(id, "DELIVERY_CANCELLATION_UNKNOWN")
+                : blocked(id, failure.code());
           delivery = delivery(id);
         }
       }
@@ -287,7 +310,11 @@ public class OrderService {
       }
       transactions.change(id, Order::awaitStockRestoration);
       return restoreStock(load(id));
-    } catch (RemoteFailure | FeignException exception) {
+    } catch (RemoteFailure failure) {
+      return retryable(failure) || failure.status() == 404
+          ? recovery(id, "UPSTREAM_UNAVAILABLE")
+          : blocked(id, failure.code());
+    } catch (FeignException exception) {
       return recovery(id, "UPSTREAM_UNAVAILABLE");
     }
   }
@@ -306,10 +333,19 @@ public class OrderService {
           || !Objects.equals(stock.productId(), order.getProductId())
           || stock.quantity() == null
           || stock.quantity() < 0) return recovery(id, "STOCK_RESTORATION_UNKNOWN");
-    } catch (RemoteFailure | FeignException exception) {
+    } catch (RemoteFailure failure) {
+      return retryable(failure)
+          ? recovery(id, "STOCK_RESTORATION_UNKNOWN")
+          : blocked(id, failure.code());
+    } catch (FeignException exception) {
       return recovery(id, "STOCK_RESTORATION_UNKNOWN");
     }
-    // The receipt makes this safe even if this commit fails after Hub has committed.
+    // Hub 복원 후 이 저장이 실패해도 같은 복원 기록으로 재요청할 수 있다.
+    // 생성 실패 보상은 FAILED, 사용자 취소는 CANCELLED로 종료한다.
+    if (order.resumePhase() == RecoveryPhase.STOCK_COMPENSATION) {
+      transactions.change(id, Order::completeCompensation);
+      return operation(load(id), Outcome.REJECTED, OrderErrorCode.DELIVERY_CREATION_FAILED);
+    }
     transactions.change(id, Order::cancel);
     return operation(load(id), Outcome.RETURNED, null);
   }
@@ -417,15 +453,17 @@ public class OrderService {
 
   public void recover() {
     for (Order candidate :
-        repository.findTop50ByStatusInOrderByUpdatedAtAsc(
-            List.of(
-                OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED))) {
+        repository.findRecoveryCandidates(
+            List.of(OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED),
+            Instant.now(),
+            PageRequest.of(0, 50))) {
       UUID id = candidate.getId();
       if (active.begin(id, Operation.RECOVER) != null) continue;
       try {
         Order current = load(id);
         RecoveryAction action = current.getRecoveryAction();
         if (action == null) continue;
+        // 자동 복구에도 최초 생성자 또는 취소 요청자의 감사 주체를 유지한다.
         String username =
             action == RecoveryAction.CREATE ? current.getCreatedBy() : current.getUpdatedBy();
         auditor.runAsPersistedUser(
@@ -435,14 +473,19 @@ public class OrderService {
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
               if (transactions.resume(id, action, username)) {
                 if (action == RecoveryAction.CREATE) {
-                  if (DELIVERY_UNKNOWN.equals(current.getLastError()))
-                    processDeliveryCreation(id, true);
-                  else fail(id, OrderErrorCode.UPSTREAM_UNAVAILABLE);
-                } else processCancel(id);
+                  switch (current.resumePhase()) {
+                    case STOCK_DEDUCTION -> processCreate(id);
+                    case DELIVERY_CREATION -> processDeliveryCreation(id, true);
+                    case STOCK_COMPENSATION -> restoreStock(load(id));
+                    default -> blocked(id, "INCONSISTENT_RECOVERY_PHASE");
+                  }
+                } else if (current.resumePhase() == RecoveryPhase.DELIVERY_CANCELLATION
+                    || current.resumePhase() == RecoveryPhase.STOCK_RESTORATION) processCancel(id);
+                else blocked(id, "INCONSISTENT_RECOVERY_PHASE");
               }
             });
       } catch (RuntimeException exception) {
-        // A database interruption leaves persisted intent for the next bounded pass.
+        // DB 장애가 나도 저장된 처리 의도를 남겨 다음 복구 실행에서 이어간다.
         org.slf4j.LoggerFactory.getLogger(OrderService.class)
             .warn(
                 "Order recovery interrupted; orderId={}, type={}",
@@ -467,7 +510,10 @@ public class OrderService {
 
   private Delivery delivery(UUID id) {
     try {
-      return deliveries.byOrder(id).data();
+      var response = deliveries.byOrder(id);
+      if (response == null || response.data() == null)
+        throw new RemoteFailure(503, "INVALID_DELIVERY_RESPONSE");
+      return response.data();
     } catch (RemoteFailure failure) {
       if (failure.status() == 404) return null;
       throw failure;
@@ -491,8 +537,33 @@ public class OrderService {
   }
 
   private OrderOperationResult recovery(UUID id, String code) {
-    transactions.change(id, value -> value.requireRecovery(code));
+    Order updated =
+        transactions.change(
+            id,
+            value ->
+                value.deferRecovery(
+                    code, Instant.now(), retryDelayMillis, Math.max(1, maxRecoveryAttempts)));
+    if (updated.isRecoveryBlocked()) {
+      org.slf4j.LoggerFactory.getLogger(OrderService.class)
+          .warn(
+              "Order recovery exhausted; orderId={}, attempts={}, code={}",
+              id,
+              updated.getRecoveryAttempts(),
+              code);
+    }
     return operation(load(id), Outcome.IN_PROGRESS, null);
+  }
+
+  private OrderOperationResult blocked(UUID id, String code) {
+    // 결과 불명은 FAILED로 단정하지 않고 자동 재시도만 중단한다.
+    transactions.change(id, value -> value.blockRecovery(code));
+    org.slf4j.LoggerFactory.getLogger(OrderService.class)
+        .warn("Order recovery blocked; orderId={}, code={}", id, code);
+    return operation(load(id), Outcome.IN_PROGRESS, null);
+  }
+
+  private static boolean retryable(RemoteFailure failure) {
+    return failure.status() >= 500 || failure.status() == 408 || failure.status() == 429;
   }
 
   private OrderOperationResult fail(UUID id, OrderErrorCode code) {

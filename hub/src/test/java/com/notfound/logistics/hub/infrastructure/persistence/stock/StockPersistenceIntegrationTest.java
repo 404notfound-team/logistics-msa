@@ -323,7 +323,7 @@ class StockPersistenceIntegrationTest {
         .setAuthentication(
             UsernamePasswordAuthenticationToken.authenticated(
                 "manager", null, List.of(new SimpleGrantedAuthority("ROLE_MASTER"))));
-    assertThatThrownBy(() -> command.deduct(hubId, product, 1))
+    assertThatThrownBy(() -> command.deduct(UUID.randomUUID(), hubId, product, 1))
         .isInstanceOf(AccessDeniedException.class);
     SecurityContextHolder.getContext()
         .setAuthentication(
@@ -446,6 +446,8 @@ class StockPersistenceIntegrationTest {
 
   @BeforeEach
   void prepare() {
+    jdbc.update("DELETE FROM hub.p_stock_restorations");
+    jdbc.update("DELETE FROM hub.p_stock_deductions");
     jdbc.update("DELETE FROM hub.p_stocks");
     authenticate();
   }
@@ -609,7 +611,7 @@ class StockPersistenceIntegrationTest {
     UUID productId = UUID.randomUUID();
 
     var created = command.create(hubId, productId, 100);
-    var result = command.deduct(hubId, productId, 30);
+    var result = command.deduct(UUID.randomUUID(), hubId, productId, 30);
 
     assertThat(result.id()).isEqualTo(created.id());
     assertThat(result.quantity()).isEqualTo(70);
@@ -628,7 +630,7 @@ class StockPersistenceIntegrationTest {
 
     var created = command.create(hubId, productId, 10);
 
-    var result = command.deduct(hubId, productId, 10);
+    var result = command.deduct(UUID.randomUUID(), hubId, productId, 10);
 
     assertThat(result.quantity()).isZero();
 
@@ -645,7 +647,7 @@ class StockPersistenceIntegrationTest {
 
     var created = command.create(hubId, productId, 10);
 
-    assertThatThrownBy(() -> command.deduct(hubId, productId, 20))
+    assertThatThrownBy(() -> command.deduct(UUID.randomUUID(), hubId, productId, 20))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.INSUFFICIENT_STOCK);
@@ -672,7 +674,7 @@ class StockPersistenceIntegrationTest {
       """,
         created.id());
 
-    assertThatThrownBy(() -> command.deduct(hubId, productId, 10))
+    assertThatThrownBy(() -> command.deduct(UUID.randomUUID(), hubId, productId, 10))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);
@@ -704,7 +706,7 @@ class StockPersistenceIntegrationTest {
             new UsernamePasswordAuthenticationToken(
                 "deduction-actor", null, List.of(new SimpleGrantedAuthority("SERVICE_ORDERS"))));
 
-    command.deduct(hubId, productId, 10);
+    command.deduct(UUID.randomUUID(), hubId, productId, 10);
 
     var after =
         jdbc.queryForMap(
@@ -783,7 +785,7 @@ class StockPersistenceIntegrationTest {
               }
 
               try {
-                command.deduct(hubId, productId, 7);
+                command.deduct(UUID.randomUUID(), hubId, productId, 7);
                 return "SUCCESS";
               } catch (StockBusinessException exception) {
                 if (exception.getErrorCode() == StockErrorCode.INSUFFICIENT_STOCK) {
@@ -836,7 +838,7 @@ class StockPersistenceIntegrationTest {
                 throw new IllegalStateException("동시 차감 시작 대기 시간 초과");
               }
 
-              return command.deduct(hubId, productId, 30).quantity();
+              return command.deduct(UUID.randomUUID(), hubId, productId, 30).quantity();
 
             } finally {
               SecurityContextHolder.clearContext();
@@ -854,7 +856,7 @@ class StockPersistenceIntegrationTest {
                 throw new IllegalStateException("동시 차감 시작 대기 시간 초과");
               }
 
-              return command.deduct(hubId, productId, 40).quantity();
+              return command.deduct(UUID.randomUUID(), hubId, productId, 40).quantity();
 
             } finally {
               SecurityContextHolder.clearContext();
@@ -884,7 +886,8 @@ class StockPersistenceIntegrationTest {
     UUID productId = UUID.randomUUID();
     UUID orderId = UUID.randomUUID();
 
-    var created = command.create(hubId, productId, 70);
+    var created = command.create(hubId, productId, 100);
+    command.deduct(orderId, hubId, productId, 30);
 
     String body =
         """
@@ -924,13 +927,16 @@ class StockPersistenceIntegrationTest {
     UUID productId = UUID.randomUUID();
 
     var created = command.create(hubId, productId, Long.MAX_VALUE);
+    UUID orderId = UUID.randomUUID();
+    command.deduct(orderId, hubId, productId, 1);
+    command.add(hubId, productId, 1);
 
     var before =
         jdbc.queryForMap(
             "SELECT quantity, updated_at, updated_by " + "FROM hub.p_stocks WHERE id = ?",
             created.id());
 
-    assertThatThrownBy(() -> command.restore(UUID.randomUUID(), hubId, productId, 1))
+    assertThatThrownBy(() -> command.restore(orderId, hubId, productId, 1))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_QUANTITY_OVERFLOW);
@@ -947,7 +953,9 @@ class StockPersistenceIntegrationTest {
   void deletedStockCannotBeRestored() {
     UUID productId = UUID.randomUUID();
 
-    var created = command.create(hubId, productId, 50);
+    var created = command.create(hubId, productId, 60);
+    UUID orderId = UUID.randomUUID();
+    command.deduct(orderId, hubId, productId, 10);
 
     jdbc.update(
         """
@@ -958,7 +966,7 @@ class StockPersistenceIntegrationTest {
       """,
         created.id());
 
-    assertThatThrownBy(() -> command.restore(UUID.randomUUID(), hubId, productId, 10))
+    assertThatThrownBy(() -> command.restore(orderId, hubId, productId, 10))
         .isInstanceOf(StockBusinessException.class)
         .extracting(e -> ((StockBusinessException) e).getErrorCode())
         .isEqualTo(StockErrorCode.STOCK_NOT_FOUND);

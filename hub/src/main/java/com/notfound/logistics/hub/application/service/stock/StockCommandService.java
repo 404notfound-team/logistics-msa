@@ -6,10 +6,8 @@ import com.notfound.logistics.hub.domain.exception.hub.HubErrorCode;
 import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
 import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.domain.model.stock.Stock;
-import com.notfound.logistics.hub.domain.model.stock.StockRestoration;
 import com.notfound.logistics.hub.domain.repository.hub.HubRepository;
 import com.notfound.logistics.hub.domain.repository.stock.StockRepository;
-import com.notfound.logistics.hub.domain.repository.stock.StockRestorationRepository;
 import com.notfound.logistics.hub.infrastructure.client.CompanyProductClient;
 import com.notfound.logistics.hub.infrastructure.client.ProductLookupException;
 import feign.FeignException;
@@ -25,8 +23,8 @@ public class StockCommandService {
 
   private final StockRepository stockRepository;
   private final HubRepository hubRepository;
-  private final StockRestorationRepository restorations;
   private final CompanyProductClient products;
+  private final StockMovementTransactions movements;
 
   @Transactional
   @PreAuthorize("hasRole('MASTER')")
@@ -73,41 +71,20 @@ public class StockCommandService {
     return StockResult.from(stock);
   }
 
-  @Transactional
   @PreAuthorize("hasAuthority('SERVICE_ORDERS')")
-  public StockResult deduct(UUID hubId, UUID productId, long quantity) {
-    Stock stock =
-        stockRepository
-            .findLockedByHubIdAndProductId(hubId, productId)
-            .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
-
-    stock.deduct(quantity);
-
-    return StockResult.from(stock);
+  public StockResult deduct(UUID orderId, UUID hubId, UUID productId, long quantity) {
+    // 확정 거절 기록이 롤백되지 않도록 트랜잭션 커밋 후 예외로 변환한다.
+    var result = movements.deduct(orderId, hubId, productId, quantity);
+    if (result.getFailureCode() != null) throw new StockBusinessException(result.getFailureCode());
+    return new StockResult(
+        result.getStockId(),
+        result.getHubId(),
+        result.getProductId(),
+        result.getRemainingQuantity());
   }
 
-  @Transactional
   @PreAuthorize("hasAuthority('SERVICE_ORDERS')")
   public StockResult restore(UUID orderId, UUID hubId, UUID productId, long quantity) {
-    restorations.lockOrder(orderId);
-    var previous = restorations.findById(orderId);
-    if (previous.isPresent()) {
-      var receipt = previous.get();
-      receipt.requireSameRequest(hubId, productId, quantity);
-      return new StockResult(
-          receipt.getStockId(),
-          receipt.getHubId(),
-          receipt.getProductId(),
-          receipt.getRemainingQuantity());
-    }
-    Stock stock =
-        stockRepository
-            .findLockedByHubIdAndProductId(hubId, productId)
-            .orElseThrow(() -> new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
-
-    stock.restore(quantity);
-    restorations.saveAndFlush(StockRestoration.completed(orderId, stock, quantity));
-
-    return StockResult.from(stock);
+    return movements.restore(orderId, hubId, productId, quantity);
   }
 }

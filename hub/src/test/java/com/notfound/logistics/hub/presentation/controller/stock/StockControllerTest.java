@@ -327,7 +327,7 @@ class StockControllerTest {
   void deductStockReturnsCurrentStockInOrdersResponseFormat() throws Exception {
     UUID orderId = UUID.randomUUID();
 
-    when(command.deduct(hubId, productId, 10))
+    when(command.deduct(orderId, hubId, productId, 10))
         .thenReturn(new StockResult(stockId, hubId, productId, 90));
 
     String body =
@@ -354,14 +354,14 @@ class StockControllerTest {
         .andExpect(jsonPath("$.data.stock_id").doesNotExist())
         .andExpect(jsonPath("$.data.state").doesNotExist());
 
-    verify(command).deduct(hubId, productId, 10);
+    verify(command).deduct(orderId, hubId, productId, 10);
   }
 
   @Test
   void deductStockReturnsConflictWhenInsufficient() throws Exception {
     UUID orderId = UUID.randomUUID();
 
-    when(command.deduct(hubId, productId, 100))
+    when(command.deduct(orderId, hubId, productId, 100))
         .thenThrow(new StockBusinessException(StockErrorCode.INSUFFICIENT_STOCK));
 
     String body =
@@ -399,7 +399,7 @@ class StockControllerTest {
   void deductStockReturnsNotFound() throws Exception {
     UUID orderId = UUID.randomUUID();
 
-    when(command.deduct(hubId, productId, 10))
+    when(command.deduct(orderId, hubId, productId, 10))
         .thenThrow(new StockBusinessException(StockErrorCode.STOCK_NOT_FOUND));
 
     mvc.perform(
@@ -536,7 +536,7 @@ class StockControllerTest {
   void deductStockAcceptsMaxLongQuantity() throws Exception {
     UUID orderId = UUID.randomUUID();
 
-    when(command.deduct(hubId, productId, Long.MAX_VALUE))
+    when(command.deduct(orderId, hubId, productId, Long.MAX_VALUE))
         .thenReturn(new StockResult(stockId, hubId, productId, 0));
 
     mvc.perform(
@@ -546,7 +546,7 @@ class StockControllerTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.quantity").value(0));
 
-    verify(command).deduct(hubId, productId, Long.MAX_VALUE);
+    verify(command).deduct(orderId, hubId, productId, Long.MAX_VALUE);
   }
 
   @Test

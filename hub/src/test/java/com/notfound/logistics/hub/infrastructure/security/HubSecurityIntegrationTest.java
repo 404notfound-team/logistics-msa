@@ -308,7 +308,8 @@ class HubSecurityIntegrationTest {
           case "delivery" -> HubSecurityTestTokens.DELIVERY;
           default -> HubSecurityTestTokens.ORDERS;
         };
-    when(commands.deduct(UUID.fromString(HUB), UUID.fromString(PRODUCT), 1))
+    when(commands.deduct(
+            any(UUID.class), eq(UUID.fromString(HUB)), eq(UUID.fromString(PRODUCT)), eq(1L)))
         .thenReturn(
             new StockResult(UUID.randomUUID(), UUID.fromString(HUB), UUID.fromString(PRODUCT), 9));
     var request =
@@ -422,7 +423,8 @@ class HubSecurityIntegrationTest {
   @ParameterizedTest
   @ValueSource(strings = {"absent", "expired", "invalid"})
   void serviceAuthenticationAllowsRecoveryWithoutAValidUserJwt(String bearer) throws Exception {
-    when(commands.deduct(UUID.fromString(HUB), UUID.fromString(PRODUCT), 1))
+    when(commands.deduct(
+            any(UUID.class), eq(UUID.fromString(HUB)), eq(UUID.fromString(PRODUCT)), eq(1L)))
         .thenReturn(
             new StockResult(UUID.randomUUID(), UUID.fromString(HUB), UUID.fromString(PRODUCT), 9));
     var request =

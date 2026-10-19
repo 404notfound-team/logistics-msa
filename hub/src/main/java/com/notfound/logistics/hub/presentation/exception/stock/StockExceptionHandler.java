@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -22,6 +23,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice(basePackageClasses = StockController.class)
 public class StockExceptionHandler {
   private static final Logger LOG = LoggerFactory.getLogger(StockExceptionHandler.class);
+
+  @ExceptionHandler(PessimisticLockingFailureException.class)
+  public ResponseEntity<ApiErrorResponse> handleLockFailure(
+      PessimisticLockingFailureException exception) {
+    var code = CommonErrorCode.SERVICE_UNAVAILABLE;
+    return ResponseEntity.status(code.httpStatus())
+        .body(ApiErrorResponse.of(code, MDC.get("traceId")));
+  }
 
   @ExceptionHandler(ProductLookupException.class)
   public ResponseEntity<ApiErrorResponse> handleProductLookupFailure(
