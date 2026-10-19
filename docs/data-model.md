@@ -24,7 +24,7 @@ Delivery와 구간은 취소·삭제의 일관성을 보호합니다. 업체·�
 
 ### 허브·재고
 
-![허브·재고 ERD — 주문별 차감·복원 기록 반영](diagrams/erd-hub-idempotency.svg)
+![허브·재고 ERD](diagrams/erd-hub.svg)
 
 | 테이블 | 책임·제약 |
 | --- | --- |
@@ -42,7 +42,7 @@ Delivery와 구간은 취소·삭제의 일관성을 보호합니다. 업체·�
 
 ### 주문
 
-![주문 ERD — 재고 계약 버전·복구 필드 반영](diagrams/erd-orders-recovery.svg)
+![주문 ERD](diagrams/erd-order.svg)
 
 주문은 최초 상품·단가·허브·배송 입력을 보존하고, 다음 컬럼으로 처리 재개 정보를 저장합니다.
 
