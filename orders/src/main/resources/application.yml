@@ -74,6 +74,7 @@ orders:
     company-url: "${ORDERS_COMPANY_URL:}"
     stock-url: "${ORDERS_STOCK_URL:}"
     delivery-url: "${ORDERS_DELIVERY_URL:}"
+    users-url: "${ORDERS_USERS_URL:}"
     service-token: "${ORDERS_SERVICE_TOKEN:}"
   recovery:
     enabled: ${ORDERS_RECOVERY_ENABLED:true}

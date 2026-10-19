@@ -14,6 +14,7 @@ import com.nimbusds.jose.crypto.MACSigner;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
 import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Company;
@@ -155,7 +156,7 @@ public class OrderClientFixture implements AutoCloseable {
                         throw new RemoteFailure(409, "DELIVERY_ALREADY_EXISTS");
                       return shipping.computeIfAbsent(
                           request.orderId(),
-                          id -> new Delivery(UUID.randomUUID(), id, "HUB_WAITING"));
+                          id -> new Delivery(UUID.randomUUID(), id, "HUB_WAITING", null));
                     }));
     when(deliveries.cancel(any()))
         .thenAnswer(
@@ -168,7 +169,11 @@ public class OrderClientFixture implements AutoCloseable {
                       if (!List.of("HUB_WAITING", "CANCELLED").contains(previous.status()))
                         throw new RemoteFailure(409, "DELIVERY_ALREADY_STARTED");
                       Delivery cancelled =
-                          new Delivery(previous.deliveryId(), previous.orderId(), "CANCELLED");
+                          new Delivery(
+                              previous.deliveryId(),
+                              previous.orderId(),
+                              "CANCELLED",
+                              previous.assigneeId());
                       shipping.put(previous.orderId(), cancelled);
                       return cancelled;
                     }));
@@ -193,7 +198,7 @@ public class OrderClientFixture implements AutoCloseable {
                     "slack",
                     UUID.class,
                     () -> {
-                      UUID id = call.getArgument(0);
+                      UUID id = call.<Order>getArgument(0).getId();
                       notices.add(id);
                       return id;
                     });
@@ -313,7 +318,10 @@ public class OrderClientFixture implements AutoCloseable {
       case "delivery_status" -> {
         UUID id = UUID.fromString(values.get("order_id").toString());
         Delivery previous = shipping.get(id);
-        shipping.put(id, new Delivery(previous.deliveryId(), id, (String) values.get("status")));
+        shipping.put(
+            id,
+            new Delivery(
+                previous.deliveryId(), id, (String) values.get("status"), previous.assigneeId()));
       }
       default -> throw new IllegalArgumentException("Unknown test action");
     }
@@ -322,7 +330,9 @@ public class OrderClientFixture implements AutoCloseable {
   public synchronized int depart(UUID id) {
     Delivery previous = byId(id);
     if (!previous.status().equals("HUB_WAITING")) return 409;
-    shipping.put(previous.orderId(), new Delivery(id, previous.orderId(), "HUB_MOVING"));
+    shipping.put(
+        previous.orderId(),
+        new Delivery(id, previous.orderId(), "HUB_MOVING", previous.assigneeId()));
     return 200;
   }
 

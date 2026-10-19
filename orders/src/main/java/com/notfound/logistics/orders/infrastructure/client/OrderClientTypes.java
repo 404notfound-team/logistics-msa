@@ -25,5 +25,5 @@ public final class OrderClientTypes {
       String address,
       String recipientName) {}
 
-  public record Delivery(UUID deliveryId, UUID orderId, String status) {}
+  public record Delivery(UUID deliveryId, UUID orderId, String status, UUID assigneeId) {}
 }

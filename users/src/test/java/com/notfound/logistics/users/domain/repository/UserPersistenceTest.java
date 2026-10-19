@@ -124,6 +124,28 @@ class UserPersistenceTest {
   }
 
   @Test
+  void notificationIdentitiesAreLimitedDeduplicatedAndExcludeDeletedUsers() {
+    User buyer = SignupAuditScope.run(() -> userRepository.save(user("buyer01")));
+    User driver = SignupAuditScope.run(() -> userRepository.save(user("driver01")));
+    SignupAuditScope.run(() -> userRepository.save(user("other01")));
+    assertThat(userService.getIdentities("buyer01", driver.getId()))
+        .extracting(identity -> identity.username())
+        .containsExactly("buyer01", "driver01");
+    assertThat(userService.getIdentities("buyer01", buyer.getId())).hasSize(1);
+    authenticateAs("master01");
+    transaction.executeWithoutResult(
+        status ->
+            userRepository
+                .findById(driver.getId())
+                .orElseThrow()
+                .markDeleted("master01", Instant.now()));
+    assertThat(userService.getIdentities("buyer01", driver.getId()))
+        .extracting(identity -> identity.username())
+        .containsExactly("buyer01");
+    assertThat(userService.getIdentities("missing", driver.getId())).isEmpty();
+  }
+
+  @Test
   void writeWithoutActorFails() {
     assertThatThrownBy(() -> userRepository.save(user("user01")))
         .hasRootCauseInstanceOf(IllegalStateException.class);

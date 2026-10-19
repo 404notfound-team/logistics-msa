@@ -7,6 +7,7 @@ import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
 import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Deduction;
 import com.notfound.logistics.orders.infrastructure.client.StockClient;
+import com.notfound.logistics.orders.infrastructure.client.UserIdentityClient;
 import feign.Client;
 import feign.Request;
 import feign.Response;
@@ -31,7 +32,7 @@ class FeignTimeoutConfigurationTest {
   }
 
   @Test
-  void businessTimeoutOverridesReachAllThreeActualFeignClients() {
+  void businessTimeoutOverridesReachAllBusinessFeignClients() {
     verifyTimeouts(
         125, 350, "orders.clients.connect-timeout-ms=125", "orders.clients.read-timeout-ms=350");
   }
@@ -48,7 +49,9 @@ class FeignTimeoutConfigurationTest {
               .body(
                   request.url().endsWith("/internal/infra/ping")
                       ? "{\"status\":\"ok\"}"
-                      : "{\"data\":{}}",
+                      : request.url().contains("/internal/users/identities")
+                          ? "{\"data\":[]}"
+                          : "{\"data\":{}}",
                   java.nio.charset.StandardCharsets.UTF_8)
               .build();
         };
@@ -67,6 +70,7 @@ class FeignTimeoutConfigurationTest {
             "orders.clients.company-url=http://company.test",
             "orders.clients.stock-url=http://hub.test",
             "orders.clients.delivery-url=http://delivery.test",
+            "orders.clients.users-url=http://users.test",
             "spring.cloud.openfeign.client.config.infraHubProbe.url=http://hub.test")
         .withPropertyValues(properties)
         .run(
@@ -81,9 +85,10 @@ class FeignTimeoutConfigurationTest {
                         context.getBean(CompanyClient.class).company(id);
                         context.getBean(StockClient.class).deduct(new Deduction(id, id, id, 3));
                         context.getBean(DeliveryClient.class).byOrder(id);
+                        context.getBean(UserIdentityClient.class).identities("original-user", id);
                       });
               assertThat(requests)
-                  .hasSize(3)
+                  .hasSize(4)
                   .allSatisfy(
                       options -> {
                         assertThat(options.connectTimeoutMillis()).isEqualTo(connect);
@@ -104,6 +109,7 @@ class FeignTimeoutConfigurationTest {
         CompanyClient.class,
         StockClient.class,
         DeliveryClient.class,
+        UserIdentityClient.class,
         HubProbeClient.class
       })
   static class Clients {}

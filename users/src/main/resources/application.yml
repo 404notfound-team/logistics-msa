@@ -15,6 +15,8 @@ users:
   internal-auth:
     # Users가 다른 서비스의 내부 API를 호출할 때 보내는 X-Service-Token 값입니다.
     service-token: ${USERS_SERVICE_TOKEN}
+    # 설정된 경우 Orders의 알림용 이름 조회만 허용합니다.
+    orders-token: ${ORDERS_SERVICE_TOKEN:}
     # Users 내부 API를 호출할 수 있는 서비스와 허용 API입니다.
     clients:
       gateway:

@@ -8,7 +8,7 @@ import feign.codec.ErrorDecoder;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 
-// Selected only by the three business clients, never by the local infrastructure probe.
+// Selected only by business clients, never by the local infrastructure probe.
 public class OrderFeignConfiguration {
   @Bean
   Retryer orderRetryer() {

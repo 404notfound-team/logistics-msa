@@ -26,6 +26,7 @@ Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에�
 | 수신자 | 메서드·경로 (`/internal` 이하) | 허용 발신자 |
 | --- | --- | --- |
 | Users | `GET /users/{id}/authorization` | Gateway |
+| Users | `GET /users/identities?username=&user_id=` | Orders |
 | Company | `GET /companies?name=` | Users |
 | Company | `GET /companies/{id}` | Orders, Users |
 | Company | `GET /products/{id}` | Orders, Hub |
@@ -39,6 +40,10 @@ Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에�
 
 배송 생성은 최초 201·같은 주문/내용 200·다른 내용 409, 취소는 최초·반복 200·출발 후 409입니다.
 배송 삭제는 최초·반복 204·진행 중 409, 주문별 배송 조회는 없거나 삭제됐으면 404입니다.
+배송 생성·주문별 조회·취소의 응답은 `{delivery_id, order_id, status, assignee_id}`이며 미배정은 `assignee_id: null`입니다.
+Users의 알림용 identities 조회는 주문자 username과 선택적인 담당자 user_id 두 명으로 제한하며,
+활성 사용자의 `{id, username, name}` 목록만 반환합니다. 동일 사용자는 한 번만, 없거나 삭제된 사용자는 제외합니다.
+Users에 `ORDERS_SERVICE_TOKEN`이 설정된 경우에만 Orders의 해당 조회를 허용합니다(Compose에는 기본 연결).
 차감의 `order_id`는 추적용이며 멱등 키가 아닙니다. 복원은 `{order_id, hub_id, product_id, quantity}`를 받아
 200·`data: {id, hub_id, product_id, quantity}`를 반환합니다. 응답 quantity는 최초 복원 직후 잔량입니다.
 대상 재고 없음은 404 `STOCK_NOT_FOUND`, 수량 초과는 409 `STOCK_QUANTITY_OVERFLOW`입니다.

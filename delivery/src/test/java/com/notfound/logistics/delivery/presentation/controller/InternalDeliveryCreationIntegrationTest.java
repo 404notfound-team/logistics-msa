@@ -134,7 +134,8 @@ class InternalDeliveryCreationIntegrationTest {
     String body =
         create(request(orderId, SEOUL_HUB, BUSAN_HUB, "부산시 해운대구 1", "홍길동"))
             .andExpect(status().isCreated())
-            .andExpect(jsonPath("$.data.*", hasSize(3)))
+            .andExpect(jsonPath("$.data.*", hasSize(4)))
+            .andExpect(jsonPath("$.data.assignee_id").isEmpty())
             .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
             .andExpect(jsonPath("$.data.status").value("HUB_WAITING"))
             .andReturn()
@@ -201,7 +202,7 @@ class InternalDeliveryCreationIntegrationTest {
     String second =
         create(request)
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.data.*", hasSize(3)))
+            .andExpect(jsonPath("$.data.*", hasSize(4)))
             .andReturn()
             .getResponse()
             .getContentAsString();
