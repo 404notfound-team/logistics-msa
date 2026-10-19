@@ -76,6 +76,46 @@ class DeliveryConcurrentModificationTest {
   }
 
   @Test
+  void aFailedTransactionRollsBackBothDeliveryAndRouteProgress() {
+    UUID deliveryId = insertHubWaitingDelivery();
+    jdbc.update(
+        """
+        INSERT INTO p_delivery_routes (
+            delivery_route_id, delivery_id, sequence, departure_hub_id, arrival_hub_id,
+            expected_distance_km, expected_duration_seconds, status,
+            created_at, created_by, updated_at, updated_by)
+        VALUES (?, ?, 1, ?, ?, 10, 600, 'WAITING', ?, 'tester', ?, 'tester')
+        """,
+        UUID.randomUUID(),
+        deliveryId,
+        UUID.randomUUID(),
+        UUID.randomUUID(),
+        Timestamp.from(BASE),
+        Timestamp.from(BASE));
+    var transaction = new TransactionTemplate(transactionManager);
+
+    assertThatThrownBy(
+            () ->
+                transaction.executeWithoutResult(
+                    status -> {
+                      service.modify(deliveryId, DeliveryStatus.HUB_MOVING, null, MASTER);
+                      throw new IllegalStateException("Abort after both states changed");
+                    }))
+        .isInstanceOf(IllegalStateException.class);
+
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM p_deliveries WHERE delivery_id=?", String.class, deliveryId))
+        .isEqualTo("HUB_WAITING");
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM p_delivery_routes WHERE delivery_id=?",
+                String.class,
+                deliveryId))
+        .isEqualTo("WAITING");
+  }
+
+  @Test
   void assignmentValidatedAgainstAStaleStatusFailsWhenTheStatusChangeCommitsFirst() {
     UUID deliveryId = insertHubWaitingDelivery();
     TransactionTemplate assignment = new TransactionTemplate(transactionManager);
