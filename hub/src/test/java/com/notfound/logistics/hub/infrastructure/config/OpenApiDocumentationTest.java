@@ -1,7 +1,9 @@
 package com.notfound.logistics.hub.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -10,10 +12,14 @@ import com.notfound.logistics.hub.application.service.hub.HubQueryService;
 import com.notfound.logistics.hub.application.service.hubroute.HubRouteQueryService;
 import com.notfound.logistics.hub.application.service.stock.StockCommandService;
 import com.notfound.logistics.hub.application.service.stock.StockQueryService;
+import com.notfound.logistics.hub.domain.exception.stock.StockBusinessException;
+import com.notfound.logistics.hub.domain.exception.stock.StockErrorCode;
 import com.notfound.logistics.hub.presentation.controller.hub.HubController;
 import com.notfound.logistics.hub.presentation.controller.hubroute.HubRouteController;
 import com.notfound.logistics.hub.presentation.controller.stock.StockController;
 import com.notfound.logistics.hub.support.HubSecurityTest;
+import com.notfound.logistics.hub.support.HubSecurityTestTokens;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springdoc.core.configuration.SpringDocConfiguration;
 import org.springdoc.core.configuration.SpringDocSecurityConfiguration;
@@ -23,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -72,6 +79,41 @@ class OpenApiDocumentationTest {
         .isTrue();
     assertThat(responses(doc, "/api/hubs/{hubId}/stocks", "get").has("404")).isFalse();
     assertThat(doc.path("paths").toString()).doesNotContain("/internal/");
+  }
+
+  @Test
+  void creatingStockForAMissingProductMatchesTheDocumented404Example() throws Exception {
+    var hubId = UUID.randomUUID();
+    var productId = UUID.randomUUID();
+    when(commands.create(hubId, productId, 1))
+        .thenThrow(new StockBusinessException(StockErrorCode.PRODUCT_NOT_FOUND));
+
+    var result =
+        mvc.perform(
+                post("/api/stocks")
+                    .header(
+                        "Authorization",
+                        "Bearer " + HubSecurityTestTokens.token("master", "MASTER"))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(
+                        "{\"hub_id\":\""
+                            + hubId
+                            + "\",\"product_id\":\""
+                            + productId
+                            + "\",\"quantity\":1}"))
+            .andExpect(status().isNotFound())
+            .andReturn();
+    var examples =
+        responses(document(), "/api/stocks", "post")
+            .path("404")
+            .path("content")
+            .path("application/json")
+            .path("examples");
+    assertThat(examples.has("HUB_NOT_FOUND")).isTrue();
+    assertThat(examples.path("PRODUCT_NOT_FOUND").path("value").path("code").asText())
+        .isEqualTo("PRODUCT_NOT_FOUND");
+    assertThat(mapper.readTree(result.getResponse().getContentAsString()))
+        .isEqualTo(examples.path("PRODUCT_NOT_FOUND").path("value"));
   }
 
   private JsonNode document() throws Exception {

@@ -100,7 +100,7 @@ public class StockController {
                 })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "허브 없음",
+        description = "허브 또는 상품을 찾을 수 없음 (HUB_NOT_FOUND, PRODUCT_NOT_FOUND)",
         content =
             @Content(
                 mediaType = "application/json",
@@ -109,7 +109,11 @@ public class StockController {
                   @ExampleObject(
                       name = "HUB_NOT_FOUND",
                       value =
-                          "{\"code\": \"HUB_NOT_FOUND\", \"message\": \"허브를 찾을 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")
+                          "{\"code\": \"HUB_NOT_FOUND\", \"message\": \"허브를 찾을 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}"),
+                  @ExampleObject(
+                      name = "PRODUCT_NOT_FOUND",
+                      value =
+                          "{\"code\": \"PRODUCT_NOT_FOUND\", \"message\": \"상품을 찾을 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")
                 })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "409",
