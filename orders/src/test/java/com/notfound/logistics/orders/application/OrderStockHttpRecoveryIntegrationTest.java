@@ -121,6 +121,24 @@ class OrderStockHttpRecoveryIntegrationTest {
     assertThat(hubState().path("quantity").asInt()).isEqualTo(100);
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"PROCESSING", "CANCELLING", "RECOVERY_REQUIRED"})
+  void missingPhaseIsQuarantinedBeforeAnyFurtherRealFeignStockCall(String status) throws Exception {
+    control("hub", Map.of("mode", "before-commit-error"));
+    UUID id = createPending();
+    jdbc.update("update p_orders set status = ?, recovery_phase = null where id = ?", status, id);
+    JsonNode before = hubState();
+    service.recover();
+    var blocked = repository.findById(id).orElseThrow();
+    assertThat(blocked.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
+    assertThat(blocked.isRecoveryBlocked()).isTrue();
+    assertThat(blocked.getRecoveryPhase()).isNull();
+    assertThat(blocked.getLastError()).isEqualTo("INCONSISTENT_RECOVERY_PHASE");
+    assertThat(blocked.getUpdatedBy()).isEqualTo("alice");
+    service.recover();
+    assertThat(hubState()).isEqualTo(before);
+  }
+
   @Test
   void definiteDeliveryRejectionCompensatesThroughTheRealStockClient() throws Exception {
     control("delivery", Map.of("reject", true));

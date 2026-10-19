@@ -150,7 +150,8 @@ public class OrderService {
             command.deliveryAddress(),
             command.recipientName(),
             command.requestNotes())) throw business(OrderErrorCode.IDEMPOTENCY_KEY_REUSED);
-    return operation(order, inProgress(order) ? Outcome.IN_PROGRESS : Outcome.RETURNED, null);
+    return operation(
+        order, order.isRecoveryPending() ? Outcome.IN_PROGRESS : Outcome.RETURNED, null);
   }
 
   private OrderOperationResult processCreate(UUID id) {
@@ -230,7 +231,7 @@ public class OrderService {
     if (order.getStatus() == OrderStatus.CANCELLED) return operation(order, Outcome.RETURNED, null);
     if (order.getStatus() == OrderStatus.FAILED)
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
-    if (inProgress(order) && !order.isCancelling())
+    if (order.isRecoveryPending() && !order.isCancelling())
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
     Operation running = active.begin(id, Operation.CANCEL);
     while (running == Operation.RECOVER) {
@@ -252,7 +253,7 @@ public class OrderService {
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
     }
     try {
-      if (inProgress(order)) {
+      if (order.isRecoveryPending()) {
         Order current = load(id);
         if (current.getStatus() == OrderStatus.CANCELLED)
           return operation(current, Outcome.RETURNED, null);
@@ -448,9 +449,23 @@ public class OrderService {
       UUID id = candidate.getId();
       if (active.begin(id, Operation.RECOVER) != null) continue;
       try {
-        Order current = load(id);
+        Order current = repository.findById(id).orElse(null);
+        if (current == null || !current.isRecoveryPending() || current.isRecoveryBlocked())
+          continue;
+        if (!current.hasConsistentRecoveryPhase()) {
+          transactions
+              .blockInconsistentRecovery(id)
+              .ifPresent(
+                  problem ->
+                      org.slf4j.LoggerFactory.getLogger(OrderService.class)
+                          .warn(
+                              "Order recovery blocked; orderId={}, status={}, phase={}, code=INCONSISTENT_RECOVERY_PHASE",
+                              id,
+                              problem.status(),
+                              problem.phase()));
+          continue;
+        }
         RecoveryPhase phase = current.getRecoveryPhase();
-        if (phase == null) continue;
         // 자동 복구에도 최초 생성자 또는 취소 요청자의 감사 주체를 유지한다.
         String username = current.isCancelling() ? current.getUpdatedBy() : current.getCreatedBy();
         auditor.runAsPersistedUser(
@@ -549,11 +564,6 @@ public class OrderService {
   private OrderOperationResult fail(UUID id, OrderErrorCode code) {
     transactions.change(id, value -> value.fail(code.name()));
     return operation(load(id), Outcome.REJECTED, code);
-  }
-
-  private boolean inProgress(Order order) {
-    return Set.of(OrderStatus.PROCESSING, OrderStatus.CANCELLING, OrderStatus.RECOVERY_REQUIRED)
-        .contains(order.getStatus());
   }
 
   private OrderOperationResult operation(Order order, Outcome outcome, OrderErrorCode error) {
