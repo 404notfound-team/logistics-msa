@@ -81,7 +81,8 @@ class DeliverySecurityIntegrationTest {
 
     then(deliveryCommandService)
         .should()
-        .modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(USER_ID, false));
+        .modify(
+            DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(USER_ID, false, true));
   }
 
   @Test
@@ -96,7 +97,8 @@ class DeliverySecurityIntegrationTest {
 
     then(deliveryCommandService)
         .should()
-        .modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(USER_ID, true));
+        .modify(
+            DELIVERY_ID, DeliveryStatus.HUB_MOVING, null, new DeliveryActor(USER_ID, true, true));
   }
 
   @ParameterizedTest
@@ -135,6 +137,22 @@ class DeliverySecurityIntegrationTest {
         .perform(modifyStatus().header(HttpHeaders.AUTHORIZATION, "Bearer " + forged))
         .andExpect(status().isUnauthorized());
     then(deliveryCommandService).should(never()).modify(any(), any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"missing", "true", "1"})
+  void missingOrNonBooleanStaffClaimCannotBecomeAnUnrestrictedUser(String value) throws Exception {
+    var claims = claims();
+    if (value.equals("missing")) claims.claims(values -> values.remove("is_delivery_staff"));
+    else claims.claim("is_delivery_staff", value);
+    mockMvc
+        .perform(
+            org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get(
+                    "/api/deliveries")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token(claims.build())))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    then(deliveryQueryService).shouldHaveNoInteractions();
   }
 
   private static MockHttpServletRequestBuilder modifyStatus() {

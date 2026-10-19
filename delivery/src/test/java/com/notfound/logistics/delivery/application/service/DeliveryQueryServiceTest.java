@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
+import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
 import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessException;
@@ -29,6 +30,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
 class DeliveryQueryServiceTest {
+  private static final DeliveryActor VIEWER = new DeliveryActor(UUID.randomUUID(), false, false);
   private static final DeliverySearchCondition NO_CONDITION =
       new DeliverySearchCondition(null, null, null, null, null, null, null);
 
@@ -49,7 +51,7 @@ class DeliveryQueryServiceTest {
                 List.of(withRoutes.getId(), withoutRoutes.getId())))
         .willReturn(List.of(first, second));
 
-    Page<DeliveryResult> result = service.search(NO_CONDITION, pageable);
+    Page<DeliveryResult> result = service.search(NO_CONDITION, pageable, VIEWER);
 
     assertThat(result.getContent()).hasSize(2);
     assertThat(result.getContent().get(0).routes())
@@ -63,7 +65,7 @@ class DeliveryQueryServiceTest {
     Pageable pageable = PageRequest.of(0, 20);
     given(deliveryRepository.search(NO_CONDITION, pageable)).willReturn(Page.empty(pageable));
 
-    assertThat(service.search(NO_CONDITION, pageable).getContent()).isEmpty();
+    assertThat(service.search(NO_CONDITION, pageable, VIEWER).getContent()).isEmpty();
     then(deliveryRepository).should(never()).findRoutesByDeliveryIds(any());
   }
 
@@ -79,7 +81,7 @@ class DeliveryQueryServiceTest {
     given(deliveryRepository.findById(deliveryId)).willReturn(Optional.of(delivery));
     given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of(route));
 
-    DeliveryResult result = service.searchDetail(deliveryId);
+    DeliveryResult result = service.searchDetail(deliveryId, VIEWER);
 
     assertThat(result.deliveryId()).isEqualTo(deliveryId);
     assertThat(result.orderId()).isEqualTo(orderId);
@@ -93,7 +95,7 @@ class DeliveryQueryServiceTest {
     UUID deliveryId = UUID.randomUUID();
     given(deliveryRepository.findById(deliveryId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service.searchDetail(deliveryId))
+    assertThatThrownBy(() -> service.searchDetail(deliveryId, VIEWER))
         .isInstanceOf(DeliveryBusinessException.class)
         .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
         .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
@@ -108,7 +110,7 @@ class DeliveryQueryServiceTest {
     given(deliveryRepository.findById(deliveryId)).willReturn(Optional.of(delivery));
     given(deliveryRepository.findRoutesByDeliveryId(deliveryId)).willReturn(List.of(first, second));
 
-    assertThat(service.searchRoutes(deliveryId))
+    assertThat(service.searchRoutes(deliveryId, VIEWER))
         .containsExactly(DeliveryRouteResult.from(first), DeliveryRouteResult.from(second));
   }
 
@@ -117,7 +119,7 @@ class DeliveryQueryServiceTest {
     UUID deliveryId = UUID.randomUUID();
     given(deliveryRepository.findById(deliveryId)).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> service.searchRoutes(deliveryId))
+    assertThatThrownBy(() -> service.searchRoutes(deliveryId, VIEWER))
         .isInstanceOf(DeliveryBusinessException.class)
         .extracting(exception -> ((DeliveryBusinessException) exception).getErrorCode())
         .isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);

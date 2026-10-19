@@ -17,7 +17,7 @@ record DeliveryApiErrorCode(DeliveryErrorCode errorCode) implements ApiErrorCode
   @Override
   public int httpStatus() {
     return switch (errorCode) {
-      case STATUS_CHANGE_FORBIDDEN, ASSIGNMENT_FORBIDDEN -> 403;
+      case STATUS_CHANGE_FORBIDDEN, ASSIGNMENT_FORBIDDEN, DELIVERY_READ_FORBIDDEN -> 403;
       case DELIVERY_NOT_FOUND, HUB_NOT_FOUND, HUB_ROUTE_NOT_FOUND -> 404;
       case ASSIGNMENT_NOT_ALLOWED,
           INVALID_STATUS_TRANSITION,
