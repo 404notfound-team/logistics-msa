@@ -14,7 +14,8 @@ public record ProductUpdateRequest(
         String name,
     @Schema(description = "상품 설명 (최대 1000자)", example = "저소음 스위치를 적용한 무선 키보드") @Size(max = 1000)
         String description,
-    @Schema(description = "가격 (원 단위, 0 이상)", example = "39000") @PositiveOrZero Long price) {
+    @Schema(description = "가격 (원 단위 정수, 0 이상, 소수·지수 표기 불가)", example = "39000") @PositiveOrZero
+        Long price) {
 
   // null은 "변경 안 함"이지만, 상품명을 보냈다면 공백만으로 이루어질 수 없다.
   private static final String NOT_BLANK = "(?s).*\\S.*";

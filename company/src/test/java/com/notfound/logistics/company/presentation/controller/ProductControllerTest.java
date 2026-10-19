@@ -26,6 +26,8 @@ import com.notfound.logistics.company.support.CompanySecurityTest;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.domain.PageImpl;
@@ -87,6 +89,39 @@ class ProductControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.code").value("INVALID_REQUEST"))
         .andExpect(jsonPath("$.field_errors[0].field").value("price"));
+
+    verify(companyService, never()).createProduct(any(), any(), any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(longs = {0, Long.MAX_VALUE})
+  void createProductAcceptsIntegerPriceBoundaries(long price) throws Exception {
+    Product product = savedProduct();
+    ReflectionTestUtils.setField(product, "price", price);
+    given(companyService.createProduct(any(), any(), any(), any(), any())).willReturn(product);
+
+    mvc.perform(
+            post(PRODUCTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"상품\",\"price\":" + price + "}"))
+        .andExpect(status().isCreated())
+        .andExpect(jsonPath("$.data.price").value(price));
+
+    verify(companyService).createProduct(any(), eq(COMPANY_ID), eq("상품"), eq(null), eq(price));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"1000.9", "-0.5", "1000.0", "1e3", "9223372036854775808"})
+  void createProductRejectsFractionalOrOutOfRangePrice(String price) throws Exception {
+    given(companyService.createProduct(any(), any(), any(), any(), any()))
+        .willReturn(savedProduct());
+
+    mvc.perform(
+            post(PRODUCTS)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\":\"상품\",\"price\":" + price + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
 
     verify(companyService, never()).createProduct(any(), any(), any(), any(), any());
   }
@@ -154,6 +189,57 @@ class ProductControllerTest {
             eq(null),
             eq(null),
             eq(39000L));
+  }
+
+  @ParameterizedTest
+  @ValueSource(longs = {0, Long.MAX_VALUE})
+  void updateProductAcceptsIntegerPriceBoundaries(long price) throws Exception {
+    Product product = savedProduct();
+    ReflectionTestUtils.setField(product, "price", price);
+    given(companyService.updateProduct(any(), any(), any(), any(), any(), any()))
+        .willReturn(product);
+
+    mvc.perform(
+            patch(PRODUCTS + "/" + PRODUCT_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"price\":" + price + "}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.price").value(price));
+
+    verify(companyService)
+        .updateProduct(any(), eq(COMPANY_ID), eq(PRODUCT_ID), eq(null), eq(null), eq(price));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"1000.9", "-0.5", "1000.0", "1e3", "-1", "9223372036854775808"})
+  void updateProductRejectsInvalidPrice(String price) throws Exception {
+    given(companyService.updateProduct(any(), any(), any(), any(), any(), any()))
+        .willReturn(savedProduct());
+
+    mvc.perform(
+            patch(PRODUCTS + "/" + PRODUCT_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"price\":" + price + "}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+
+    verify(companyService, never()).updateProduct(any(), any(), any(), any(), any(), any());
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"{\"name\":\"변경 상품\"}", "{\"name\":\"변경 상품\",\"price\":null}"})
+  void updateProductLeavesMissingOrNullPriceUnchanged(String body) throws Exception {
+    given(companyService.updateProduct(any(), any(), any(), any(), any(), any()))
+        .willReturn(savedProduct());
+
+    mvc.perform(
+            patch(PRODUCTS + "/" + PRODUCT_ID)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body))
+        .andExpect(status().isOk());
+
+    verify(companyService)
+        .updateProduct(any(), eq(COMPANY_ID), eq(PRODUCT_ID), eq("변경 상품"), eq(null), eq(null));
   }
 
   @Test

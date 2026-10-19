@@ -40,6 +40,9 @@ spring:
         default_schema: company
   jackson:
     property-naming-strategy: SNAKE_CASE
+    deserialization:
+      # @Valid가 실행되기 전에 소수 가격이 정수로 잘리지 않도록 거절한다.
+      accept-float-as-int: false
   cloud:
     openfeign:
       client:
