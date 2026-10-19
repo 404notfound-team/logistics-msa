@@ -103,6 +103,20 @@ public class DeliveryRoute extends AuditEntity {
     this.assigneeId = assigneeId;
   }
 
+  /** 첫 미완료 구간의 이동을 시작한다. 이미 이동·도착·취소된 구간은 보존한다. */
+  public void start() {
+    if (status == DeliveryRouteStatus.WAITING) {
+      status = DeliveryRouteStatus.IN_TRANSIT;
+    }
+  }
+
+  /** 목적지 허브 도착이 확인되면 남은 이동 구간을 완료한다. 취소된 구간은 보존한다. */
+  public void arrive() {
+    if (status == DeliveryRouteStatus.WAITING || status == DeliveryRouteStatus.IN_TRANSIT) {
+      status = DeliveryRouteStatus.ARRIVED;
+    }
+  }
+
   /** 출발 전(WAITING) 구간을 취소한다. 이미 취소된 구간은 그대로 둔다. */
   public void cancel() {
     if (status == DeliveryRouteStatus.WAITING) {

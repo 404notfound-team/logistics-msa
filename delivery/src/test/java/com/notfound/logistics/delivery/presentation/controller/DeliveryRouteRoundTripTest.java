@@ -3,6 +3,7 @@ package com.notfound.logistics.delivery.presentation.controller;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -16,9 +17,12 @@ import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
@@ -57,6 +61,71 @@ class DeliveryRouteRoundTripTest {
     registry.add("spring.datasource.url", () -> DATABASE.getJdbcUrl() + "&currentSchema=delivery");
     registry.add("spring.datasource.username", DATABASE::getUsername);
     registry.add("spring.datasource.password", DATABASE::getPassword);
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {0, 1, 2})
+  void deliveryProgressIsPersistedWithItsRoutesAndCompletionPreservesArrival(int routeCount)
+      throws Exception {
+    UUID deliveryId = insertDelivery(DeliveryStatus.HUB_WAITING);
+    for (int sequence = 1; sequence <= routeCount; sequence++) {
+      insertRoute(
+          deliveryId, sequence, DeliveryRouteStatus.WAITING, BigDecimal.TEN, null, 600L, null);
+    }
+    for (DeliveryStatus next :
+        new DeliveryStatus[] {
+          DeliveryStatus.HUB_MOVING,
+          DeliveryStatus.DESTINATION_HUB_ARRIVED,
+          DeliveryStatus.COMPANY_MOVING,
+          DeliveryStatus.DELIVERED
+        }) {
+      mockMvc
+          .perform(
+              patch("/api/deliveries/{id}", deliveryId)
+                  .with(
+                      jwt()
+                          .jwt(
+                              token ->
+                                  token
+                                      .subject("tester")
+                                      .claim("role", "MASTER")
+                                      .claim("user_id", UUID.randomUUID().toString())))
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"status\":\"" + next + "\"}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.status").value(next.name()));
+      var statuses =
+          jdbc.queryForList(
+              "SELECT status FROM p_delivery_routes WHERE delivery_id=? ORDER BY sequence",
+              String.class,
+              deliveryId);
+      assertThat(statuses).hasSize(routeCount);
+      if (next == DeliveryStatus.HUB_MOVING) {
+        if (routeCount > 0) assertThat(statuses.getFirst()).isEqualTo("IN_TRANSIT");
+        assertThat(statuses.stream().skip(1)).allMatch("WAITING"::equals);
+      } else {
+        assertThat(statuses).allMatch("ARRIVED"::equals);
+      }
+    }
+    mockMvc
+        .perform(
+            get("/api/deliveries/{id}/routes", deliveryId)
+                .with(
+                    jwt()
+                        .jwt(
+                            token ->
+                                token
+                                    .subject("tester")
+                                    .claim("user_id", "00000000-0000-0000-0000-000000000001")
+                                    .claim("role", "USER")
+                                    .claim("is_delivery_staff", false))))
+        .andExpect(status().isOk());
+    assertThat(
+            jdbc.queryForList(
+                "SELECT status FROM p_delivery_routes WHERE delivery_id=?",
+                String.class,
+                deliveryId))
+        .allMatch("ARRIVED"::equals);
   }
 
   @Test

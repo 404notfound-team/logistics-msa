@@ -6,6 +6,7 @@ import com.notfound.logistics.delivery.domain.exception.DeliveryBusinessExceptio
 import com.notfound.logistics.delivery.domain.exception.DeliveryErrorCode;
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
+import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
 import java.time.Instant;
@@ -51,10 +52,27 @@ public class DeliveryCommandService {
     if (assigneeId != null) {
       delivery.assign(assigneeId);
     }
+    DeliveryStatus previous = delivery.getStatus();
     if (status != null) {
       delivery.changeStatus(status);
     }
-    return DeliveryResult.of(delivery, deliveryRepository.findRoutesByDeliveryId(deliveryId));
+    List<DeliveryRoute> routes = deliveryRepository.findRoutesByDeliveryId(deliveryId);
+    if (status != null && status != previous) {
+      switch (status) {
+        case HUB_MOVING ->
+            routes.stream()
+                .filter(
+                    route ->
+                        route.getStatus() != DeliveryRouteStatus.ARRIVED
+                            && route.getStatus() != DeliveryRouteStatus.CANCELLED)
+                .findFirst()
+                .ifPresent(DeliveryRoute::start);
+        case DESTINATION_HUB_ARRIVED, COMPANY_MOVING, DELIVERED ->
+            routes.forEach(DeliveryRoute::arrive);
+        default -> {}
+      }
+    }
+    return DeliveryResult.of(delivery, routes);
   }
 
   // ---------------------------------------------------------------------------------------------
