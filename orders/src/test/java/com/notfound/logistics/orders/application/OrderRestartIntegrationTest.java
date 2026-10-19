@@ -107,7 +107,7 @@ class OrderRestartIntegrationTest {
         var order = repository.findById(id).orElseThrow();
         assertThat(order.getStatus()).isEqualTo(OrderStatus.CONFIRMED);
         assertThat(order.getProductName()).isEqualTo("테스트 상품");
-        assertThat(order.getUnitPrice()).isEqualByComparingTo("10000.00");
+        assertThat(order.getUnitPrice()).isEqualTo(10000L);
         assertThat(order.getDepartureHubId().toString()).endsWith("000000000002");
         assertThat(order.getCreatedBy()).isEqualTo("alice");
         assertThat(order.getUpdatedBy()).isEqualTo("alice");

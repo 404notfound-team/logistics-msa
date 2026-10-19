@@ -67,3 +67,11 @@ SH
 ```
 
 복원 기록을 지원하는 Hub를 먼저 갱신한 뒤 Orders를 갱신합니다. 비멱등 복원 API를 제공하는 구형 Hub에 새 Orders를 연결하지 않습니다.
+
+## 주문 가격의 정수 전환
+
+Compose는 `local` 프로필의 `ddl-auto: update`를 사용합니다. 새 코드로 Orders를 빌드해 재기동하면
+기존 `numeric(15,2)` 단가도 `bigint`로 자동 변환되며, 별도 SQL을 실행할 필요가 없습니다.
+`10000.00`은 `10000`으로 유지되고 소수 금액은 PostgreSQL의 정수 변환 규칙에 따라 반올림됩니다(`1.49` → `1`, `1.50` → `2`).
+새 DB에는 처음부터 `bigint` 칼럼을 생성합니다. 재기동은 위의 `docker compose up -d --build orders` 명령을 사용합니다.
+`local`을 사용하지 않는 기본 프로필은 계속 스키마를 `validate`합니다.

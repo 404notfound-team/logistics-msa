@@ -3,7 +3,7 @@ package com.notfound.logistics.orders.presentation.dto;
 import com.notfound.logistics.orders.application.dto.OrderResult;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
 import io.swagger.v3.oas.annotations.media.Schema;
-import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -16,9 +16,9 @@ public record OrderDetailResponse(
     UUID supplierCompanyId,
     UUID productId,
     String productName,
-    BigDecimal unitPrice,
+    @Schema(description = "주문 당시 원 단위 정수 가격") long unitPrice,
     long quantity,
-    BigDecimal totalPrice,
+    @Schema(description = "단가 × 수량. 64비트 범위를 넘어도 정확한 정수") BigInteger totalPrice,
     UUID departureHubId,
     UUID destinationHubId,
     String deliveryAddress,
