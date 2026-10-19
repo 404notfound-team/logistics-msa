@@ -87,10 +87,25 @@ class InternalDeliveryLookupIntegrationTest {
 
     lookup(orderId)
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.data.*", hasSize(3)))
+        .andExpect(jsonPath("$.data.*", hasSize(4)))
         .andExpect(jsonPath("$.data.delivery_id").value(deliveryId.toString()))
         .andExpect(jsonPath("$.data.order_id").value(orderId.toString()))
-        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"));
+        .andExpect(jsonPath("$.data.status").value("HUB_MOVING"))
+        .andExpect(jsonPath("$.data.assignee_id").isEmpty());
+  }
+
+  @Test
+  void lookupIncludesTheCurrentAssigneeForRecoveredOrderNotifications() throws Exception {
+    UUID orderId = UUID.randomUUID();
+    UUID deliveryId = insertDelivery(orderId, DeliveryStatus.HUB_MOVING, null);
+    UUID assignee = UUID.randomUUID();
+    jdbc.update(
+        "UPDATE p_deliveries SET delivery_manager_id = ? WHERE delivery_id = ?",
+        assignee,
+        deliveryId);
+    lookup(orderId)
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.assignee_id").value(assignee.toString()));
   }
 
   @ParameterizedTest

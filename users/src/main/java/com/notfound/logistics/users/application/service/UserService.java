@@ -1,6 +1,7 @@
 package com.notfound.logistics.users.application.service;
 
 import com.notfound.logistics.common.api.PageResponse;
+import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
@@ -23,6 +24,7 @@ import feign.FeignException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -147,6 +149,21 @@ public class UserService {
                 new UserAuthorizationResponseDto(
                     user.getId(), user.getUsername(), true, user.getRole(), user.isDeliveryStaff()))
         .orElseGet(() -> new UserAuthorizationResponseDto(id, null, false, null, false));
+  }
+
+  /** 주문자와 선택적인 배송 담당자만 조회하며 삭제된 사용자는 제외합니다. */
+  @Transactional(readOnly = true)
+  public List<UserIdentity> getIdentities(String username, UUID assigneeId) {
+    var identities = new LinkedHashMap<UUID, UserIdentity>();
+    userRepository
+        .findByUsername(username)
+        .ifPresent(user -> identities.put(user.getId(), UserIdentity.from(user)));
+    if (assigneeId != null && !identities.containsKey(assigneeId)) {
+      userRepository
+          .findById(assigneeId)
+          .ifPresent(user -> identities.put(user.getId(), UserIdentity.from(user)));
+    }
+    return List.copyOf(identities.values());
   }
 
   @Transactional(readOnly = true)

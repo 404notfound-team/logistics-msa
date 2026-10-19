@@ -14,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
@@ -59,8 +60,9 @@ import org.springframework.web.bind.annotation.RestController;
       "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes",
       "USERS_SERVICE_TOKEN=test-only-users-service-token",
       "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
-      "users.internal-auth.clients.orders.token=test-only-orders-service-token",
-      "users.internal-auth.clients.orders.allowed[0]=GET /internal/test/actor",
+      "users.internal-auth.orders-token=test-only-orders-service-token",
+      "users.internal-auth.clients.probe.token=test-only-probe-service-token",
+      "users.internal-auth.clients.probe.allowed[0]=GET /internal/test/actor",
       "eureka.client.enabled=false",
       "management.tracing.enabled=false"
     })
@@ -120,16 +122,65 @@ class UserSecurityTest {
   }
 
   @Test
+  void onlyOrdersCanResolveMinimalNotificationIdentities() throws Exception {
+    UUID driver = UUID.randomUUID();
+    given(userService.getIdentities("buyer01", driver))
+        .willReturn(
+            List.of(
+                new UserIdentity(USER_ID, "buyer01", "김주문"),
+                new UserIdentity(driver, "driver01", "이배송")));
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .param("user_id", driver.toString())
+                .header("X-Service-Token", "test-only-orders-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(2))
+        .andExpect(jsonPath("$.data[0].length()").value(3))
+        .andExpect(jsonPath("$.data[0].name").value("김주문"))
+        .andExpect(jsonPath("$.data[1].id").value(driver.toString()));
+    mvc.perform(get("/internal/users/identities").param("username", "buyer01"))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void identityLookupRequiresOneBoundedUsernameAndAnOptionalUuid() throws Exception {
+    for (String username : List.of("", " ", "x".repeat(101))) {
+      mvc.perform(
+              get("/internal/users/identities")
+                  .param("username", username)
+                  .header("X-Service-Token", "test-only-orders-service-token"))
+          .andExpect(status().isBadRequest());
+    }
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .param("user_id", "invalid")
+                .header("X-Service-Token", "test-only-orders-service-token"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
   void internalApiExposesCallingServiceAndOptionalActor() throws Exception {
     mvc.perform(
             get("/internal/test/actor")
-                .header("X-Service-Token", "test-only-orders-service-token")
+                .header("X-Service-Token", "test-only-probe-service-token")
                 .header("X-Actor-Username", "master01"))
         .andExpect(status().isOk())
-        .andExpect(jsonPath("$.service").value("orders"))
+        .andExpect(jsonPath("$.service").value("probe"))
         .andExpect(jsonPath("$.actor").value("master01"));
     mvc.perform(
-            get("/internal/test/actor").header("X-Service-Token", "test-only-orders-service-token"))
+            get("/internal/test/actor").header("X-Service-Token", "test-only-probe-service-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.actor").value(""));
   }

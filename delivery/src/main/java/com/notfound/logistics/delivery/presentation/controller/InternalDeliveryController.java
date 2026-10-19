@@ -36,7 +36,7 @@ class InternalDeliveryController {
   private final DeliveryCommandService deliveryCommandService;
 
   /**
-   * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status다.
+   * 주문에 대한 배송과 허브 간 이동 경로를 생성한다. 응답 본문은 delivery_id, order_id, status, assignee_id다.
    *
    * <ul>
    *   <li>201: 새로 생성
@@ -56,7 +56,7 @@ class InternalDeliveryController {
   }
 
   /**
-   * 주문의 배송을 조회한다. 응답 본문은 delivery_id, order_id, status다.
+   * 주문의 배송을 조회한다. 응답 본문은 delivery_id, order_id, status, assignee_id다.
    *
    * <ul>
    *   <li>200: 주문의 배송
@@ -74,7 +74,7 @@ class InternalDeliveryController {
   }
 
   /**
-   * 배송과 배송의 모든 경로를 취소한다. 응답 본문은 delivery_id, order_id, status다.
+   * 배송과 배송의 모든 경로를 취소한다. 응답 본문은 delivery_id, order_id, status, assignee_id다.
    *
    * <ul>
    *   <li>200: 취소된 배송

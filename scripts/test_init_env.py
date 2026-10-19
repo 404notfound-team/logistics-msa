@@ -46,7 +46,7 @@ class InitEnvTest(unittest.TestCase):
         services = json.loads(result.stdout)["services"]
         expected = {
             "gateway": {"GATEWAY_SERVICE_TOKEN"},
-            "users": {"USERS_SERVICE_TOKEN", "GATEWAY_SERVICE_TOKEN"},
+            "users": {"USERS_SERVICE_TOKEN", "GATEWAY_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN"},
             "company": {"COMPANY_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN", "USERS_SERVICE_TOKEN", "HUB_SERVICE_TOKEN"},
             "hub": {"HUB_SERVICE_TOKEN", "ORDERS_SERVICE_TOKEN", "USERS_SERVICE_TOKEN", "COMPANY_SERVICE_TOKEN", "DELIVERY_SERVICE_TOKEN"},
             "orders": {"ORDERS_SERVICE_TOKEN"},
