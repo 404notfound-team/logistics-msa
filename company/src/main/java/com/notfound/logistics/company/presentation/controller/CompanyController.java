@@ -41,6 +41,32 @@ import org.springframework.web.bind.annotation.RestController;
 
 // Swagger의 ApiResponse는 공통 응답 타입 ApiResponse와 이름이 같아 전체 패키지 이름으로 쓴다.
 // 오류 응답에는 ApiErrorResponse 형식을 지정한다. 지정하지 않으면 성공 응답 타입이 모든 상태 코드에 표시된다.
+@ApiResponses({
+  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+      responseCode = "500",
+      description = "예상 밖 서버 오류",
+      content =
+          @Content(
+              mediaType = "application/json",
+              schema = @Schema(implementation = ApiErrorResponse.class),
+              examples =
+                  @ExampleObject(
+                      name = "INTERNAL_ERROR",
+                      value =
+                          "{\"code\": \"INTERNAL_ERROR\", \"message\": \"요청 처리 중 오류가 발생했습니다.\", \"trace_id\": null, \"field_errors\": []}"))),
+  @io.swagger.v3.oas.annotations.responses.ApiResponse(
+      responseCode = "401",
+      description = "토큰 누락·만료·위조 또는 현재 사용자 인증 실패",
+      content =
+          @Content(
+              mediaType = "application/json",
+              schema = @Schema(implementation = ApiErrorResponse.class),
+              examples =
+                  @ExampleObject(
+                      name = "UNAUTHORIZED",
+                      value =
+                          "{\"code\": \"UNAUTHORIZED\", \"message\": \"인증이 필요합니다.\", \"trace_id\": null, \"field_errors\": []}")))
+})
 @Tag(name = "Company", description = "업체 API")
 @SecurityRequirement(name = "bearerAuth")
 @RestController
@@ -84,8 +110,28 @@ public class CompanyController {
                 examples = @ExampleObject(value = ErrorExamples.HUB_NOT_FOUND_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "503",
-        description = "허브 서비스를 확인할 수 없음 (SERVICE_UNAVAILABLE)",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+        description = "허브 확인 실패 또는 Gateway 사용자 확인 실패 (SERVICE_UNAVAILABLE)",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\":\"SERVICE_UNAVAILABLE\",\"message\":\"서비스를 일시적으로 사용할 수 없습니다.\",\"trace_id\":null,\"field_errors\":[]}"))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "415",
+        description = "지원하지 않는 요청 본문 형식",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "UNSUPPORTED_MEDIA_TYPE",
+                        value =
+                            "{\"code\": \"UNSUPPORTED_MEDIA_TYPE\", \"message\": \"지원하지 않는 요청 형식입니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @PostMapping
   public ResponseEntity<ApiResponse<CompanyResponse>> createCompany(
@@ -122,7 +168,19 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.COMPANY_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "Gateway가 현재 사용자 정보를 확인할 수 없음",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @GetMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> getCompany(
@@ -147,7 +205,19 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.LIST_INVALID_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.LIST_INVALID_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "Gateway가 현재 사용자 정보를 확인할 수 없음",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @GetMapping
   public ResponseEntity<ApiResponse<PageResponse<CompanyResponse>>> getCompanies(
@@ -205,8 +275,28 @@ public class CompanyController {
                 examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "503",
-        description = "허브 서비스를 확인할 수 없음 (SERVICE_UNAVAILABLE)",
-        content = @Content(schema = @Schema(implementation = ApiErrorResponse.class)))
+        description = "허브 확인 실패 또는 Gateway 사용자 확인 실패 (SERVICE_UNAVAILABLE)",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\":\"SERVICE_UNAVAILABLE\",\"message\":\"서비스를 일시적으로 사용할 수 없습니다.\",\"trace_id\":null,\"field_errors\":[]}"))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "415",
+        description = "지원하지 않는 요청 본문 형식",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "UNSUPPORTED_MEDIA_TYPE",
+                        value =
+                            "{\"code\": \"UNSUPPORTED_MEDIA_TYPE\", \"message\": \"지원하지 않는 요청 형식입니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @PatchMapping("/{company_id}")
   public ResponseEntity<ApiResponse<CompanyResponse>> updateCompany(
@@ -251,7 +341,19 @@ public class CompanyController {
         content =
             @Content(
                 schema = @Schema(implementation = ApiErrorResponse.class),
-                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE)))
+                examples = @ExampleObject(value = ErrorExamples.ACCESS_DENIED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "Gateway가 현재 사용자 정보를 확인할 수 없음",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")))
   })
   @DeleteMapping("/{company_id}")
   public ResponseEntity<Void> deleteCompany(

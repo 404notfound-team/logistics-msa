@@ -50,6 +50,7 @@ class OpenApiDocumentationTest {
   @MockitoBean private UserService userService;
 
   @Autowired private MockMvc mvc;
+  @Autowired private ObjectMapper mapper;
 
   @Test
   void onlyPublicOperationsAreDocumentedWithGatewayRelativeServer() throws Exception {
@@ -149,4 +150,47 @@ class OpenApiDocumentationTest {
   }
 
   record PublicResponse(@Schema(description = "사용자 이름") String userName) {}
+
+  @Test
+  void authenticatedUsersIncludeGatewayErrorsButSignupAndSigninRemainPublic() throws Exception {
+    var doc =
+        mapper.readTree(
+            mvc.perform(get("/v3/api-docs"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+    var paths = doc.path("paths");
+    var authenticated =
+        java.util.Map.of(
+            "/api/users", List.of("get", "post"),
+            "/api/users/{id}", List.of("get", "patch", "delete"),
+            "/api/users/me", List.of("get", "delete"));
+    for (var path : authenticated.entrySet()) {
+      for (String method : path.getValue()) {
+        var operation = paths.path(path.getKey()).path(method);
+        for (String code : List.of("401", "503")) {
+          var response = operation.path("responses").path(code);
+          assertThat(response.isMissingNode())
+              .as("%s %s %s", path.getKey(), method, code)
+              .isFalse();
+          assertThat(response.path("content").isEmpty()).isFalse();
+          for (var media : response.path("content"))
+            assertThat(media.path("schema").path("$ref").asText())
+                .isEqualTo("#/components/schemas/ApiErrorResponse");
+        }
+      }
+    }
+    var signup = paths.path("/api/users/signup").path("post");
+    var signin = paths.path("/api/users/signin").path("post");
+    assertThat(signup.path("security").isEmpty()).isTrue();
+    assertThat(signin.path("security").isEmpty()).isTrue();
+    assertThat(signup.path("responses").has("401")).isFalse();
+    assertThat(signup.path("responses").path("503").toString())
+        .doesNotContain("SERVICE_UNAVAILABLE");
+    assertThat(signin.path("responses").has("503")).isFalse();
+    assertThat(signin.path("responses").path("401").toString()).contains("INVALID_CREDENTIALS");
+    assertThat(paths.path("/api/users").path("post").path("responses").path("503").toString())
+        .contains("AFFILIATION_LOOKUP_UNAVAILABLE", "SERVICE_UNAVAILABLE");
+  }
 }
