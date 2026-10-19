@@ -122,7 +122,7 @@ class OrderApiIntegrationTest {
     assertThat(details.path("unit_price").decimalValue()).isEqualByComparingTo("10000.00");
     assertThat(details.path("total_price").decimalValue()).isEqualByComparingTo("30000.00");
     assertThat(details.path("departure_hub_id").asText()).endsWith("000000000002");
-    assertThat(details.has("recovery_action")).isFalse();
+    assertThat(details.has("recovery_phase")).isFalse();
     assertThat(repository.count()).isEqualTo(1);
     assertInventory(997, 1, 1);
     assertThat(fixture.state().at("/counts/delivery.create").asInt()).isEqualTo(1);
@@ -310,7 +310,7 @@ class OrderApiIntegrationTest {
     assertThat(order.getProductName()).isEqualTo("테스트 상품");
     assertThat(order.getCreatedBy()).isEqualTo("alice");
     assertThat(order.getUpdatedBy()).isEqualTo("alice");
-    assertThat(order.getRecoveryAction()).isNull();
+    assertThat(order.getRecoveryPhase()).isNull();
     assertThat(order.getLastError()).isNull();
     assertStatus(create(key, body(), alice), 200);
     assertInventory(997, 1, 1);
@@ -378,14 +378,14 @@ class OrderApiIntegrationTest {
     fault("stock.deduct", Map.of("response", Map.of()));
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     jdbc.update(
-        "UPDATE p_orders SET status='PROCESSING', recovery_action='CREATE', last_error='STOCK_RESULT_UNKNOWN', delivery_id=null WHERE id=?",
+        "UPDATE p_orders SET status='PROCESSING', last_error='STOCK_RESULT_UNKNOWN', delivery_id=null WHERE id=?",
         id);
     service.recover();
     service.recover();
     var failed = repository.findById(id).orElseThrow();
     assertThat(failed.getStatus().name()).isEqualTo("CONFIRMED");
     assertThat(failed.getLastError()).isNull();
-    assertThat(failed.getRecoveryAction()).isNull();
+    assertThat(failed.getRecoveryPhase()).isNull();
     assertInventory(997, 1, 1);
     assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(2);
   }
@@ -496,12 +496,9 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void legacyDeliveryRecoveryKeepsItsPhaseAfterAnotherLookupFailure() throws Exception {
+  void deliveryRecoveryKeepsItsPhaseAfterAnotherLookupFailure() throws Exception {
     fault("delivery.get", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
     UUID id = id(create(UUID.randomUUID(), body(), alice));
-    jdbc.update(
-        "UPDATE p_orders SET stock_contract_version=NULL, recovery_phase=NULL, last_error='DELIVERY_RESULT_UNKNOWN' WHERE id=?",
-        id);
     fault("delivery.get", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
     service.recover();
     var pending = repository.findById(id).orElseThrow();
@@ -515,13 +512,10 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void legacyRestorationRecoveryDoesNotReturnToDeliveryAfterAnotherFailure() throws Exception {
+  void restorationRecoveryDoesNotReturnToDeliveryAfterAnotherFailure() throws Exception {
     UUID id = id(create(UUID.randomUUID(), body(), alice));
     fault("stock.restore", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, admin, null), 202);
-    jdbc.update(
-        "UPDATE p_orders SET stock_contract_version=NULL, recovery_phase=NULL, last_error='STOCK_RESTORATION_PENDING' WHERE id=?",
-        id);
     int lookups = fixture.state().at("/counts/delivery.get").asInt();
     fault("stock.restore", Map.of("status", 503, "code", "UPSTREAM_UNAVAILABLE"));
     service.recover();
@@ -548,23 +542,6 @@ class OrderApiIntegrationTest {
   }
 
   @Test
-  void legacyDeductionCannotBeAutomaticallyReplayedAndLegacyCancellationDoesNotTouchDelivery()
-      throws Exception {
-    fault("stock.deduct", Map.of("response", Map.of()));
-    UUID pending = id(create(UUID.randomUUID(), body(), alice));
-    jdbc.update("UPDATE p_orders SET stock_contract_version=NULL WHERE id=?", pending);
-    service.recover();
-    var blocked = repository.findById(pending).orElseThrow();
-    assertThat(blocked.isRecoveryBlocked()).isTrue();
-    assertThat(blocked.getLastError()).isEqualTo("LEGACY_STOCK_CONTRACT");
-    assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(1);
-    UUID confirmed = id(create(UUID.randomUUID(), body(), alice));
-    jdbc.update("UPDATE p_orders SET stock_contract_version=NULL WHERE id=?", confirmed);
-    assertStatus(request("POST", "/api/orders/" + confirmed + "/cancel", null, alice, null), 409);
-    assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isZero();
-  }
-
-  @Test
   void creationCompensationRecoversLostResponseAndFinishesFailedRatherThanCancelled()
       throws Exception {
     fault("delivery.create", Map.of("status", 404, "code", "HUB_ROUTE_NOT_FOUND"));
@@ -573,7 +550,7 @@ class OrderApiIntegrationTest {
     var response = create(key, body(), alice);
     assertStatus(response, 202);
     UUID id = id(response);
-    assertThat(repository.findById(id).orElseThrow().resumePhase().name())
+    assertThat(repository.findById(id).orElseThrow().getRecoveryPhase().name())
         .isEqualTo("STOCK_COMPENSATION");
     fixture.awaitIdle();
     service.recover();
@@ -1109,7 +1086,7 @@ class OrderApiIntegrationTest {
           replacementOwner ? 409 : 200);
       var order = repository.findById(id).orElseThrow();
       assertThat(order.getStatus().name()).isEqualTo(replacementOwner ? "CONFIRMED" : "CANCELLED");
-      assertThat(order.getRecoveryAction()).isNull();
+      assertThat(order.getRecoveryPhase()).isNull();
       assertThat(order.getUpdatedBy()).isEqualTo(replacementOwner ? "alice" : "admin");
       assertThat(fixture.state().at("/counts/delivery.cancel").asInt())
           .isEqualTo(replacementOwner ? 0 : 1);
@@ -1167,7 +1144,7 @@ class OrderApiIntegrationTest {
         assertThat(json(accepted).at("/data/status").asText()).isEqualTo("CANCELLING");
         assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
         var pending = repository.findById(id).orElseThrow();
-        assertThat(pending.getRecoveryAction().name()).isEqualTo("CANCEL");
+        assertThat(pending.getRecoveryPhase().name()).isEqualTo("DELIVERY_CANCELLATION");
         assertThat(pending.getUpdatedBy()).isEqualTo("admin");
         assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isZero();
         assertThat(fixture.state().at("/counts/stock.restore").asInt()).isZero();
@@ -1179,7 +1156,7 @@ class OrderApiIntegrationTest {
     service.recover();
     var cancelled = repository.findById(id).orElseThrow();
     assertThat(cancelled.getStatus().name()).isEqualTo("CANCELLED");
-    assertThat(cancelled.getRecoveryAction()).isNull();
+    assertThat(cancelled.getRecoveryPhase()).isNull();
     assertThat(cancelled.getUpdatedBy()).isEqualTo("admin");
     assertThat(fixture.state().at("/actors/delivery.cancel").asText()).isEqualTo("admin");
     assertThat(fixture.state().at("/counts/delivery.cancel").asInt()).isEqualTo(1);

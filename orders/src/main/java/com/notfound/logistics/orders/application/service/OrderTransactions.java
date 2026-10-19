@@ -4,7 +4,6 @@ import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
-import com.notfound.logistics.orders.domain.model.RecoveryAction;
 import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import java.time.Instant;
@@ -41,7 +40,6 @@ public class OrderTransactions {
             id,
             OrderStatus.CONFIRMED,
             OrderStatus.CANCELLING,
-            RecoveryAction.CANCEL,
             RecoveryPhase.DELIVERY_CANCELLATION,
             actor,
             Instant.now())
@@ -49,11 +47,11 @@ public class OrderTransactions {
   }
 
   @Transactional
-  public boolean resume(UUID id, RecoveryAction action, String actor) {
+  public boolean resume(UUID id, boolean cancelling, String actor) {
     return repository.resume(
             id,
             OrderStatus.RECOVERY_REQUIRED,
-            action == RecoveryAction.CREATE ? OrderStatus.PROCESSING : OrderStatus.CANCELLING,
+            cancelling ? OrderStatus.CANCELLING : OrderStatus.PROCESSING,
             actor,
             Instant.now())
         == 1;

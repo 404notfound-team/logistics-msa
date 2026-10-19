@@ -32,7 +32,6 @@ import org.hibernate.annotations.SQLRestriction;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Order extends AuditEntity {
-  private static final String STOCK_RESTORATION_PENDING = "STOCK_RESTORATION_PENDING";
   @Id private UUID id;
 
   @Enumerated(EnumType.STRING)
@@ -81,14 +80,6 @@ public class Order extends AuditEntity {
   private String lastError;
 
   @Enumerated(EnumType.STRING)
-  @Column(length = 10)
-  private RecoveryAction recoveryAction;
-
-  // null은 기존 주문이다. 과거 차감 여부를 추정해 자동 재차감하지 않는다.
-  @Column(updatable = false)
-  private Integer stockContractVersion;
-
-  @Enumerated(EnumType.STRING)
   @Column(length = 32)
   private RecoveryPhase recoveryPhase;
 
@@ -132,8 +123,6 @@ public class Order extends AuditEntity {
     // 최초 커밋 전에 진행 중 작업을 등록할 수 있도록 ID를 미리 생성한다.
     order.id = UUID.randomUUID();
     order.status = OrderStatus.PROCESSING;
-    order.recoveryAction = RecoveryAction.CREATE;
-    order.stockContractVersion = 2;
     order.recoveryPhase = RecoveryPhase.STOCK_DEDUCTION;
     order.receiverCompanyId = receiverCompanyId;
     order.supplierCompanyId = supplierCompanyId;
@@ -183,7 +172,6 @@ public class Order extends AuditEntity {
     require(OrderStatus.PROCESSING);
     lastError = Objects.requireNonNull(errorCode);
     status = OrderStatus.FAILED;
-    recoveryAction = null;
     clearRecovery();
   }
 
@@ -196,28 +184,13 @@ public class Order extends AuditEntity {
   public void requireRecovery(String code) {
     if (status != OrderStatus.PROCESSING && status != OrderStatus.CANCELLING)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
-    // 기존 주문의 오류 표식은 진단 사유를 바꾸기 전에 명시적인 단계로 고정한다.
-    phase(resumePhase());
     status = OrderStatus.RECOVERY_REQUIRED;
     lastError = code;
   }
 
-  public boolean usesRecordedStockContract() {
-    return Integer.valueOf(2).equals(stockContractVersion);
-  }
-
-  public RecoveryPhase resumePhase() {
-    if (recoveryPhase != null) return recoveryPhase;
-    // 기존 배송·취소 복구는 유지하되, 불명확한 과거 차감은 별도로 차단한다.
-    if (recoveryAction == RecoveryAction.CANCEL) {
-      return STOCK_RESTORATION_PENDING.equals(lastError)
-          ? RecoveryPhase.STOCK_RESTORATION
-          : RecoveryPhase.DELIVERY_CANCELLATION;
-    }
-    if ("DELIVERY_RESULT_UNKNOWN".equals(lastError)) return RecoveryPhase.DELIVERY_CREATION;
-    if ("STOCK_RESULT_UNKNOWN".equals(lastError) || !usesRecordedStockContract())
-      return RecoveryPhase.STOCK_DEDUCTION;
-    return RecoveryPhase.UNKNOWN;
+  public boolean isCancelling() {
+    return recoveryPhase == RecoveryPhase.DELIVERY_CANCELLATION
+        || recoveryPhase == RecoveryPhase.STOCK_RESTORATION;
   }
 
   public void deferRecovery(String code, int maxAttempts) {
@@ -238,7 +211,7 @@ public class Order extends AuditEntity {
   }
 
   public void completeCompensation() {
-    if (resumePhase() != RecoveryPhase.STOCK_COMPENSATION)
+    if (getRecoveryPhase() != RecoveryPhase.STOCK_COMPENSATION)
       throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
     fail("DELIVERY_CREATION_FAILED");
   }
@@ -272,7 +245,7 @@ public class Order extends AuditEntity {
   }
 
   public boolean awaitingStockRestoration() {
-    return resumePhase() == RecoveryPhase.STOCK_RESTORATION;
+    return getRecoveryPhase() == RecoveryPhase.STOCK_RESTORATION;
   }
 
   public void rejectCancellation() {
@@ -282,7 +255,6 @@ public class Order extends AuditEntity {
 
   private void finish(OrderStatus next) {
     status = next;
-    recoveryAction = null;
     lastError = null;
     clearRecovery();
   }

@@ -92,7 +92,7 @@ def check_links():
             for field in ["departure_hub_id", "destination_hub_id", "recipient_name"]:
                 assert order[field] == delivery[field], (number, field)
             assert order["delivery_address"] == delivery["address"]
-    assert all(orders[sample_id(3, n)]["recovery_action"] is None for n in range(1, 32))
+    assert all(orders[sample_id(3, n)]["recovery_phase"] is None for n in range(1, 32))
     print("PASS 허브 17·업체 34·상품/재고 102·주문 31·배송 26의 연결과 초기 수량")
 
 

@@ -23,7 +23,7 @@ INSERT INTO orders.p_orders (
     id, status, receiver_company_id, supplier_company_id, product_id, quantity,
     product_name, unit_price, departure_hub_id, destination_hub_id,
     delivery_address, recipient_name, request_notes, idempotency_key, delivery_id,
-    last_error, recovery_action, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
+    last_error, recovery_phase, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by
 )
 SELECT ('c0ffee39-0003-4000-8000-' || lpad(n::text, 12, '0'))::uuid,
        CASE WHEN n BETWEEN 21 AND 25 THEN 'CANCELLED' WHEN n BETWEEN 26 AND 30 THEN 'FAILED' ELSE 'CONFIRMED' END,

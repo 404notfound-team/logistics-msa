@@ -70,8 +70,8 @@ class OrdersRecoveryTest {
       assertThat(saved).hasSize(1);
       assertThat(saved.getFirst().path("status").asText())
           .isIn("PROCESSING", "CANCELLING", "RECOVERY_REQUIRED");
-      assertThat(saved.getFirst().path("recovery_action").asText())
-          .isEqualTo(restoration ? "CANCEL" : "CREATE");
+      assertThat(saved.getFirst().path("recovery_phase").asText())
+          .isEqualTo(restoration ? "STOCK_RESTORATION" : "DELIVERY_CREATION");
       restart.start();
       final var path = "/api/orders/" + orderId;
       final var order = recovered(client, path, owner, restoration ? "CANCELLED" : "CONFIRMED");
