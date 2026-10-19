@@ -10,8 +10,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
+import java.math.BigInteger;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -54,8 +53,8 @@ public class Order extends AuditEntity {
   @Column(nullable = false, updatable = false, length = 100)
   private String productName;
 
-  @Column(nullable = false, updatable = false, precision = 15, scale = 2)
-  private BigDecimal unitPrice;
+  @Column(nullable = false, updatable = false)
+  private Long unitPrice;
 
   @Column(nullable = false, updatable = false)
   private UUID departureHubId;
@@ -90,7 +89,7 @@ public class Order extends AuditEntity {
       UUID productId,
       long quantity,
       String productName,
-      BigDecimal unitPrice,
+      Long unitPrice,
       UUID departureHubId,
       UUID destinationHubId,
       String deliveryAddress,
@@ -103,7 +102,7 @@ public class Order extends AuditEntity {
         || quantity <= 0
         || !validText(productName, 100)
         || unitPrice == null
-        || unitPrice.signum() < 0
+        || unitPrice < 0
         || departureHubId == null
         || destinationHubId == null
         || !validText(deliveryAddress, 255)
@@ -111,14 +110,6 @@ public class Order extends AuditEntity {
         || idempotencyKey == null) {
       throw new OrderBusinessException(OrderErrorCode.INVALID_ORDER_INPUT);
     }
-    BigDecimal price;
-    try {
-      price = unitPrice.setScale(2, RoundingMode.UNNECESSARY);
-    } catch (ArithmeticException exception) {
-      throw new OrderBusinessException(OrderErrorCode.INVALID_ORDER_INPUT);
-    }
-    if (price.precision() > 15)
-      throw new OrderBusinessException(OrderErrorCode.INVALID_ORDER_INPUT);
     Order order = new Order();
     // Allocate before persistence so processing is registered before the first commit.
     order.id = UUID.randomUUID();
@@ -129,7 +120,7 @@ public class Order extends AuditEntity {
     order.productId = productId;
     order.quantity = quantity;
     order.productName = productName;
-    order.unitPrice = price;
+    order.unitPrice = unitPrice;
     order.departureHubId = departureHubId;
     order.destinationHubId = destinationHubId;
     order.deliveryAddress = deliveryAddress;
@@ -156,8 +147,8 @@ public class Order extends AuditEntity {
         && Objects.equals(requestNotes, notes);
   }
 
-  public BigDecimal totalPrice() {
-    return unitPrice.multiply(BigDecimal.valueOf(quantity));
+  public BigInteger totalPrice() {
+    return BigInteger.valueOf(unitPrice).multiply(BigInteger.valueOf(quantity));
   }
 
   public void confirm(UUID confirmedDeliveryId) {

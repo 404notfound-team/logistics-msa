@@ -2,7 +2,7 @@ package com.notfound.logistics.orders.application.dto;
 
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
-import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -14,9 +14,9 @@ public record OrderResult(
     UUID supplierCompanyId,
     UUID productId,
     String productName,
-    BigDecimal unitPrice,
+    long unitPrice,
     long quantity,
-    BigDecimal totalPrice,
+    BigInteger totalPrice,
     UUID departureHubId,
     UUID destinationHubId,
     String deliveryAddress,
