@@ -22,13 +22,13 @@ class OrderTest {
   void onlyAcknowledgedCreationCanBecomeConfirmedAndTerminalStateCannotBeReused() {
     Order order = order(0L, 1);
     assertThat(order.getStatus()).isEqualTo(OrderStatus.PROCESSING);
-    assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
+    assertThat(order.getRecoveryPhase()).isEqualTo(RecoveryPhase.STOCK_DEDUCTION);
     assertThatThrownBy(order::cancel).isInstanceOf(OrderBusinessException.class);
     assertThatThrownBy(() -> order.confirm(null)).isInstanceOf(OrderBusinessException.class);
     UUID delivery = UUID.randomUUID();
     order.confirm(delivery);
     assertThat(order.getDeliveryId()).isEqualTo(delivery);
-    assertThat(order.getRecoveryAction()).isNull();
+    assertThat(order.getRecoveryPhase()).isNull();
     assertThatThrownBy(() -> order.requireRecovery("UNKNOWN"))
         .isInstanceOf(OrderBusinessException.class);
     assertThatThrownBy(() -> order.fail("INSUFFICIENT_STOCK"))
@@ -41,8 +41,7 @@ class OrderTest {
     order.recordAttempt(RecoveryPhase.DELIVERY_CREATION);
     order.requireRecovery("UPSTREAM_UNAVAILABLE");
     assertThat(order.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
-    assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
-    assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
+    assertThat(order.getRecoveryPhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
     assertThat(order.getLastError()).isEqualTo("UPSTREAM_UNAVAILABLE");
   }
 
@@ -51,7 +50,7 @@ class OrderTest {
     Order order = order(1L, 1);
     for (int i = 0; i < 8; i++) {
       order.deferRecovery("TIMEOUT", 8);
-      assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.STOCK_DEDUCTION);
+      assertThat(order.getRecoveryPhase()).isEqualTo(RecoveryPhase.STOCK_DEDUCTION);
       if (i < 7) {
         org.springframework.test.util.ReflectionTestUtils.setField(
             order, "status", OrderStatus.PROCESSING);
@@ -59,7 +58,7 @@ class OrderTest {
     }
     assertThat(order.isRecoveryBlocked()).isTrue();
     assertThat(order.getStatus()).isEqualTo(OrderStatus.RECOVERY_REQUIRED);
-    assertThat(order.getRecoveryAction()).isEqualTo(RecoveryAction.CREATE);
+    assertThat(order.getRecoveryPhase()).isEqualTo(RecoveryPhase.STOCK_DEDUCTION);
   }
 
   @Test
@@ -71,7 +70,7 @@ class OrderTest {
     order.recordAttempt(RecoveryPhase.DELIVERY_CREATION);
     assertThat(order.getRecoveryAttempts()).isZero();
     assertThat(order.getLastError()).isNull();
-    assertThat(order.resumePhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
+    assertThat(order.getRecoveryPhase()).isEqualTo(RecoveryPhase.DELIVERY_CREATION);
   }
 
   private Order order(Long price, long quantity) {

@@ -2,7 +2,6 @@ package com.notfound.logistics.orders.domain.repository;
 
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
-import com.notfound.logistics.orders.domain.model.RecoveryAction;
 import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import jakarta.persistence.LockModeType;
 import java.time.Instant;
@@ -35,13 +34,12 @@ public interface OrderRepository
 
   @Modifying(clearAutomatically = true, flushAutomatically = true)
   @Query(
-      "update Order o set o.status = :next, o.recoveryAction = :action, o.lastError = null, o.recoveryPhase = :phase, o.recoveryAttempts = 0, o.recoveryBlocked = false, "
+      "update Order o set o.status = :next, o.lastError = null, o.recoveryPhase = :phase, o.recoveryAttempts = 0, o.recoveryBlocked = false, "
           + "o.updatedBy = :actor, o.updatedAt = :now where o.id = :id and o.status = :expected and o.deletedAt is null")
   int beginCancellation(
       @Param("id") UUID id,
       @Param("expected") OrderStatus expected,
       @Param("next") OrderStatus next,
-      @Param("action") RecoveryAction action,
       @Param("phase") RecoveryPhase phase,
       @Param("actor") String actor,
       @Param("now") Instant now);

@@ -10,7 +10,6 @@ import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
 import com.notfound.logistics.orders.domain.model.OrderStatus;
-import com.notfound.logistics.orders.domain.model.RecoveryAction;
 import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
@@ -156,7 +155,6 @@ public class OrderService {
 
   private OrderOperationResult processCreate(UUID id) {
     Order order = load(id);
-    if (!order.usesRecordedStockContract()) return blocked(id, "LEGACY_STOCK_CONTRACT");
     // 외부 호출 전에 재개 지점을 커밋해 호출 도중 종료되어도 같은 요청을 이어간다.
     transactions.change(id, value -> value.recordAttempt(RecoveryPhase.STOCK_DEDUCTION));
     try {
@@ -203,7 +201,6 @@ public class OrderService {
         } catch (RemoteFailure failure) {
           // 후속 거절·404만으로 이전 타임아웃 요청의 미반영을 확정하지 않는다.
           if (!uncertainDelivery && definiteDeliveryRejection(failure)) {
-            if (!order.usesRecordedStockContract()) return blocked(id, "LEGACY_STOCK_CONTRACT");
             transactions.change(id, Order::beginCompensation);
             return restoreStock(load(id));
           }
@@ -233,9 +230,7 @@ public class OrderService {
     if (order.getStatus() == OrderStatus.CANCELLED) return operation(order, Outcome.RETURNED, null);
     if (order.getStatus() == OrderStatus.FAILED)
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
-    if (order.getStatus() == OrderStatus.CONFIRMED && !order.usesRecordedStockContract())
-      throw business(OrderErrorCode.LEGACY_STOCK_CONTRACT);
-    if (inProgress(order) && order.getRecoveryAction() != RecoveryAction.CANCEL)
+    if (inProgress(order) && !order.isCancelling())
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
     Operation running = active.begin(id, Operation.CANCEL);
     while (running == Operation.RECOVER) {
@@ -252,7 +247,7 @@ public class OrderService {
       Order current = load(id);
       if (current.getStatus() == OrderStatus.CANCELLED)
         return operation(current, Outcome.RETURNED, null);
-      if (running == Operation.CANCEL || current.getRecoveryAction() == RecoveryAction.CANCEL)
+      if (running == Operation.CANCEL || current.isCancelling())
         return operation(current, Outcome.IN_PROGRESS, null);
       throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
     }
@@ -261,16 +256,14 @@ public class OrderService {
         Order current = load(id);
         if (current.getStatus() == OrderStatus.CANCELLED)
           return operation(current, Outcome.RETURNED, null);
-        if (current.getRecoveryAction() == RecoveryAction.CANCEL)
-          return operation(current, Outcome.IN_PROGRESS, null);
+        if (current.isCancelling()) return operation(current, Outcome.IN_PROGRESS, null);
         throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
       }
       if (!transactions.beginCancellation(id, username)) {
         Order current = load(id);
         if (current.getStatus() == OrderStatus.CANCELLED)
           return operation(current, Outcome.RETURNED, null);
-        if (current.getRecoveryAction() == RecoveryAction.CANCEL)
-          return operation(current, Outcome.IN_PROGRESS, null);
+        if (current.isCancelling()) return operation(current, Outcome.IN_PROGRESS, null);
         throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
       }
       return processCancel(id);
@@ -338,7 +331,7 @@ public class OrderService {
     }
     // Hub 복원 후 이 저장이 실패해도 같은 복원 기록으로 재요청할 수 있다.
     // 생성 실패 보상은 FAILED, 사용자 취소는 CANCELLED로 종료한다.
-    if (order.resumePhase() == RecoveryPhase.STOCK_COMPENSATION) {
+    if (order.getRecoveryPhase() == RecoveryPhase.STOCK_COMPENSATION) {
       transactions.change(id, Order::completeCompensation);
       return operation(load(id), Outcome.REJECTED, OrderErrorCode.DELIVERY_CREATION_FAILED);
     }
@@ -456,23 +449,21 @@ public class OrderService {
       if (active.begin(id, Operation.RECOVER) != null) continue;
       try {
         Order current = load(id);
-        RecoveryAction action = current.getRecoveryAction();
-        if (action == null) continue;
+        RecoveryPhase phase = current.getRecoveryPhase();
+        if (phase == null) continue;
         // 자동 복구에도 최초 생성자 또는 취소 요청자의 감사 주체를 유지한다.
-        String username =
-            action == RecoveryAction.CREATE ? current.getCreatedBy() : current.getUpdatedBy();
+        String username = current.isCancelling() ? current.getUpdatedBy() : current.getCreatedBy();
         auditor.runAsPersistedUser(
             username,
             () -> {
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
-              if (transactions.resume(id, action, username)) {
-                switch (current.resumePhase()) {
+              if (transactions.resume(id, current.isCancelling(), username)) {
+                switch (phase) {
                   case STOCK_DEDUCTION -> processCreate(id);
                   case DELIVERY_CREATION -> processDeliveryCreation(id, true);
                   case STOCK_COMPENSATION -> restoreStock(load(id));
                   case DELIVERY_CANCELLATION, STOCK_RESTORATION -> processCancel(id);
-                  default -> blocked(id, "INCONSISTENT_RECOVERY_PHASE");
                 }
               }
             });
