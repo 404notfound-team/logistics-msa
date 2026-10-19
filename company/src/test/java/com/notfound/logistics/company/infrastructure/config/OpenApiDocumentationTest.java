@@ -1,15 +1,23 @@
 package com.notfound.logistics.company.infrastructure.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notfound.logistics.company.application.service.CompanyService;
+import com.notfound.logistics.company.domain.exception.CompanyError;
+import com.notfound.logistics.company.domain.exception.CompanyException;
 import com.notfound.logistics.company.presentation.controller.CompanyController;
 import com.notfound.logistics.company.presentation.controller.ProductController;
 import com.notfound.logistics.company.support.CompanySecurityTest;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springdoc.core.configuration.SpringDocConfiguration;
 import org.springdoc.core.configuration.SpringDocSecurityConfiguration;
@@ -19,6 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.ImportAutoConfiguration;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -56,6 +65,34 @@ class OpenApiDocumentationTest {
                 .asText())
         .contains("ApiResponse")
         .doesNotContain("ApiErrorResponse");
+  }
+
+  @Test
+  void changingToAMissingHubMatchesTheDocumented404Example() throws Exception {
+    var companyId = UUID.randomUUID();
+    var hubId = UUID.randomUUID();
+    when(service.updateCompany(any(), eq(companyId), isNull(), eq(hubId), isNull(), isNull()))
+        .thenThrow(new CompanyException(CompanyError.HUB_NOT_FOUND));
+
+    var result =
+        mvc.perform(
+                patch("/api/companies/" + companyId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"hub_id\":\"" + hubId + "\"}"))
+            .andExpect(status().isNotFound())
+            .andReturn();
+    var examples =
+        responses(document(), "/api/companies/{company_id}", "patch")
+            .path("404")
+            .path("content")
+            .elements()
+            .next()
+            .path("examples");
+    assertThat(examples.has("COMPANY_NOT_FOUND")).isTrue();
+    assertThat(examples.path("HUB_NOT_FOUND").path("value").path("code").asText())
+        .isEqualTo("HUB_NOT_FOUND");
+    assertThat(mapper.readTree(result.getResponse().getContentAsString()))
+        .isEqualTo(examples.path("HUB_NOT_FOUND").path("value"));
   }
 
   private JsonNode document() throws Exception {
