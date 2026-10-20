@@ -30,7 +30,7 @@ public class UserExceptionHandler {
 
   @ExceptionHandler(UserException.class)
   public ResponseEntity<ApiErrorResponse> handleUserException(UserException exception) {
-    var error = exception.getErrorCode();
+    var error = UserErrorCode.from(exception.getError());
     return ResponseEntity.status(HttpStatusCode.valueOf(error.httpStatus()))
         .body(ApiErrorResponse.of(error, traceId()));
   }

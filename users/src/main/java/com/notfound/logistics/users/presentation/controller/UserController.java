@@ -5,6 +5,7 @@ import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.domain.repository.UserSearchCondition;
@@ -15,7 +16,6 @@ import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
-import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -734,17 +734,17 @@ public class UserController {
   private Sort toSort(String sort) {
     String[] parts = sort.split(",", -1);
     if (parts.length > 2) {
-      throw new UserException(UserErrorCode.INVALID_SORT);
+      throw new UserException(UserError.INVALID_SORT);
     }
     String property = SORT_PROPERTIES.get(parts[0].trim());
     if (property == null) {
-      throw new UserException(UserErrorCode.INVALID_SORT);
+      throw new UserException(UserError.INVALID_SORT);
     }
     Sort.Direction direction = Sort.Direction.ASC;
     if (parts.length == 2) {
       direction =
           Sort.Direction.fromOptionalString(parts[1].trim())
-              .orElseThrow(() -> new UserException(UserErrorCode.INVALID_SORT));
+              .orElseThrow(() -> new UserException(UserError.INVALID_SORT));
     }
     return Sort.by(direction, property).and(Sort.by(Sort.Direction.ASC, "id"));
   }

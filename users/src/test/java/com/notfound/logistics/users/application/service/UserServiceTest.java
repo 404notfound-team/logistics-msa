@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
@@ -22,7 +23,6 @@ import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
-import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import feign.FeignException;
 import feign.Request;
 import java.nio.charset.StandardCharsets;
@@ -111,7 +111,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.register(signupRequest(true)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USERNAME_ALREADY_EXISTS));
+            e -> assertThat(e.getError()).isEqualTo(UserError.USERNAME_ALREADY_EXISTS));
     verifyNoInteractions(companyLookupClient, hubLookupClient, passwordEncoder);
     verify(userRepository, never()).save(any(User.class));
   }
@@ -125,11 +125,11 @@ class UserServiceTest {
         .isInstanceOfSatisfying(
             UserException.class,
             e ->
-                assertThat(e.getErrorCode())
+                assertThat(e.getError())
                     .isEqualTo(
                         matches > 1
-                            ? UserErrorCode.AFFILIATION_AMBIGUOUS
-                            : UserErrorCode.ENTITY_NOT_FOUND));
+                            ? UserError.AFFILIATION_AMBIGUOUS
+                            : UserError.ENTITY_NOT_FOUND));
     verify(userRepository, never()).save(any(User.class));
     verifyNoInteractions(passwordEncoder);
   }
@@ -146,9 +146,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.register(signupRequest(company)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e ->
-                assertThat(e.getErrorCode())
-                    .isEqualTo(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE));
+            e -> assertThat(e.getError()).isEqualTo(UserError.AFFILIATION_LOOKUP_UNAVAILABLE));
     verify(userRepository, never()).save(any(User.class));
     verifyNoInteractions(passwordEncoder);
   }
@@ -163,7 +161,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.register(signupRequest(true)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USERNAME_ALREADY_EXISTS));
+            e -> assertThat(e.getError()).isEqualTo(UserError.USERNAME_ALREADY_EXISTS));
   }
 
   @Test
@@ -173,7 +171,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.signIn(new UserSignInRequestDto("user01", "Passw0rd!")))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.INVALID_CREDENTIALS));
+            e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_CREDENTIALS));
     verifyNoInteractions(passwordEncoder, jwtEncoder);
   }
 
@@ -186,7 +184,7 @@ class UserServiceTest {
             () -> userService.signIn(new UserSignInRequestDto("user01", "wrong-password")))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.INVALID_CREDENTIALS));
+            e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_CREDENTIALS));
     verifyNoInteractions(jwtEncoder);
   }
 
@@ -296,7 +294,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.refresh(token))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
+            e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_REFRESH_TOKEN));
   }
 
   @ParameterizedTest
@@ -323,8 +321,7 @@ class UserServiceTest {
 
     assertThatThrownBy(() -> userService.getUser(USER_ID))
         .isInstanceOfSatisfying(
-            UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND));
+            UserException.class, e -> assertThat(e.getError()).isEqualTo(UserError.USER_NOT_FOUND));
   }
 
   @Test
@@ -359,8 +356,7 @@ class UserServiceTest {
 
     assertThatThrownBy(() -> userService.signOut(USER_ID))
         .isInstanceOfSatisfying(
-            UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND));
+            UserException.class, e -> assertThat(e.getError()).isEqualTo(UserError.USER_NOT_FOUND));
   }
 
   @Test
@@ -381,7 +377,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.createUser(createRequest(UserRoleEnum.USER, HUB_ID)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USERNAME_ALREADY_EXISTS));
+            e -> assertThat(e.getError()).isEqualTo(UserError.USERNAME_ALREADY_EXISTS));
   }
 
   @Test
@@ -389,7 +385,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.createUser(createRequest(UserRoleEnum.USER, null)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.INVALID_AFFILIATION));
+            e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_AFFILIATION));
     verifyNoInteractions(hubLookupClient, companyLookupClient);
   }
 
@@ -413,7 +409,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.createUser(createRequest(UserRoleEnum.USER, HUB_ID)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.ENTITY_NOT_FOUND));
+            e -> assertThat(e.getError()).isEqualTo(UserError.ENTITY_NOT_FOUND));
   }
 
   @Test
@@ -423,9 +419,7 @@ class UserServiceTest {
     assertThatThrownBy(() -> userService.createUser(createRequest(UserRoleEnum.USER, HUB_ID)))
         .isInstanceOfSatisfying(
             UserException.class,
-            e ->
-                assertThat(e.getErrorCode())
-                    .isEqualTo(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE));
+            e -> assertThat(e.getError()).isEqualTo(UserError.AFFILIATION_LOOKUP_UNAVAILABLE));
   }
 
   @Test

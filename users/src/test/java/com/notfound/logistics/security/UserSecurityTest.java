@@ -18,6 +18,7 @@ import com.notfound.logistics.users.UsersApplication;
 import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
@@ -25,7 +26,6 @@ import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDt
 import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
 import java.time.Instant;
@@ -333,8 +333,7 @@ class UserSecurityTest {
 
   @Test
   void refreshWithoutValidCookieIsUnauthorized() throws Exception {
-    given(userService.refresh(null))
-        .willThrow(new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+    given(userService.refresh(null)).willThrow(new UserException(UserError.INVALID_REFRESH_TOKEN));
 
     mvc.perform(post("/api/users/refresh"))
         .andExpect(status().isUnauthorized())

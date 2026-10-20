@@ -1,16 +1,14 @@
 package com.notfound.logistics.users.domain.exception;
 
-import com.notfound.logistics.common.api.ApiErrorCode;
-
 public class UserException extends RuntimeException {
-  private final ApiErrorCode errorCode;
+  private final UserError error;
 
-  public UserException(ApiErrorCode errorCode) {
-    super(errorCode.message());
-    this.errorCode = errorCode;
+  public UserException(UserError error) {
+    super(error.name());
+    this.error = error;
   }
 
-  public ApiErrorCode getErrorCode() {
-    return errorCode;
+  public UserError getError() {
+    return error;
   }
 }
