@@ -15,6 +15,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.ColumnDefault;
 import org.hibernate.annotations.SQLRestriction;
 
 @Entity
@@ -53,6 +54,11 @@ public class User extends AuditEntity {
 
   @Column(name = "is_delivery_staff", nullable = false)
   private boolean deliveryStaff;
+
+  /** 발급한 JWT에 함께 넣는 값입니다. 로그아웃하면 올라가며, Gateway는 값이 다른 JWT를 거절합니다. */
+  @ColumnDefault("0")
+  @Column(name = "token_version", nullable = false)
+  private long tokenVersion;
 
   private User(
       String username,
@@ -116,6 +122,11 @@ public class User extends AuditEntity {
     this.deliveryStaff = deliveryStaff;
     this.companyId = companyId;
     this.hubId = hubId;
+  }
+
+  /** 지금까지 발급한 모든 JWT를 무효화합니다. */
+  public void revokeTokens() {
+    this.tokenVersion++;
   }
 
   private static String requireText(String value, String fieldName) {

@@ -51,7 +51,8 @@ public class UsersAuthorizationClient {
       String username,
       boolean active,
       String role,
-      @JsonProperty("is_delivery_staff") Boolean isDeliveryStaff) {}
+      @JsonProperty("is_delivery_staff") Boolean isDeliveryStaff,
+      @JsonProperty("token_version") Long tokenVersion) {}
 
   private record Envelope(CurrentUser data) {}
 

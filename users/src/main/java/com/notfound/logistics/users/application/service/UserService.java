@@ -130,6 +130,7 @@ public class UserService {
             .claim("user_id", user.getId().toString())
             .claim("role", user.getRole().name())
             .claim("is_delivery_staff", user.isDeliveryStaff())
+            .claim("token_version", user.getTokenVersion())
             .build();
     String token =
         jwtEncoder
@@ -147,8 +148,13 @@ public class UserService {
         .map(
             user ->
                 new UserAuthorizationResponseDto(
-                    user.getId(), user.getUsername(), true, user.getRole(), user.isDeliveryStaff()))
-        .orElseGet(() -> new UserAuthorizationResponseDto(id, null, false, null, false));
+                    user.getId(),
+                    user.getUsername(),
+                    true,
+                    user.getRole(),
+                    user.isDeliveryStaff(),
+                    user.getTokenVersion()))
+        .orElseGet(() -> new UserAuthorizationResponseDto(id, null, false, null, false, 0));
   }
 
   /** 주문자와 선택적인 배송 담당자만 조회하며 삭제된 사용자는 제외합니다. */
@@ -193,6 +199,12 @@ public class UserService {
   @Transactional
   public void withdraw(UUID userId, String actorUsername) {
     findUserForUpdate(userId).markDeleted(actorUsername, clock.instant());
+  }
+
+  /** 모든 기기의 JWT를 무효화합니다. 동시 로그아웃이 증가분을 덮어쓰지 않도록 잠근 뒤 올립니다. */
+  @Transactional
+  public void signOut(UUID userId) {
+    findUserForUpdate(userId).revokeTokens();
   }
 
   @Transactional

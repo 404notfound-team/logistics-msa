@@ -82,6 +82,7 @@ class GatewaySecurityTest {
           token(SECRET, USERNAME, null, "USER", now),
           token(SECRET, USERNAME, "not-a-uuid", "USER", now),
           token(SECRET, USERNAME, USER_ID.toString(), "ADMIN", now),
+          token(SECRET, USERNAME, USER_ID.toString(), "USER", now, null),
           "not-a-jwt"
         }) {
       expectError(request(HttpMethod.GET, "/api/orders", token), HttpStatus.UNAUTHORIZED);
@@ -93,10 +94,12 @@ class GatewaySecurityTest {
   void rejectsTokenThatNoLongerMatchesCurrentUser() {
     for (CurrentUser current :
         new CurrentUser[] {
-          new CurrentUser(USER_ID, "other01", true, "USER", false),
-          new CurrentUser(USER_ID, null, false, null, false),
-          new CurrentUser(USER_ID, USERNAME, true, "MASTER", false),
-          new CurrentUser(USER_ID, USERNAME, true, "USER", true)
+          new CurrentUser(USER_ID, "other01", true, "USER", false, 0L),
+          new CurrentUser(USER_ID, null, false, null, false, 0L),
+          new CurrentUser(USER_ID, USERNAME, true, "MASTER", false, 0L),
+          new CurrentUser(USER_ID, USERNAME, true, "USER", true, 0L),
+          // 로그아웃으로 토큰 버전이 오른 사용자
+          new CurrentUser(USER_ID, USERNAME, true, "USER", false, 1L)
         }) {
       given(usersClient.fetch(USER_ID)).willReturn(Mono.just(current));
       expectError(request(HttpMethod.GET, "/api/orders", token("USER")), HttpStatus.UNAUTHORIZED);
@@ -152,6 +155,7 @@ class GatewaySecurityTest {
     currentUserIs("USER");
 
     request(HttpMethod.GET, "/api/users/me", token("USER")).exchange().expectStatus().isOk();
+    request(HttpMethod.POST, "/api/users/signout", token("USER")).exchange().expectStatus().isOk();
     request(HttpMethod.DELETE, "/api/users/me", token("USER")).exchange().expectStatus().isOk();
   }
 
@@ -179,7 +183,7 @@ class GatewaySecurityTest {
 
   private void currentUserIs(String role) {
     given(usersClient.fetch(USER_ID))
-        .willReturn(Mono.just(new CurrentUser(USER_ID, USERNAME, true, role, false)));
+        .willReturn(Mono.just(new CurrentUser(USER_ID, USERNAME, true, role, false, 0L)));
   }
 
   private WebTestClient.RequestHeadersSpec<?> request(HttpMethod method, String uri, String token) {
@@ -212,6 +216,16 @@ class GatewaySecurityTest {
 
   private String token(
       String secret, String username, String userId, String role, Instant issuedAt) {
+    return token(secret, username, userId, role, issuedAt, 0L);
+  }
+
+  private String token(
+      String secret,
+      String username,
+      String userId,
+      String role,
+      Instant issuedAt,
+      Long tokenVersion) {
     var key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
     var encoder = new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(key));
     var claims =
@@ -226,6 +240,9 @@ class GatewaySecurityTest {
     }
     if (userId != null) {
       claims.claim("user_id", userId);
+    }
+    if (tokenVersion != null) {
+      claims.claim("token_version", tokenVersion);
     }
     var header = JwsHeader.with(MacAlgorithm.HS256).build();
     return encoder.encode(JwtEncoderParameters.from(header, claims.build())).getTokenValue();
