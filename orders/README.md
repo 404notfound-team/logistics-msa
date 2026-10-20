@@ -33,6 +33,8 @@ Orders는 외부 호출 중 DB 트랜잭션을 유지하지 않습니다. 단계
 | `GET /api/orders`, `GET /api/orders/{id}` | MASTER 전체 / USER 본인. 최초 상품·가격·허브·배송 입력 반환 |
 | `POST /api/orders/{id}/cancel` | MASTER·작성자. 완료 200 / 처리·복구 중 202 / 취소 불가 409 |
 | `DELETE /api/orders/{id}` | MASTER. 배송 삭제 확인 후 논리 삭제 204 / 결과 불명 503, 동일 요청 재시도 |
+| `GET /api/orders/{id}/recovery` | MASTER. 단계·차단·실패 횟수·오류·갱신 시각 조회 |
+| `POST /api/orders/{id}/recovery` | MASTER. 확인한 차단 주문 1회 재개. 종료 200 / 결과 확인·복구 중 202 / 오래된 조회·중복 실행·재개 불가 409 |
 
 멱등 키는 `(created_by, idempotency_key)`로 보호합니다. 같은 키·다른 입력이나 삭제된 주문의 키는 409입니다.
 주소·수령인·요청사항의 앞뒤 공백을 제거하고 빈 요청사항은 null로 고정합니다.
@@ -65,7 +67,7 @@ sequenceDiagram
 | --- | --- |
 | 차감 응답 유실·5xx·잘못된 응답·차감 단계 중단 | 새 계약 주문은 202·`RECOVERY_REQUIRED`. 같은 주문 ID·최초 입력으로 차감을 재요청해 Hub의 결과 재현 |
 | 차감 후 배송 결과 불명 | `RECOVERY_REQUIRED`. 조회·같은 입력의 멱등 생성을 재개. 후속 404만으로 이전 호출 실패를 확정하지 않음 |
-| 배송 생성 실패 확정 | 최초 시도의 확정 거절이면 재고 복원 완료 후 502·`FAILED`. 보상 결과 불명은 202·`RECOVERY_REQUIRED` |
+| 배송 생성 실패 확정 | 최초 시도의 확정 거절이면 차감한 재고를 되돌린 뒤 502·`FAILED`. 재고 복원 결과가 불명이면 202·`RECOVERY_REQUIRED` |
 | 배송 취소 결과 불명 | 배송 상태부터 재확인. 취소 확인 전 복원 금지 |
 | 복원 실패·응답 유실·잘못된 응답 | 202·`RECOVERY_REQUIRED`. 저장한 복원 대기 지점부터 같은 주문 키로 복원 재개, 삭제 차단 |
 | Hub 복원 후 Orders 최종 저장 실패 | 500·`CANCELLING`. 복원 대기 지점 유지, 같은 주문 키로 자동 복구·재시도하며 삭제 차단 |
@@ -93,20 +95,21 @@ stateDiagram-v2
     direction LR
     [*] --> PROCESSING
     PROCESSING --> CONFIRMED: 배송 확인
-    PROCESSING --> FAILED: 확정 차감 거절 또는 배송 실패 보상 완료
+    PROCESSING --> FAILED: 차감 거절 또는 배송 실패 후 재고 복원 완료
     PROCESSING --> RECOVERY_REQUIRED: 결과 불명 · 중단 복구
     CONFIRMED --> CANCELLING: 취소 접수
     CANCELLING --> CANCELLED: 배송 취소와 복원 확인
     CANCELLING --> CONFIRMED: 배송 출발로 취소 거절
     CANCELLING --> RECOVERY_REQUIRED: 결과 불명 · 중단 복구
-    RECOVERY_REQUIRED --> PROCESSING: 생성·보상 단계 재개
+    RECOVERY_REQUIRED --> PROCESSING: 생성·실패 후 재고 복원 재개
     RECOVERY_REQUIRED --> CANCELLING: 취소·복원 단계 재개
 ```
 
 복구 작업은 기본 실행 종료 후 5초 간격으로 오래된 작업부터 최대 50건을 확인하고, 진행 중·자동 차단 작업은 건너뜁니다.
 저장된 처리 단계에서 재개하며 **Orders 단일 인스턴스**가 전제입니다. 주문별 예약 시각이나 지수 백오프는 두지 않습니다.
 `STOCK_DEDUCTION`·`DELIVERY_CREATION`·`DELIVERY_CANCELLATION`·`STOCK_RESTORATION`·`STOCK_COMPENSATION`을 저장하여 오류 원인과 재개 지점을 구분합니다.
-생성 실패 보상은 복원 후 FAILED, 사용자 취소는 복원 후 CANCELLED로 종료합니다. 배송 결과가 불명인 요청의 후속 404만으로 보상하지 않습니다.
+배송 생성 실패로 재고를 되돌리면 FAILED, 사용자 취소로 재고를 되돌리면 CANCELLED로 종료합니다.
+배송 결과가 불명인 요청은 후속 404만으로 실패를 확정하거나 재고를 되돌리지 않습니다.
 삭제는 CANCELLED·FAILED 또는 배송 완료가 확인된 CONFIRMED에서 처리하고 진행 중·복구 중에는 거절합니다.
 
 ## 재시도 설정과 저장 정보
@@ -120,16 +123,43 @@ stateDiagram-v2
 | `recovery_blocked` | 영구 오류·예산 소진 시 true. 조회 대상에서 제외해 다른 주문을 막지 않음 |
 
 Feign의 전역 자동 재시도는 끈 상태를 유지합니다. 재시도는 원래 작업자의 감사 컨텍스트에서 주문별 처리권을 확보한 작업만 수행합니다.
-자동 차단은 운영 확인 대상이며 새로운 사용자 복구 API는 추가하지 않습니다. 원격 결과와 원인을 확인한 뒤 담당자가 재개 여부를 결정합니다.
+자동 차단은 운영 확인 대상입니다. MASTER가 아래 절차로 원격 결과와 원인을 확인한 뒤 1회 재개 여부를 결정합니다.
 재개 시 수량·주문 입력·차감 기록은 수정하지 않고 처리 의도와 원래 작업자를 보존합니다.
 `status`는 주문의 업무 상태, `recovery_phase`는 다음에 수행할 작업, `last_error`는 최근 오류 사유입니다.
-생성·취소 구분도 단계에서 판단합니다. 배송 취소·재고 복원은 취소 요청자, 생성·보상은 최초 생성자의 감사 컨텍스트로 재개합니다.
+생성·취소 구분도 단계에서 판단합니다. 배송 취소와 취소에 따른 재고 복원은 취소 요청자, 주문 생성과 생성 실패에 따른 재고 복원은 최초 생성자의 감사 컨텍스트로 재개합니다.
 
-복구 전 상태·단계 조합을 검증합니다. PROCESSING은 차감·배송 생성·생성 실패 보상, CANCELLING은 배송 취소·재고 복원 단계를 허용합니다.
+복구 전 상태·단계 조합을 검증합니다. PROCESSING은 차감·배송 생성·생성 실패 후 재고 복원, CANCELLING은 배송 취소·취소 후 재고 복원 단계를 허용합니다.
 RECOVERY_REQUIRED는 위 단계 중 하나가 있어야 하며, 종료 상태는 단계가 null입니다.
 진행 중인 주문의 단계 누락·상태 불일치는 원격 호출 없이 `INCONSISTENT_RECOVERY_PHASE`로 자동 복구를 차단하고 주문 ID·기존 상태·단계를 로그에 남깁니다.
 차단 시 원래 단계·실패 횟수·요청 내용을 보존하고, 감사는 마지막 저장 작업자(updated_by)를 사용합니다.
 이 주체를 업무 재개용 원 요청자로 추정하지 않으며, 이미 차단·완료·삭제된 주문은 다시 변경하지 않습니다.
+
+## 차단 주문 확인과 수동 재개
+
+MASTER가 Swagger 또는 HTTP 요청으로 차단 주문을 확인하고 한 번 재개합니다.
+
+1. `GET /api/orders/{id}`와 `GET /api/orders/{id}/recovery`로 최초 입력, 현재 상태·단계·실패 횟수·차단 여부·최근 오류·갱신 시각을 확인합니다.
+2. 같은 주문 ID의 Hub 차감·복원 기록과 Delivery 상태, 관련 로그를 대조하고 장애 원인을 확인합니다. 원격 처리 내역을 확인할 수 없으면 재개하지 않습니다.
+3. 최신 조회값으로 아래 요청을 보냅니다. `upstream_checked: true`는 운영자가 원격 처리 내역과 원인을 확인했다는 뜻입니다. 시각·단계·횟수는 실제 조회값을 사용합니다.
+
+```http
+POST /api/orders/{id}/recovery
+Authorization: Bearer <MASTER JWT>
+Content-Type: application/json
+
+{
+  "expected_updated_at": "2026-10-20T12:00:00.123456Z",
+  "expected_phase": "STOCK_RESTORATION",
+  "expected_attempts": 20,
+  "upstream_checked": true
+}
+```
+
+응답의 `status`·`recovery_phase`·`last_error`를 확인합니다. 200은 처리 종료이며, 배송 생성 실패 후 재고를 되돌린 주문은 `FAILED`, 사용자 취소가 끝난 주문은 `CANCELLED`입니다.
+202는 결과 확인·복구 중입니다. 같은 단계에서 다시 실패하거나 중단되면 차단과 실패 횟수를 보존합니다. 다음 단계로 진행하면 기존 자동 복구가 이어집니다.
+409·500·응답 유실·Orders 종료 후에는 이전 본문을 반복 전송하지 말고 다시 조회합니다. 재시작 후에도 최신 조회값으로 확인·재개합니다.
+진행 중·미차단·종료·삭제·단계 불일치 주문은 재개할 수 없습니다. `INCONSISTENT_RECOVERY_PHASE`도 대상에서 제외합니다.
+수량·최초 입력·차감 기록을 수정하거나, 임의 SQL로 차단을 풀거나, 새 주문으로 대체하지 않습니다.
 
 ## 개발 적용
 
@@ -141,7 +171,8 @@ Hub의 멱등 차감·복원 구현을 준비한 뒤 Orders를 적용합니다. 
 ## 장애 복구 검증
 
 Orders의 JUnit 검사는 오류 응답 해석과 주문 조율·동시성을 확인합니다.
-실제 서비스 간 차감·복원 지연 커밋, Orders 재시작 복구와 배송 실패 보상은 [실제 서비스 연동 검증](../integration-tests/README.md)의 전용 Compose CI에서 실행합니다.
+실제 서비스 간 차감·복원 지연 커밋, Orders 재시작 복구와 배송 생성 실패 후 재고 복원은 [실제 서비스 연동 검증](../integration-tests/README.md)의 전용 Compose CI에서 실행합니다.
+차단 주문 검사는 실제 복원 실패 20회로 예산을 소진한 뒤 수동 복원 커밋·Orders 최종 저장 실패·재시작·중복 요청을 검사합니다.
 
 ## 배송 상태 전이
 

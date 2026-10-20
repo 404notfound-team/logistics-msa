@@ -1,5 +1,6 @@
 package com.notfound.logistics.orders.application.service;
 
+import com.notfound.logistics.orders.application.dto.ResumeOrderRecoveryCommand;
 import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
 import com.notfound.logistics.orders.domain.model.Order;
@@ -8,6 +9,7 @@ import com.notfound.logistics.orders.domain.model.RecoveryPhase;
 import com.notfound.logistics.orders.domain.repository.OrderRepository;
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -80,5 +82,36 @@ public class OrderTransactions {
             actor,
             Instant.now())
         == 1;
+  }
+
+  @Transactional
+  public Order resumeBlocked(UUID id, ResumeOrderRecoveryCommand command) {
+    final var order =
+        repository
+            .lockById(id)
+            .orElseThrow(() -> new OrderBusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+    if (!order.isRecoveryPending()
+        || !order.isRecoveryBlocked()
+        || !order.hasConsistentRecoveryPhase()
+        || "INCONSISTENT_RECOVERY_PHASE".equals(order.getLastError())
+        || !order.getUpdatedAt().equals(command.expectedUpdatedAt())
+        || order.getRecoveryPhase() != command.expectedPhase()
+        || order.getRecoveryAttempts() != command.expectedAttempts()) {
+      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+    }
+    final var actor = order.isCancelling() ? order.getUpdatedBy() : order.getCreatedBy();
+    if (actor == null || actor.isBlank() || actor.length() > 100)
+      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+    var now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+    // 같은 상태에서 다시 재개해도 오래된 요청은 거절하도록 DB 정밀도로 시각을 진행한다.
+    if (!now.isAfter(order.getUpdatedAt())) now = order.getUpdatedAt().plus(1, ChronoUnit.MICROS);
+    if (repository.resumeBlocked(
+            id,
+            order.isCancelling() ? OrderStatus.CANCELLING : OrderStatus.PROCESSING,
+            actor,
+            now)
+        != 1)
+      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+    return repository.findById(id).orElseThrow();
   }
 }

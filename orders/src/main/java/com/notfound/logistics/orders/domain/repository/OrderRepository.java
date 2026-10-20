@@ -55,6 +55,17 @@ public interface OrderRepository
       @Param("actor") String actor,
       @Param("now") Instant now);
 
+  // 수동 1회 실행은 같은 단계의 자동 차단·실패 횟수·오류를 보존한다.
+  @Modifying(clearAutomatically = true, flushAutomatically = true)
+  @Query(
+      "update Order o set o.status = :next, o.updatedBy = :actor, o.updatedAt = :now "
+          + "where o.id = :id and o.deletedAt is null and o.recoveryBlocked = true")
+  int resumeBlocked(
+      @Param("id") UUID id,
+      @Param("next") OrderStatus next,
+      @Param("actor") String actor,
+      @Param("now") Instant now);
+
   // 고정 간격으로 오래된 작업부터 재개하며 자동 차단 건은 제외한다.
   @Query(
       "select o from Order o where o.status in :statuses and o.recoveryBlocked = false order by o.updatedAt, o.id")

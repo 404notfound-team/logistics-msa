@@ -119,7 +119,7 @@ jobs:
       - name: Verify linked development scenarios
         run: python3 scripts/check-dev-data.py
       - name: Verify real Orders flow, timeouts and restart recovery
-        run: ./gradlew --no-daemon --offline :integration-tests:ordersFlowTest :integration-tests:deliveryRecoveryTest :integration-tests:stockRecoveryTest :integration-tests:deductionRecoveryTest
+        run: ./gradlew --no-daemon --offline :integration-tests:ordersFlowTest :integration-tests:deliveryRecoveryTest :integration-tests:stockRecoveryTest :integration-tests:deductionRecoveryTest :integration-tests:blockedRecoveryTest
       - name: Upload service integration reports
         if: always()
         uses: actions/upload-artifact@v7.0.2
