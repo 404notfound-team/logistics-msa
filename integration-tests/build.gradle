@@ -21,7 +21,8 @@ def stages = [
     ordersFlowTest: '*OrdersFlowTest',
     deliveryRecoveryTest: '*OrdersRecoveryTest.recoversDeliveryCommittedAfterTimeoutAndOrdersShutdown',
     stockRecoveryTest: '*OrdersRecoveryTest.recoversRestorationCommittedAfterTimeoutAndOrdersShutdown',
-    deductionRecoveryTest: '*OrderDeductionRecoveryTest'
+    deductionRecoveryTest: '*OrderDeductionRecoveryTest',
+    blockedRecoveryTest: '*OrdersBlockedRecoveryTest'
 ]
 def predecessors = []
 stages.each { taskName, pattern ->

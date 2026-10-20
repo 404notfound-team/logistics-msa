@@ -139,6 +139,35 @@ final class ServiceDatabase {
     }
   }
 
+  /** 전용 스택에서 복구 실패 예산 소진·최종 저장 실패를 실제 HTTP 경로로 만든다. */
+  AutoCloseable rejectRecoveryWrite(Table table) throws Exception {
+    if (table != Table.RESTORATIONS && table != Table.ORDERS)
+      throw new IllegalArgumentException("Only recovery test writes may be rejected");
+    final var name = "recovery_failure_" + UUID.randomUUID().toString().replace("-", "");
+    final var function = table.service + "." + name;
+    final var event = table == Table.ORDERS ? "UPDATE" : "INSERT";
+    final var condition = table == Table.ORDERS ? " WHEN (NEW.status = 'CANCELLED')" : "";
+    try (var connection = connect(table, "orders-e2e-recovery-failure");
+        var statement = connection.createStatement()) {
+      statement.setQueryTimeout(10);
+      connection.setAutoCommit(false);
+      statement.execute("CREATE FUNCTION " + function + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test recovery write failure'; END $$");
+      statement.execute("CREATE TRIGGER " + name + " BEFORE " + event + " ON " + table.relation
+          + " FOR EACH ROW" + condition + " EXECUTE FUNCTION " + function + "()");
+      connection.commit();
+    }
+    return () -> {
+      try (var connection = connect(table, "orders-e2e-recovery-failure-cleanup");
+          var statement = connection.createStatement()) {
+        statement.setQueryTimeout(10);
+        connection.setAutoCommit(false);
+        statement.execute("DROP TRIGGER " + name + " ON " + table.relation);
+        statement.execute("DROP FUNCTION " + function + "()");
+        connection.commit();
+      }
+    };
+  }
+
   void assertInsertWaiting(Table table) throws Exception {
     assertThat(
             count(

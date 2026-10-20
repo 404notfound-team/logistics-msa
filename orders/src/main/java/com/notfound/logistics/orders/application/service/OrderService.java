@@ -4,7 +4,9 @@ import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.orders.application.dto.CreateOrderCommand;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult;
 import com.notfound.logistics.orders.application.dto.OrderOperationResult.Outcome;
+import com.notfound.logistics.orders.application.dto.OrderRecoveryResult;
 import com.notfound.logistics.orders.application.dto.OrderResult;
+import com.notfound.logistics.orders.application.dto.ResumeOrderRecoveryCommand;
 import com.notfound.logistics.orders.application.service.ActiveOrderProcessing.Operation;
 import com.notfound.logistics.orders.domain.exception.OrderBusinessException;
 import com.notfound.logistics.orders.domain.exception.OrderErrorCode;
@@ -474,12 +476,7 @@ public class OrderService {
               if (current.getStatus() != OrderStatus.RECOVERY_REQUIRED)
                 transactions.change(id, value -> value.requireRecovery("INTERRUPTED_PROCESSING"));
               if (transactions.resume(id, current.isCancelling(), username)) {
-                switch (phase) {
-                  case STOCK_DEDUCTION -> processCreate(id);
-                  case DELIVERY_CREATION -> processDeliveryCreation(id, true);
-                  case STOCK_COMPENSATION -> restoreStock(load(id));
-                  case DELIVERY_CANCELLATION, STOCK_RESTORATION -> processCancel(id);
-                }
+                resumePhase(id, phase);
               }
             });
       } catch (RuntimeException exception) {
@@ -493,6 +490,42 @@ public class OrderService {
         active.end(id);
       }
     }
+  }
+
+  public OrderRecoveryResult recoveryStatus(UUID id, boolean master) {
+    if (!master) throw business(OrderErrorCode.ORDER_FORBIDDEN);
+    return OrderRecoveryResult.from(load(id));
+  }
+
+  public OrderRecoveryResult resumeBlocked(
+      UUID id, ResumeOrderRecoveryCommand command, String operator, boolean master) {
+    if (!master) throw business(OrderErrorCode.ORDER_FORBIDDEN);
+    if (active.begin(id, Operation.RECOVER) != null)
+      throw business(OrderErrorCode.ORDER_STATE_CONFLICT);
+    try {
+      final var order = transactions.resumeBlocked(id, command);
+      org.slf4j.LoggerFactory.getLogger(OrderService.class)
+          .info(
+              "Order manual recovery admitted; orderId={}, operator={}, phase={}, attempts={}",
+              id,
+              operator,
+              order.getRecoveryPhase(),
+              order.getRecoveryAttempts());
+      final var actor = order.isCancelling() ? order.getUpdatedBy() : order.getCreatedBy();
+      auditor.runAsPersistedUser(actor, () -> resumePhase(id, order.getRecoveryPhase()));
+      return OrderRecoveryResult.from(load(id));
+    } finally {
+      active.end(id);
+    }
+  }
+
+  private OrderOperationResult resumePhase(UUID id, RecoveryPhase phase) {
+    return switch (phase) {
+      case STOCK_DEDUCTION -> processCreate(id);
+      case DELIVERY_CREATION -> processDeliveryCreation(id, true);
+      case STOCK_COMPENSATION -> restoreStock(load(id));
+      case DELIVERY_CANCELLATION, STOCK_RESTORATION -> processCancel(id);
+    };
   }
 
   private Order accessible(UUID id, String username, boolean master) {

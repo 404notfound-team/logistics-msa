@@ -220,12 +220,12 @@ public class Order extends AuditEntity {
   public void deferRecovery(String code, int maxAttempts) {
     requireRecovery(code);
     recoveryAttempts++;
-    recoveryBlocked = recoveryAttempts >= maxAttempts;
+    recoveryBlocked = recoveryBlocked || recoveryAttempts >= maxAttempts;
   }
 
   public void blockRecovery(String code) {
     if (!isRecoveryPending()) throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
-    if (recoveryBlocked) return;
+    if (recoveryBlocked && status == OrderStatus.RECOVERY_REQUIRED) return;
     lastError = Objects.requireNonNull(code);
     status = OrderStatus.RECOVERY_REQUIRED;
     recoveryBlocked = true;
