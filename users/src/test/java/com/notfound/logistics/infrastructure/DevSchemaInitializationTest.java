@@ -1,4 +1,4 @@
-package com.notfound.logistics.infra;
+package com.notfound.logistics.infrastructure;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
