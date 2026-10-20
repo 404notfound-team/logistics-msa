@@ -25,7 +25,7 @@ Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에�
 
 | 수신자 | 메서드·경로 (`/internal` 이하) | 허용 발신자 |
 | --- | --- | --- |
-| Users | `GET /users/{id}/authorization` | Gateway |
+| Users | `GET /users/{id}/authorization` | Gateway, Delivery |
 | Users | `GET /users/identities?username=&user_id=` | Orders |
 | Company | `GET /companies?name=` | Users |
 | Company | `GET /companies/{id}` | Orders, Users |
@@ -44,6 +44,7 @@ Actuator·Swagger/OpenAPI·Eureka·인프라 점검은 공통 응답 포장에�
 Users의 알림용 identities 조회는 주문자 username과 선택적인 담당자 user_id 두 명으로 제한하며,
 활성 사용자의 `{id, username, name}` 목록만 반환합니다. 동일 사용자는 한 번만, 없거나 삭제된 사용자는 제외합니다.
 Users에 `ORDERS_SERVICE_TOKEN`이 설정된 경우에만 Orders의 해당 조회를 허용합니다(Compose에는 기본 연결).
+Users에 `DELIVERY_SERVICE_TOKEN`이 설정된 경우 Delivery는 담당자 배정에 필요한 현재 계정 상태만 조회할 수 있습니다.
 
 차감·복원은 `{order_id, hub_id, product_id, quantity}`를 받으며 `order_id`가 주문별 멱등 키입니다.
 성공은 최초·반복 모두 200·`data: {id, hub_id, product_id, quantity}`입니다. 응답 quantity는 현재 조회값이 아닌 최초 처리 직후 잔량입니다.

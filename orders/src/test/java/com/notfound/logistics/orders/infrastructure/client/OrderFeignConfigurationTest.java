@@ -31,7 +31,8 @@ class OrderFeignConfigurationTest {
   @Test
   void errorDecoderKeepsOnlyRecognizedCodesAndNeverAnExternalMessage() {
     var decoder = configuration.orderErrorDecoder(new ObjectMapper());
-    for (String body : List.of("not-json", "{\"code\":\"secret-value\"}", "{}")) {
+    for (String body :
+        List.of("not-json", "<html>Bad Gateway</html>", "{\"code\":\"secret-value\"}", "{}")) {
       var error = (RemoteFailure) decoder.decode("client", response(503, body));
       assertThat(error.status()).isEqualTo(503);
       assertThat(error.code()).isEqualTo("UPSTREAM_UNAVAILABLE");

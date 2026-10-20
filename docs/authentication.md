@@ -46,7 +46,7 @@ MASTER는 `is_delivery_staff=true`여도 전체 조회합니다. 배송 담당 �
 | 신뢰 경계 | Gateway는 외부 `X-Service-Token`, `X-Actor-Username`, `X-User-*`를 대소문자 구분 없이 제거 |
 | 내부 인증 | 발신자의 `<SERVICE>_SERVICE_TOKEN`을 `X-Service-Token`으로 전달. 수신자는 호출 서비스·허용 API 확인. 없거나 틀리면 401, 허용하지 않은 API는 403 |
 | 감사 주체 | 검증된 username을 `X-Actor-Username`에 전달. 자동 복구는 저장된 요청자 사용 |
-| actor 예외 | Gateway→Users 사용자 검증, 회원가입의 업체·허브 조회. Gateway→Users는 사용자 JWT도 보내지 않음 |
+| actor 예외 | Gateway·Delivery→Users 계정 확인, 회원가입의 업체·허브 조회. 계정 확인에는 사용자 JWT를 보내지 않음 |
 | Gateway 오류 | 인증 실패·사용자 상태 불일치 401, 역할 부족 403, Users 조회 실패·2초 초과 503 |
 
 JWT는 암호화되지 않습니다. 비밀번호·토큰·Webhook URL을 저장소나 로그에 남기지 않습니다.
@@ -54,6 +54,8 @@ JWT는 암호화되지 않습니다. 비밀번호·토큰·Webhook URL을 저장
 
 ## 권한과 사용자 생명주기
 
+- 회원가입 시 MASTER/USER 선택을 허용합니다. 계정 생성 흐름을 단순하게 유지하기 위해 별도 관리자 가입 UI·승인 절차는 구현 범위에서 제외합니다([가입 정책 #18](https://github.com/404notfound-team/logistics-msa/issues/18)).
+- 배송은 미배정 상태로 생성할 수 있습니다. 담당자를 배정할 때 Users의 활성 배송 담당 계정인지 확인하고, 배정된 담당자는 본인 계정으로 로그인해 배송 상태를 변경합니다. 존재하지 않거나 삭제된 계정은 404 `ASSIGNEE_NOT_FOUND`, 배송 담당자가 아닌 계정은 409 `ASSIGNEE_NOT_DELIVERY_STAFF`, 계정 확인 실패는 503 `USERS_UNAVAILABLE`이며 배송은 변경하지 않습니다.
 - MASTER 전용: 사용자 목록·단건 조회/생성/수정/삭제, 재고 생성, 주문 삭제. `GET/DELETE /api/users/me`는 본인용입니다.
 - USER는 업체·허브 중 정확히 하나에 소속됩니다. MASTER는 최대 하나이며 무소속도 허용합니다. 양쪽 동시 소속은 금지합니다.
 - 삭제된 username도 재사용하지 않습니다. 삭제한 사용자는 조회·로그인에서 제외하며 마지막 MASTER 삭제는 막지 않습니다.

@@ -61,6 +61,7 @@ import org.springframework.web.bind.annotation.RestController;
       "USERS_SERVICE_TOKEN=test-only-users-service-token",
       "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
       "users.internal-auth.orders-token=test-only-orders-service-token",
+      "users.internal-auth.delivery-token=test-only-delivery-service-token",
       "users.internal-auth.clients.probe.token=test-only-probe-service-token",
       "users.internal-auth.clients.probe.allowed[0]=GET /internal/test/actor",
       "eureka.client.enabled=false",
@@ -119,6 +120,26 @@ class UserSecurityTest {
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.username").value("user01"))
         .andExpect(jsonPath("$.data.active").value(true));
+  }
+
+  @Test
+  void deliveryCanCheckAssigneeButCannotResolveOtherUserData() throws Exception {
+    given(userService.getAuthorization(USER_ID))
+        .willReturn(
+            new UserAuthorizationResponseDto(USER_ID, "driver01", true, UserRoleEnum.USER, true));
+    mvc.perform(
+            get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.user_id").value(USER_ID.toString()))
+        .andExpect(jsonPath("$.data.is_delivery_staff").value(true));
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            post(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isForbidden());
   }
 
   @Test

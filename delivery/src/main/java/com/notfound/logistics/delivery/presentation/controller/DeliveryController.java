@@ -244,7 +244,7 @@ class DeliveryController {
   @Operation(
       summary = "배송 정보 수정·수동 배정",
       description =
-          "id에 해당하는 배송의 상태 또는 담당자를 수정합니다. 상태 변경은 MASTER 또는 해당 배송 담당자, 담당자 배정은 MASTER만 할 수 있습니다.")
+          "id에 해당하는 배송의 상태 또는 담당자를 수정합니다. 상태 변경은 MASTER 또는 해당 배송 담당자, 담당자 배정은 MASTER만 할 수 있습니다. 배정 대상은 Users의 활성 배송 담당 계정이어야 합니다. 미배정 배송도 허용합니다.")
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "200",
@@ -269,7 +269,7 @@ class DeliveryController {
                 })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "404",
-        description = "배송 없음",
+        description = "배송 또는 활성 배정 계정 없음 (DELIVERY_NOT_FOUND, ASSIGNEE_NOT_FOUND)",
         content =
             @Content(
                 mediaType = "application/json",
@@ -282,7 +282,7 @@ class DeliveryController {
                 })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "409",
-        description = "허용되지 않는 상태 전이·배정 또는 동시 수정",
+        description = "허용되지 않는 상태 전이·배정, 배송 담당자가 아닌 계정(ASSIGNEE_NOT_DELIVERY_STAFF) 또는 동시 수정",
         content =
             @Content(
                 mediaType = "application/json",
@@ -300,6 +300,23 @@ class DeliveryController {
                       name = "CONCURRENT_MODIFICATION",
                       value =
                           "{\"code\": \"CONCURRENT_MODIFICATION\", \"message\": \"다른 요청이 배송을 먼저 변경했습니다. 다시 조회한 뒤 요청해 주세요.\", \"trace_id\": null, \"field_errors\": []}")
+                })),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "Delivery의 담당자 계정 확인 실패 또는 Gateway의 현재 사용자 확인 실패",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = {
+                  @ExampleObject(
+                      name = "USERS_UNAVAILABLE",
+                      value =
+                          "{\"code\": \"USERS_UNAVAILABLE\", \"message\": \"배송 담당 계정을 확인할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}"),
+                  @ExampleObject(
+                      name = "SERVICE_UNAVAILABLE",
+                      value =
+                          "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")
                 })),
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "415",
