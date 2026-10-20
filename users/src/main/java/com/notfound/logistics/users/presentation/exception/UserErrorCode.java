@@ -1,6 +1,7 @@
 package com.notfound.logistics.users.presentation.exception;
 
 import com.notfound.logistics.common.api.ApiErrorCode;
+import com.notfound.logistics.users.domain.exception.UserError;
 
 public enum UserErrorCode implements ApiErrorCode {
   USERNAME_ALREADY_EXISTS(409, "이미 사용 중인 아이디입니다."),
@@ -19,6 +20,21 @@ public enum UserErrorCode implements ApiErrorCode {
   UserErrorCode(int httpStatus, String message) {
     this.httpStatus = httpStatus;
     this.message = message;
+  }
+
+  // switch로 매핑해 UserError에 값이 추가되면 컴파일 단계에서 누락을 알 수 있게 한다.
+  public static UserErrorCode from(UserError error) {
+    return switch (error) {
+      case USERNAME_ALREADY_EXISTS -> USERNAME_ALREADY_EXISTS;
+      case INVALID_CREDENTIALS -> INVALID_CREDENTIALS;
+      case INVALID_REFRESH_TOKEN -> INVALID_REFRESH_TOKEN;
+      case ENTITY_NOT_FOUND -> ENTITY_NOT_FOUND;
+      case INVALID_AFFILIATION -> INVALID_AFFILIATION;
+      case INVALID_SORT -> INVALID_SORT;
+      case AFFILIATION_AMBIGUOUS -> AFFILIATION_AMBIGUOUS;
+      case AFFILIATION_LOOKUP_UNAVAILABLE -> AFFILIATION_LOOKUP_UNAVAILABLE;
+      case USER_NOT_FOUND -> USER_NOT_FOUND;
+    };
   }
 
   @Override

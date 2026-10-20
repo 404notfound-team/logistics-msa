@@ -3,6 +3,7 @@ package com.notfound.logistics.users.application.service;
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.dto.UserIdentity;
+import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
@@ -20,7 +21,6 @@ import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
-import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import feign.FeignException;
 import java.time.Clock;
 import java.time.Duration;
@@ -58,7 +58,7 @@ public class UserService {
 
   public UserRegisterResponseDto register(UserRegisterRequestDto request) {
     if (userRepository.existsByUsernameIncludingDeleted(request.username())) {
-      throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
+      throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
 
     UUID companyId = null;
@@ -69,13 +69,13 @@ public class UserService {
       try {
         matches = companyLookupClient.findByName(companyName).data();
       } catch (FeignException exception) {
-        throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
+        throw new UserException(UserError.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
       if (matches == null || matches.isEmpty()) {
-        throw new UserException(UserErrorCode.ENTITY_NOT_FOUND);
+        throw new UserException(UserError.ENTITY_NOT_FOUND);
       }
       if (matches.size() > 1) {
-        throw new UserException(UserErrorCode.AFFILIATION_AMBIGUOUS);
+        throw new UserException(UserError.AFFILIATION_AMBIGUOUS);
       }
       companyId = matches.get(0).id();
     } else {
@@ -84,13 +84,13 @@ public class UserService {
       try {
         matches = hubLookupClient.findByName(hubName).data();
       } catch (FeignException exception) {
-        throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
+        throw new UserException(UserError.AFFILIATION_LOOKUP_UNAVAILABLE);
       }
       if (matches == null || matches.isEmpty()) {
-        throw new UserException(UserErrorCode.ENTITY_NOT_FOUND);
+        throw new UserException(UserError.ENTITY_NOT_FOUND);
       }
       if (matches.size() > 1) {
-        throw new UserException(UserErrorCode.AFFILIATION_AMBIGUOUS);
+        throw new UserException(UserError.AFFILIATION_AMBIGUOUS);
       }
       hubId = matches.get(0).id();
     }
@@ -108,7 +108,7 @@ public class UserService {
       User saved = SignupAuditScope.run(() -> userRepository.save(user));
       return new UserRegisterResponseDto(saved.getId());
     } catch (DataIntegrityViolationException exception) {
-      throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
+      throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
   }
 
@@ -116,9 +116,9 @@ public class UserService {
     User user =
         userRepository
             .findByUsername(request.username())
-            .orElseThrow(() -> new UserException(UserErrorCode.INVALID_CREDENTIALS));
+            .orElseThrow(() -> new UserException(UserError.INVALID_CREDENTIALS));
     if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-      throw new UserException(UserErrorCode.INVALID_CREDENTIALS);
+      throw new UserException(UserError.INVALID_CREDENTIALS);
     }
     return issueTokens(user);
   }
@@ -131,12 +131,12 @@ public class UserService {
     var claims =
         refreshTokenCodec
             .verify(refreshToken)
-            .orElseThrow(() -> new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+            .orElseThrow(() -> new UserException(UserError.INVALID_REFRESH_TOKEN));
     User user =
         userRepository
             .findById(claims.userId())
             .filter(found -> found.getTokenVersion() == claims.tokenVersion())
-            .orElseThrow(() -> new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+            .orElseThrow(() -> new UserException(UserError.INVALID_REFRESH_TOKEN));
     return issueTokens(user);
   }
 
@@ -232,10 +232,10 @@ public class UserService {
   @Transactional
   public UserResponseDto createUser(UserCreateRequestDto request) {
     if (!User.isValidAffiliation(request.role(), request.companyId(), request.hubId())) {
-      throw new UserException(UserErrorCode.INVALID_AFFILIATION);
+      throw new UserException(UserError.INVALID_AFFILIATION);
     }
     if (userRepository.existsByUsernameIncludingDeleted(request.username())) {
-      throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
+      throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
     verifyAffiliationExists(request.companyId(), request.hubId());
 
@@ -252,7 +252,7 @@ public class UserService {
     try {
       return UserResponseDto.from(userRepository.saveAndFlush(user));
     } catch (DataIntegrityViolationException exception) {
-      throw new UserException(UserErrorCode.USERNAME_ALREADY_EXISTS);
+      throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
   }
 
@@ -263,7 +263,7 @@ public class UserService {
     UUID companyId = request.changesAffiliation() ? request.companyId() : user.getCompanyId();
     UUID hubId = request.changesAffiliation() ? request.hubId() : user.getHubId();
     if (!User.isValidAffiliation(role, companyId, hubId)) {
-      throw new UserException(UserErrorCode.INVALID_AFFILIATION);
+      throw new UserException(UserError.INVALID_AFFILIATION);
     }
     if (request.changesAffiliation()) {
       verifyAffiliationExists(companyId, hubId);
@@ -292,13 +292,13 @@ public class UserService {
   private User findUser(UUID id) {
     return userRepository
         .findById(id)
-        .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        .orElseThrow(() -> new UserException(UserError.USER_NOT_FOUND));
   }
 
   private User findUserForUpdate(UUID id) {
     return userRepository
         .findByIdForUpdate(id)
-        .orElseThrow(() -> new UserException(UserErrorCode.USER_NOT_FOUND));
+        .orElseThrow(() -> new UserException(UserError.USER_NOT_FOUND));
   }
 
   private void verifyAffiliationExists(UUID companyId, UUID hubId) {
@@ -309,9 +309,9 @@ public class UserService {
         hubLookupClient.findById(hubId);
       }
     } catch (FeignException.NotFound exception) {
-      throw new UserException(UserErrorCode.ENTITY_NOT_FOUND);
+      throw new UserException(UserError.ENTITY_NOT_FOUND);
     } catch (FeignException exception) {
-      throw new UserException(UserErrorCode.AFFILIATION_LOOKUP_UNAVAILABLE);
+      throw new UserException(UserError.AFFILIATION_LOOKUP_UNAVAILABLE);
     }
   }
 }
