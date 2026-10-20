@@ -53,7 +53,9 @@ public class OrderRecoveryController {
 
   @Operation(summary = "주문 복구 상태 확인", description = "차단 여부·단계·실패 횟수·최근 오류·갱신 시각을 조회합니다.")
   @io.swagger.v3.oas.annotations.responses.ApiResponse(
-      responseCode = "200", description = "현재 복구 상태", useReturnTypeSchema = true)
+      responseCode = "200",
+      description = "현재 복구 상태",
+      useReturnTypeSchema = true)
   @GetMapping
   public ApiResponse<OrderRecoveryResponse> get(
       @Parameter(hidden = true) @AuthenticationPrincipal Jwt principal, @PathVariable UUID id) {
@@ -89,8 +91,7 @@ public class OrderRecoveryController {
       @PathVariable UUID id,
       @Valid @RequestBody ResumeOrderRecoveryRequest request) {
     final var result =
-        service.resumeBlocked(
-            id, request.toCommand(), principal.getSubject(), isMaster(principal));
+        service.resumeBlocked(id, request.toCommand(), principal.getSubject(), isMaster(principal));
     final var response = new ApiResponse<>(OrderRecoveryResponse.from(result));
     return result.recoveryPhase() == null
         ? ResponseEntity.ok(response)
