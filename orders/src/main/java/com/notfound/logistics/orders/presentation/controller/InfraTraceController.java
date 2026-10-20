@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.presentation.controller.diagnostics;
+package com.notfound.logistics.orders.presentation.controller;
 
 import com.notfound.logistics.orders.infrastructure.client.HubProbeClient;
 import java.util.Map;
