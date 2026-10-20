@@ -1,13 +1,9 @@
-package com.notfound.logistics.orders.infra;
+package com.notfound.logistics.orders.infrastructure.client;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.notfound.logistics.orders.infrastructure.audit.OrdersAuditorAware;
-import com.notfound.logistics.orders.infrastructure.client.CompanyClient;
-import com.notfound.logistics.orders.infrastructure.client.DeliveryClient;
 import com.notfound.logistics.orders.infrastructure.client.OrderClientTypes.Deduction;
-import com.notfound.logistics.orders.infrastructure.client.StockClient;
-import com.notfound.logistics.orders.infrastructure.client.UserIdentityClient;
 import feign.Client;
 import feign.Request;
 import feign.Response;

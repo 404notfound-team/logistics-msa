@@ -1,5 +1,6 @@
-package com.notfound.logistics.orders.infra;
+package com.notfound.logistics.orders.presentation.controller.infra;
 
+import com.notfound.logistics.orders.infrastructure.client.HubProbeClient;
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;

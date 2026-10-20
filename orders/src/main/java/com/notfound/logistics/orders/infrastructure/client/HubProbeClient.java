@@ -1,4 +1,4 @@
-package com.notfound.logistics.orders.infra;
+package com.notfound.logistics.orders.infrastructure.client;
 
 import java.util.Map;
 import org.springframework.cloud.openfeign.FeignClient;
@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 
 @Profile("local")
 @FeignClient(name = "hub", contextId = "infraHubProbe")
-interface HubProbeClient {
+public interface HubProbeClient {
   @GetMapping("/internal/infra/ping")
   Map<String, String> ping();
 }
