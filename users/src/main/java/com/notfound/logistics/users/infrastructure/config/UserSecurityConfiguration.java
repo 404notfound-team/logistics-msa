@@ -10,6 +10,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -43,7 +44,8 @@ public class UserSecurityConfiguration {
       response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       objectMapper.writeValue(
-          response.getOutputStream(), ApiErrorResponse.of(CommonErrorCode.UNAUTHORIZED, null));
+          response.getOutputStream(),
+          ApiErrorResponse.of(CommonErrorCode.UNAUTHORIZED, MDC.get("traceId")));
     };
   }
 
@@ -53,7 +55,8 @@ public class UserSecurityConfiguration {
       response.setStatus(HttpServletResponse.SC_FORBIDDEN);
       response.setContentType(MediaType.APPLICATION_JSON_VALUE);
       objectMapper.writeValue(
-          response.getOutputStream(), ApiErrorResponse.of(CommonErrorCode.FORBIDDEN, null));
+          response.getOutputStream(),
+          ApiErrorResponse.of(CommonErrorCode.FORBIDDEN, MDC.get("traceId")));
     };
   }
 
