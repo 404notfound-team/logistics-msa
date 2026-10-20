@@ -1,6 +1,8 @@
 package com.notfound.logistics.delivery.presentation.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -8,6 +10,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.delivery.infrastructure.client.UserAuthorizationClient;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -32,6 +36,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
@@ -65,12 +70,26 @@ class DeliveryReadAuthorizationIntegrationTest {
 
   @Autowired private MockMvc mvc;
   @Autowired private JdbcTemplate jdbc;
+  @MockitoBean private UserAuthorizationClient users;
   @Autowired private ObjectMapper mapper;
   private UUID ownWaiting;
   private UUID ownMoving;
   private UUID foreign;
   private UUID unassigned;
   private UUID deleted;
+
+  private void stubAssignees() {
+    given(users.getAuthorization(any()))
+        .willAnswer(
+            call -> {
+              assertThat(
+                      org.springframework.transaction.support.TransactionSynchronizationManager
+                          .isActualTransactionActive())
+                  .isFalse();
+              return new ApiResponse<>(
+                  new UserAuthorizationClient.Authorization(call.getArgument(0), true, true));
+            });
+  }
 
   @DynamicPropertySource
   static void database(DynamicPropertyRegistry registry) {
@@ -81,6 +100,7 @@ class DeliveryReadAuthorizationIntegrationTest {
 
   @BeforeEach
   void prepare() {
+    stubAssignees();
     jdbc.update("DELETE FROM p_delivery_routes");
     jdbc.update("DELETE FROM p_deliveries");
     ownWaiting = insert(STAFF, OTHER, "HUB_WAITING", false);
@@ -197,6 +217,59 @@ class DeliveryReadAuthorizationIntegrationTest {
                 .header("X-Is-Delivery-Staff", "false"),
             token(STAFF, "USER", true))
         .andExpect(status().isForbidden());
+  }
+
+  @ParameterizedTest
+  @CsvSource({"false,false,404,ASSIGNEE_NOT_FOUND", "true,false,409,ASSIGNEE_NOT_DELIVERY_STAFF"})
+  void invalidAssigneeLeavesBothAssignmentAndStatusUnchanged(
+      boolean active, boolean staff, int status, String code) throws Exception {
+    given(users.getAuthorization(OTHER))
+        .willReturn(
+            new ApiResponse<>(new UserAuthorizationClient.Authorization(OTHER, active, staff)));
+    request(
+            patch("/api/deliveries/" + ownWaiting)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"HUB_MOVING\",\"assignee_id\":\"" + OTHER + "\"}"),
+            token(STAFF, "MASTER", false))
+        .andExpect(status().is(status))
+        .andExpect(jsonPath("$.code").value(code));
+    var saved =
+        jdbc.queryForMap(
+            "SELECT status, delivery_manager_id FROM p_deliveries WHERE delivery_id=?", ownWaiting);
+    assertThat(saved.get("status")).isEqualTo("HUB_WAITING");
+    assertThat(saved.get("delivery_manager_id")).isEqualTo(STAFF);
+  }
+
+  @Test
+  void usersFailureDoesNotChangeDelivery() throws Exception {
+    given(users.getAuthorization(OTHER))
+        .willThrow(
+            feign.FeignException.errorStatus(
+                "users",
+                feign.Response.builder()
+                    .status(503)
+                    .reason("Unavailable")
+                    .headers(java.util.Map.of())
+                    .request(
+                        feign.Request.create(
+                            feign.Request.HttpMethod.GET,
+                            "http://users.test",
+                            java.util.Map.of(),
+                            null,
+                            java.nio.charset.StandardCharsets.UTF_8,
+                            null))
+                    .build()));
+    request(
+            patch("/api/deliveries/" + ownWaiting)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"HUB_MOVING\",\"assignee_id\":\"" + OTHER + "\"}"),
+            token(STAFF, "MASTER", false))
+        .andExpect(status().isServiceUnavailable())
+        .andExpect(jsonPath("$.code").value("USERS_UNAVAILABLE"));
+    assertThat(
+            jdbc.queryForObject(
+                "SELECT status FROM p_deliveries WHERE delivery_id=?", String.class, ownWaiting))
+        .isEqualTo("HUB_WAITING");
   }
 
   @Test

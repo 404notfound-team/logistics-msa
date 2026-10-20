@@ -58,6 +58,7 @@ public class UserSecurityConfiguration {
       HttpSecurity http,
       InternalAuthProperties internalAuthProperties,
       @Value("${users.internal-auth.orders-token:}") String ordersToken,
+      @Value("${users.internal-auth.delivery-token:}") String deliveryToken,
       AuthenticationEntryPoint userAuthenticationEntryPoint,
       AccessDeniedHandler userAccessDeniedHandler)
       throws Exception {
@@ -68,6 +69,12 @@ public class UserSecurityConfiguration {
           "orders",
           new InternalAuthProperties.Client(
               ordersToken, List.of("GET /internal/users/identities")));
+    }
+    if (!deliveryToken.isBlank()) {
+      clients.putIfAbsent(
+          "delivery",
+          new InternalAuthProperties.Client(
+              deliveryToken, List.of("GET /internal/users/*/authorization")));
     }
     var effectiveProperties = new InternalAuthProperties(clients);
     return http.securityMatcher("/internal/**")

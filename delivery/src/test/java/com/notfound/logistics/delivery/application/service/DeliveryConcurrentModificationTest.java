@@ -2,11 +2,15 @@ package com.notfound.logistics.delivery.application.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 
+import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.domain.model.Delivery;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
+import com.notfound.logistics.delivery.infrastructure.client.UserAuthorizationClient;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
@@ -25,6 +29,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -55,6 +60,20 @@ class DeliveryConcurrentModificationTest {
   @Autowired private DeliveryRepository deliveryRepository;
   @Autowired private PlatformTransactionManager transactionManager;
   @Autowired private JdbcTemplate jdbc;
+  @MockitoBean private UserAuthorizationClient users;
+
+  private void stubAssignees() {
+    given(users.getAuthorization(any()))
+        .willAnswer(
+            call -> {
+              assertThat(
+                      org.springframework.transaction.support.TransactionSynchronizationManager
+                          .isActualTransactionActive())
+                  .isFalse();
+              return new ApiResponse<>(
+                  new UserAuthorizationClient.Authorization(call.getArgument(0), true, true));
+            });
+  }
 
   @DynamicPropertySource
   static void databaseProperties(DynamicPropertyRegistry registry) {
@@ -65,6 +84,7 @@ class DeliveryConcurrentModificationTest {
 
   @BeforeEach
   void authenticate() {
+    stubAssignees();
     Jwt jwt = Jwt.withTokenValue("test").header("alg", "none").subject("tester").build();
     SecurityContextHolder.getContext()
         .setAuthentication(new JwtAuthenticationToken(jwt, java.util.List.of()));

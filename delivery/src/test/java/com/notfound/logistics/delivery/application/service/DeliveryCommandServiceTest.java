@@ -8,6 +8,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
+import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.delivery.application.dto.DeliveryActor;
 import com.notfound.logistics.delivery.application.dto.DeliveryResult;
 import com.notfound.logistics.delivery.application.dto.DeliveryRouteResult;
@@ -18,13 +19,17 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
+import com.notfound.logistics.delivery.infrastructure.client.UserAuthorizationClient;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 class DeliveryCommandServiceTest {
   private static final String ACTOR = "orders-user";
@@ -38,8 +43,22 @@ class DeliveryCommandServiceTest {
   private static final DeliveryActor OTHER_USER = new DeliveryActor(OTHER_ASSIGNEE_ID, false, true);
 
   private final DeliveryRepository deliveryRepository = mock(DeliveryRepository.class);
+  private final UserAuthorizationClient users = mock(UserAuthorizationClient.class);
   private final DeliveryCommandService service =
-      new DeliveryCommandService(deliveryRepository, () -> Optional.of(ACTOR));
+      new DeliveryCommandService(
+          deliveryRepository,
+          () -> Optional.of(ACTOR),
+          users,
+          new TransactionTemplate(mock(PlatformTransactionManager.class)));
+
+  @BeforeEach
+  void validAssignees() {
+    given(users.getAuthorization(any()))
+        .willAnswer(
+            call ->
+                new ApiResponse<>(
+                    new UserAuthorizationClient.Authorization(call.getArgument(0), true, true)));
+  }
 
   @Test
   void modifyChangesOnlyTheStatusWhenNoAssigneeIsGiven() {
@@ -397,6 +416,59 @@ class DeliveryCommandServiceTest {
     then(deliveryRepository).should().findIncludingDeletedForUpdate(deliveryId);
     then(deliveryRepository).should(never()).findById(any());
     then(deliveryRepository).should(never()).findByIdForUpdate(any());
+  }
+
+  @Test
+  void nonexistentOrNonStaffAssigneeCannotPartiallyAssignOrAdvanceDelivery() {
+    for (boolean active : List.of(false, true)) {
+      Delivery delivery = existingDelivery();
+      given(users.getAuthorization(OTHER_ASSIGNEE_ID))
+          .willReturn(
+              new ApiResponse<>(
+                  new UserAuthorizationClient.Authorization(OTHER_ASSIGNEE_ID, active, false)));
+      assertThatThrownBy(
+              () ->
+                  service.modify(DELIVERY_ID, DeliveryStatus.HUB_MOVING, OTHER_ASSIGNEE_ID, MASTER))
+          .isInstanceOf(DeliveryBusinessException.class)
+          .extracting(e -> ((DeliveryBusinessException) e).getErrorCode())
+          .isEqualTo(
+              active
+                  ? DeliveryErrorCode.ASSIGNEE_NOT_DELIVERY_STAFF
+                  : DeliveryErrorCode.ASSIGNEE_NOT_FOUND);
+      assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+      assertThat(delivery.getAssigneeId()).isNull();
+    }
+    then(deliveryRepository).should(never()).findById(any());
+  }
+
+  @Test
+  void unverifiedUserResponseCannotAssignDelivery() {
+    given(users.getAuthorization(OTHER_ASSIGNEE_ID))
+        .willReturn(
+            new ApiResponse<>(new UserAuthorizationClient.Authorization(ASSIGNEE_ID, true, true)));
+    assertThatThrownBy(() -> service.modify(DELIVERY_ID, null, OTHER_ASSIGNEE_ID, MASTER))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(e -> ((DeliveryBusinessException) e).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.USERS_UNAVAILABLE);
+    then(deliveryRepository).should(never()).findById(any());
+  }
+
+  @Test
+  void accountNoLongerMarkedAsStaffCannotChangeAssignedDelivery() {
+    Delivery delivery = existingDelivery();
+    delivery.assign(ASSIGNEE_ID);
+    assertThatThrownBy(
+            () ->
+                service.modify(
+                    DELIVERY_ID,
+                    DeliveryStatus.HUB_MOVING,
+                    null,
+                    new DeliveryActor(ASSIGNEE_ID, false, false)))
+        .isInstanceOf(DeliveryBusinessException.class)
+        .extracting(e -> ((DeliveryBusinessException) e).getErrorCode())
+        .isEqualTo(DeliveryErrorCode.STATUS_CHANGE_FORBIDDEN);
+    assertThat(delivery.getStatus()).isEqualTo(DeliveryStatus.HUB_WAITING);
+    then(users).should(never()).getAuthorization(any());
   }
 
   private static Delivery delivery(UUID id, DeliveryStatus status) {

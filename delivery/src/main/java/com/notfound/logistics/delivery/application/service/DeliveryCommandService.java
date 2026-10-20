@@ -9,6 +9,8 @@ import com.notfound.logistics.delivery.domain.model.DeliveryRoute;
 import com.notfound.logistics.delivery.domain.model.DeliveryRouteStatus;
 import com.notfound.logistics.delivery.domain.model.DeliveryStatus;
 import com.notfound.logistics.delivery.domain.repository.DeliveryRepository;
+import com.notfound.logistics.delivery.infrastructure.client.UserAuthorizationClient;
+import feign.FeignException;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -16,13 +18,15 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.AuditorAware;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 @RequiredArgsConstructor
-@Transactional
 public class DeliveryCommandService {
   private final DeliveryRepository deliveryRepository;
   private final AuditorAware<String> auditorAware;
+  private final UserAuthorizationClient users;
+  private final TransactionTemplate transactionTemplate;
 
   /**
    * 배송 상태를 바꾸거나 담당자를 수동 배정한다. null인 값은 바꾸지 않는다. 없거나 삭제된 배송이면 DELIVERY_NOT_FOUND다. 변경은 트랜잭션 종료 시
@@ -40,11 +44,44 @@ public class DeliveryCommandService {
     if (assigneeId != null && !actor.master()) {
       throw new DeliveryBusinessException(DeliveryErrorCode.ASSIGNMENT_FORBIDDEN);
     }
+    // Users 호출 중에는 로컬 DB 연결이나 행 잠금을 유지하지 않는다.
+    if (assigneeId != null) {
+      verifyAssignee(assigneeId);
+    }
+    return transactionTemplate.execute(
+        transaction -> modifyInTransaction(deliveryId, status, assigneeId, actor));
+  }
+
+  private void verifyAssignee(UUID assigneeId) {
+    try {
+      var response = users.getAuthorization(assigneeId);
+      var user = response == null ? null : response.data();
+      if (user == null
+          || !assigneeId.equals(user.userId())
+          || user.active() == null
+          || user.isDeliveryStaff() == null) {
+        throw new DeliveryBusinessException(DeliveryErrorCode.USERS_UNAVAILABLE);
+      }
+      if (!user.active()) {
+        throw new DeliveryBusinessException(DeliveryErrorCode.ASSIGNEE_NOT_FOUND);
+      }
+      if (!user.isDeliveryStaff()) {
+        throw new DeliveryBusinessException(DeliveryErrorCode.ASSIGNEE_NOT_DELIVERY_STAFF);
+      }
+    } catch (FeignException exception) {
+      throw new DeliveryBusinessException(DeliveryErrorCode.USERS_UNAVAILABLE);
+    }
+  }
+
+  private DeliveryResult modifyInTransaction(
+      UUID deliveryId, DeliveryStatus status, UUID assigneeId, DeliveryActor actor) {
     Delivery delivery =
         deliveryRepository
             .findById(deliveryId)
             .orElseThrow(() -> new DeliveryBusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
-    if (status != null && !actor.master() && !delivery.isAssignedTo(actor.userId())) {
+    if (status != null
+        && !actor.master()
+        && (!actor.deliveryStaff() || !delivery.isAssignedTo(actor.userId()))) {
       throw new DeliveryBusinessException(DeliveryErrorCode.STATUS_CHANGE_FORBIDDEN);
     }
     // 배정 가능 여부는 요청 전의 현재 상태로 판단해야 하므로 상태보다 먼저 배정한다.
@@ -85,6 +122,7 @@ public class DeliveryCommandService {
    *
    * @throws DeliveryBusinessException 배송이 없으면 DELIVERY_NOT_FOUND, 이미 출발했으면 DELIVERY_ALREADY_STARTED
    */
+  @Transactional
   public DeliveryResult cancel(UUID deliveryId) {
     Delivery delivery =
         deliveryRepository
@@ -102,6 +140,7 @@ public class DeliveryCommandService {
    *
    * @throws DeliveryBusinessException 배송이 없으면 DELIVERY_NOT_FOUND, 끝나지 않았으면 DELIVERY_IN_PROGRESS
    */
+  @Transactional
   public void delete(UUID deliveryId) {
     Delivery delivery =
         deliveryRepository

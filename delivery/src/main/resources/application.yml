@@ -42,7 +42,7 @@ spring:
   cloud:
     loadbalancer:
       eager-load:
-        clients: hub
+        clients: hub,users
     openfeign:
       client:
         config:

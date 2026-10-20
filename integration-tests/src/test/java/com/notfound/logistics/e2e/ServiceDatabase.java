@@ -21,6 +21,7 @@ final class ServiceDatabase {
     ORDERS("orders", "orders.p_orders"),
     DELIVERIES("delivery", "delivery.p_deliveries"),
     ROUTES("delivery", "delivery.p_delivery_routes"),
+    DEDUCTIONS("hub", "hub.p_stock_deductions"),
     RESTORATIONS("hub", "hub.p_stock_restorations");
 
     final String service;
@@ -85,9 +86,9 @@ final class ServiceDatabase {
   }
 
   DelayedCommit delay(Table table) throws Exception {
-    if (table != Table.DELIVERIES && table != Table.RESTORATIONS) {
+    if (table != Table.DELIVERIES && table != Table.RESTORATIONS && table != Table.DEDUCTIONS) {
       throw new IllegalArgumentException(
-          "Only delivery creation and stock restoration may be delayed");
+          "Only delivery creation and stock movements may be delayed");
     }
     final var label = "orders-recovery-" + UUID.randomUUID();
     final var connection = connect(table, label);
@@ -150,6 +151,56 @@ final class ServiceDatabase {
                 table.relation))
         .as("Real service INSERT must be waiting")
         .isPositive();
+  }
+
+  /** 전용 스택의 테스트가 입고한 1개만 회수한다. 예상 수량이 아니면 임의 보정하지 않는다. */
+  AutoCloseable testReplenishment(UUID stockId, int before) {
+    return () -> {
+      try (var connection = connect(Table.DEDUCTIONS, "orders-e2e-replenishment-cleanup");
+          var statement =
+              connection.prepareStatement(
+                  "UPDATE hub.p_stocks SET quantity=? WHERE id=? AND quantity=?")) {
+        statement.setInt(1, before);
+        statement.setObject(2, stockId);
+        statement.setInt(3, before + 1);
+        statement.setQueryTimeout(10);
+        assertThat(statement.executeUpdate()).as("Remove exactly the test replenishment").isOne();
+      }
+    };
+  }
+
+  /** 배송 생성의 확정 거절을 만들고 이 테스트가 숨긴 기존 경로만 복원한다. */
+  AutoCloseable hideHubRoute(UUID departure, UUID arrival) throws Exception {
+    var marker = "orders-e2e-" + UUID.randomUUID();
+    UUID id;
+    try (var connection = connect(Table.DEDUCTIONS, "orders-e2e-route-control");
+        var statement =
+            connection.prepareStatement(
+                "UPDATE hub.p_hub_routes SET deleted_at=now(), deleted_by=? WHERE"
+                    + " departure_hub_id=? AND arrival_hub_id=? AND deleted_at IS NULL"
+                    + " RETURNING id")) {
+      statement.setString(1, marker);
+      statement.setObject(2, departure);
+      statement.setObject(3, arrival);
+      statement.setQueryTimeout(10);
+      try (var result = statement.executeQuery()) {
+        assertThat(result.next()).as("Existing route required for failure injection").isTrue();
+        id = result.getObject(1, UUID.class);
+        assertThat(result.next()).isFalse();
+      }
+    }
+    return () -> {
+      try (var connection = connect(Table.DEDUCTIONS, "orders-e2e-route-cleanup");
+          var statement =
+              connection.prepareStatement(
+                  "UPDATE hub.p_hub_routes SET deleted_at=NULL, deleted_by=NULL WHERE id=? AND"
+                      + " deleted_by=?")) {
+        statement.setObject(1, id);
+        statement.setString(2, marker);
+        statement.setQueryTimeout(10);
+        assertThat(statement.executeUpdate()).as("Restore only this test's route").isOne();
+      }
+    };
   }
 
   private long count(Table table, String query, String value) throws Exception {

@@ -129,6 +129,70 @@ class OrdersFlowTest {
     }
   }
 
+  @Test
+  @Timeout(value = 3, unit = TimeUnit.MINUTES)
+  void assignsAnActiveStaffAccountAndAllowsItsOwnLoginToCompleteDelivery() throws Exception {
+    var stack = ComposeStack.fromEnvironment();
+    stack.requireDeliveryApis();
+    var database = new ServiceDatabase(stack);
+    var key = UUID.randomUUID();
+    UUID orderId = null;
+    try (var client = new GatewayClient(stack.gateway())) {
+      var master = client.login(stack, "devmaster", "MASTER");
+      var owner = client.login(stack, "devseed", "USER");
+      var driver = client.login(stack, "devseed2", "USER");
+      int before = client.get(STOCK, master).path("quantity").asInt();
+      var created = expect(client.request("POST", "/api/orders", owner, sampleOrder(), key), 201);
+      orderId = UUID.fromString(created.path("order_id").asText());
+      String path = "/api/deliveries/" + created.path("delivery_id").asText();
+      expect(
+          client.request(
+              "PATCH",
+              path,
+              master,
+              Map.of("assignee_id", UUID.randomUUID(), "status", "HUB_MOVING"),
+              null),
+          404);
+      expect(
+          client.request(
+              "PATCH",
+              path,
+              master,
+              Map.of("assignee_id", "c0ffee39-0000-4000-8000-000000000099", "status", "HUB_MOVING"),
+              null),
+          409);
+      var unchanged = client.get(path, master);
+      assertThat(unchanged.path("status").asText()).isEqualTo("HUB_WAITING");
+      assertThat(unchanged.path("assignee_id").isNull()).isTrue();
+      expect(
+          client.request(
+              "PATCH",
+              path,
+              master,
+              Map.of("assignee_id", "c0ffee39-0000-4000-8000-000000000098"),
+              null),
+          200);
+      expect(client.request("PATCH", path, owner, Map.of("status", "HUB_MOVING"), null), 403);
+      for (String status :
+          java.util.List.of(
+              "HUB_MOVING", "DESTINATION_HUB_ARRIVED", "COMPANY_MOVING", "DELIVERED")) {
+        assertThat(
+                expect(client.request("PATCH", path, driver, Map.of("status", status), null), 200)
+                    .path("status")
+                    .asText())
+            .isEqualTo(status);
+      }
+      expect(client.request("DELETE", "/api/orders/" + orderId, master, null, null), 204);
+      // 완결한 배송은 재고를 복원하지 않으므로 이 테스트의 출고 3개를 입고해 시작 수량으로 돌린다.
+      assertThat(client.get(STOCK, master).path("quantity").asInt()).isEqualTo(before - 3);
+      expect(client.request("POST", STOCK + "/add", master, Map.of("quantity", 3), null), 200);
+      assertThat(client.get(STOCK, master).path("quantity").asInt()).isEqualTo(before);
+    } catch (Exception | AssertionError failure) {
+      reportFailure(database, "assignment", key, orderId);
+      throw failure;
+    }
+  }
+
   static JsonNode confirmed(GatewayClient client, String path, String owner) {
     return await("Order confirmation")
         .atMost(Duration.ofSeconds(30))
@@ -178,7 +242,8 @@ class OrdersFlowTest {
       }
     }
     System.err.printf(
-        "FAIL orders-%s: order_id=%s, idempotency_key=%s. Inspect this order before retrying; do not create a new key or estimate stock corrections.%n",
+        "FAIL orders-%s: order_id=%s, idempotency_key=%s. Inspect this order before retrying; do"
+            + " not create a new key or estimate stock corrections.%n",
         scenario, orderId, key);
   }
 }

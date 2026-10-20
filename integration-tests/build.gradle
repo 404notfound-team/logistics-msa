@@ -20,7 +20,8 @@ def stages = [
     coldStartTest: '*ColdStartTest',
     ordersFlowTest: '*OrdersFlowTest',
     deliveryRecoveryTest: '*OrdersRecoveryTest.recoversDeliveryCommittedAfterTimeoutAndOrdersShutdown',
-    stockRecoveryTest: '*OrdersRecoveryTest.recoversRestorationCommittedAfterTimeoutAndOrdersShutdown'
+    stockRecoveryTest: '*OrdersRecoveryTest.recoversRestorationCommittedAfterTimeoutAndOrdersShutdown',
+    deductionRecoveryTest: '*OrderDeductionRecoveryTest'
 ]
 def predecessors = []
 stages.each { taskName, pattern ->
@@ -48,7 +49,7 @@ stages.each { taskName, pattern ->
 }
 
 tasks.register('e2eTest') {
-    description = 'Verifies order flow and both recovery stages sequentially in one existing stack.'
+    description = 'Verifies order flow, delivery/stock recovery and compensation in one existing stack.'
     group = 'verification'
     dependsOn predecessors
 }
