@@ -1,4 +1,4 @@
-package com.notfound.logistics.hub.presentation.controller.diagnostics;
+package com.notfound.logistics.company.presentation.controller;
 
 import java.util.Map;
 import org.springframework.context.annotation.Profile;
@@ -10,6 +10,6 @@ import org.springframework.web.bind.annotation.RestController;
 class InfraProbeController {
   @GetMapping("/internal/infra/ping")
   Map<String, String> ping() {
-    return Map.of("service", "hub", "status", "UP");
+    return Map.of("service", "company", "status", "UP");
   }
 }
