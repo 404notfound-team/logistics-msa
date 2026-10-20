@@ -1,7 +1,9 @@
 package com.notfound.logistics.users.application.service;
 
-import com.notfound.logistics.common.api.PageResponse;
+import com.notfound.logistics.users.application.dto.CreateUserCommand;
 import com.notfound.logistics.users.application.dto.IssuedTokens;
+import com.notfound.logistics.users.application.dto.RegisterUserCommand;
+import com.notfound.logistics.users.application.dto.UpdateUserCommand;
 import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
@@ -14,24 +16,19 @@ import com.notfound.logistics.users.infrastructure.audit.SignupAuditScope;
 import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
 import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec;
-import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
-import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
-import com.notfound.logistics.users.presentation.dto.UserResponseDto;
-import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import feign.FeignException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -56,7 +53,7 @@ public class UserService {
   @Value("${users.jwt.access-token-ttl:15m}")
   private Duration accessTokenTtl;
 
-  public UserRegisterResponseDto register(UserRegisterRequestDto request) {
+  public UUID register(RegisterUserCommand request) {
     if (userRepository.existsByUsernameIncludingDeleted(request.username())) {
       throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
@@ -106,18 +103,18 @@ public class UserService {
             hubId);
     try {
       User saved = SignupAuditScope.run(() -> userRepository.save(user));
-      return new UserRegisterResponseDto(saved.getId());
+      return saved.getId();
     } catch (DataIntegrityViolationException exception) {
       throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
   }
 
-  public IssuedTokens signIn(UserSignInRequestDto request) {
+  public IssuedTokens signIn(String username, String password) {
     User user =
         userRepository
-            .findByUsername(request.username())
+            .findByUsername(username)
             .orElseThrow(() -> new UserException(UserError.INVALID_CREDENTIALS));
-    if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+    if (!passwordEncoder.matches(password, user.getPasswordHash())) {
       throw new UserException(UserError.INVALID_CREDENTIALS);
     }
     return issueTokens(user);
@@ -164,19 +161,9 @@ public class UserService {
     return new IssuedTokens(token, accessTokenTtl, refreshToken, refreshTokenCodec.ttl());
   }
 
-  public UserAuthorizationResponseDto getAuthorization(UUID id) {
-    return userRepository
-        .findById(id)
-        .map(
-            user ->
-                new UserAuthorizationResponseDto(
-                    user.getId(),
-                    user.getUsername(),
-                    true,
-                    user.getRole(),
-                    user.isDeliveryStaff(),
-                    user.getTokenVersion()))
-        .orElseGet(() -> new UserAuthorizationResponseDto(id, null, false, null, false, 0));
+  /** 탈퇴·삭제한 사용자는 비어 있습니다. */
+  public Optional<User> findActiveUser(UUID id) {
+    return userRepository.findById(id);
   }
 
   /** 주문자와 선택적인 배송 담당자만 조회하며 삭제된 사용자는 제외합니다. */
@@ -195,26 +182,17 @@ public class UserService {
   }
 
   @Transactional(readOnly = true)
-  public PageResponse<UserResponseDto> getUsers(UserSearchCondition condition, Pageable pageable) {
+  public Page<User> getUsers(UserSearchCondition condition, Pageable pageable) {
     var specification = UserSpecifications.matching(condition);
     if (pageable.getOffset() > Integer.MAX_VALUE) {
-      return new PageResponse<>(
-          List.of(),
-          pageable.getPageNumber(),
-          pageable.getPageSize(),
-          userRepository.count(specification));
+      return new PageImpl<>(List.of(), pageable, userRepository.count(specification));
     }
-    Page<User> users = userRepository.findAll(specification, pageable);
-    return new PageResponse<>(
-        users.getContent().stream().map(UserResponseDto::from).toList(),
-        users.getNumber(),
-        users.getSize(),
-        users.getTotalElements());
+    return userRepository.findAll(specification, pageable);
   }
 
   @Transactional(readOnly = true)
-  public UserResponseDto getUser(UUID id) {
-    return UserResponseDto.from(findUser(id));
+  public User getUser(UUID id) {
+    return findUser(id);
   }
 
   /** 회원 탈퇴입니다. 대상은 JWT의 user_id, 삭제 작업자는 JWT의 sub(username)입니다. */
@@ -230,7 +208,7 @@ public class UserService {
   }
 
   @Transactional
-  public UserResponseDto createUser(UserCreateRequestDto request) {
+  public User createUser(CreateUserCommand request) {
     if (!User.isValidAffiliation(request.role(), request.companyId(), request.hubId())) {
       throw new UserException(UserError.INVALID_AFFILIATION);
     }
@@ -250,14 +228,14 @@ public class UserService {
             request.hubId(),
             Boolean.TRUE.equals(request.isDeliveryStaff()));
     try {
-      return UserResponseDto.from(userRepository.saveAndFlush(user));
+      return userRepository.saveAndFlush(user);
     } catch (DataIntegrityViolationException exception) {
       throw new UserException(UserError.USERNAME_ALREADY_EXISTS);
     }
   }
 
   @Transactional
-  public UserResponseDto updateUser(UUID id, UserUpdateRequestDto request) {
+  public User updateUser(UUID id, UpdateUserCommand request) {
     User user = findUserForUpdate(id);
     UserRoleEnum role = request.role() != null ? request.role() : user.getRole();
     UUID companyId = request.changesAffiliation() ? request.companyId() : user.getCompanyId();
@@ -281,7 +259,7 @@ public class UserService {
         hubId);
     // 응답의 updated_at·updated_by가 이번 변경을 반영하도록 감사 필드를 먼저 기록합니다.
     userRepository.flush();
-    return UserResponseDto.from(user);
+    return user;
   }
 
   @Transactional

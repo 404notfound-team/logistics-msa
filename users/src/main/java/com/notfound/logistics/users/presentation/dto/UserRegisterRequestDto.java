@@ -1,5 +1,6 @@
 package com.notfound.logistics.users.presentation.dto;
 
+import com.notfound.logistics.users.application.dto.RegisterUserCommand;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
@@ -36,5 +37,9 @@ public record UserRegisterRequestDto(
     boolean hasCompany = companyName != null && !companyName.isBlank();
     boolean hasHub = hubName != null && !hubName.isBlank();
     return hasCompany ^ hasHub;
+  }
+
+  public RegisterUserCommand toCommand() {
+    return new RegisterUserCommand(username, name, password, role, slackId, companyName, hubName);
   }
 }

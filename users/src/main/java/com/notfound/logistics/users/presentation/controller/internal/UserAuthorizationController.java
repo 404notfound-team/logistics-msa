@@ -23,7 +23,11 @@ public class UserAuthorizationController {
 
   @GetMapping("/{id}/authorization")
   public ApiResponse<UserAuthorizationResponseDto> getAuthorization(@PathVariable UUID id) {
-    return new ApiResponse<>(userService.getAuthorization(id));
+    return new ApiResponse<>(
+        userService
+            .findActiveUser(id)
+            .map(UserAuthorizationResponseDto::from)
+            .orElseGet(() -> UserAuthorizationResponseDto.inactive(id)));
   }
 
   @GetMapping("/identities")
