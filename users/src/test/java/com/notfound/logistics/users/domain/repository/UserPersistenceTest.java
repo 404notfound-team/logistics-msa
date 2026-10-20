@@ -7,12 +7,12 @@ import static org.mockito.BDDMockito.given;
 
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.dto.UpdateUserCommand;
 import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.audit.SignupAuditScope;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
-import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
@@ -130,11 +130,11 @@ class UserPersistenceTest {
     var condition = new UserSearchCondition("user01", null, null, null, null);
     var result = userService.getUsers(condition, PageRequest.of(Integer.MAX_VALUE, 20));
 
-    assertThat(result.content()).isEmpty();
-    assertThat(result.page()).isEqualTo(Integer.MAX_VALUE);
-    assertThat(result.size()).isEqualTo(20);
-    assertThat(result.totalElements()).isEqualTo(1);
-    assertThat(result.totalPages()).isEqualTo(1);
+    assertThat(result.getContent()).isEmpty();
+    assertThat(result.getNumber()).isEqualTo(Integer.MAX_VALUE);
+    assertThat(result.getSize()).isEqualTo(20);
+    assertThat(result.getTotalElements()).isEqualTo(1);
+    assertThat(result.getTotalPages()).isEqualTo(1);
   }
 
   @Test
@@ -206,7 +206,7 @@ class UserPersistenceTest {
                 try {
                   return userService.updateUser(
                       saved.getId(),
-                      new UserUpdateRequestDto(null, null, null, null, null, null, nextHub));
+                      new UpdateUserCommand(null, null, null, null, null, null, nextHub));
                 } finally {
                   SecurityContextHolder.clearContext();
                 }
@@ -246,7 +246,7 @@ class UserPersistenceTest {
 
       assertThat(userRepository.findById(saved.getId())).isEmpty();
       assertThat(userRepository.findByUsername("user01")).isEmpty();
-      assertThat(userService.getAuthorization(saved.getId()).active()).isFalse();
+      assertThat(userService.findActiveUser(saved.getId())).isEmpty();
     } finally {
       finishLookup.countDown();
       workers.shutdownNow();

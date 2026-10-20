@@ -153,7 +153,7 @@ public class UserController {
   @PostMapping("/signup")
   public ResponseEntity<ApiResponse<UserRegisterResponseDto>> signup(
       @Valid @RequestBody UserRegisterRequestDto request) {
-    UserRegisterResponseDto response = userService.register(request);
+    var response = new UserRegisterResponseDto(userService.register(request.toCommand()));
     return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(response));
   }
 
@@ -196,7 +196,7 @@ public class UserController {
   @PostMapping("/signin")
   public ResponseEntity<ApiResponse<UserSignInResponseDto>> signin(
       @Valid @RequestBody UserSignInRequestDto request) {
-    return withTokens(userService.signIn(request));
+    return withTokens(userService.signIn(request.username(), request.password()));
   }
 
   @Operation(
@@ -294,8 +294,13 @@ public class UserController {
           @RequestParam(name = "sort", defaultValue = "created_at,desc")
           String sort) {
     var condition = new UserSearchCondition(username, name, role, companyId, hubId);
+    var users = userService.getUsers(condition, PageRequest.of(page, size, toSort(sort)));
     return new ApiResponse<>(
-        userService.getUsers(condition, PageRequest.of(page, size, toSort(sort))));
+        new PageResponse<>(
+            users.getContent().stream().map(UserResponseDto::from).toList(),
+            users.getNumber(),
+            users.getSize(),
+            users.getTotalElements()));
   }
 
   @Operation(summary = "내 정보 조회", description = "로그인한 사용자 본인의 정보를 조회합니다.")
@@ -333,7 +338,7 @@ public class UserController {
   @GetMapping("/me")
   public ApiResponse<UserResponseDto> getMe(
       @Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
-    return new ApiResponse<>(userService.getUser(userId(jwt)));
+    return new ApiResponse<>(UserResponseDto.from(userService.getUser(userId(jwt))));
   }
 
   @Operation(summary = "회원 탈퇴", description = "로그인한 사용자 본인의 계정을 탈퇴 처리합니다.")
@@ -498,7 +503,7 @@ public class UserController {
   @PostMapping
   public ResponseEntity<ApiResponse<UserResponseDto>> createUser(
       @Valid @RequestBody UserCreateRequestDto request) {
-    UserResponseDto response = userService.createUser(request);
+    var response = UserResponseDto.from(userService.createUser(request.toCommand()));
     return ResponseEntity.created(URI.create("/api/users/" + response.id()))
         .body(new ApiResponse<>(response));
   }
@@ -556,7 +561,7 @@ public class UserController {
       @Parameter(description = "사용자 ID", example = "22222222-2222-2222-2222-222222222222")
           @PathVariable("id")
           UUID id) {
-    return new ApiResponse<>(userService.getUser(id));
+    return new ApiResponse<>(UserResponseDto.from(userService.getUser(id)));
   }
 
   @Operation(
@@ -643,7 +648,7 @@ public class UserController {
           @PathVariable("id")
           UUID id,
       @Valid @RequestBody UserUpdateRequestDto request) {
-    return new ApiResponse<>(userService.updateUser(id, request));
+    return new ApiResponse<>(UserResponseDto.from(userService.updateUser(id, request.toCommand())));
   }
 
   @Operation(summary = "사용자 삭제 (MASTER)", description = "사용자를 삭제 처리합니다. 삭제된 사용자는 로그인과 조회가 되지 않습니다.")

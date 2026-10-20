@@ -10,6 +10,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.notfound.logistics.common.api.ApiResponse;
+import com.notfound.logistics.users.application.dto.CreateUserCommand;
+import com.notfound.logistics.users.application.dto.RegisterUserCommand;
+import com.notfound.logistics.users.application.dto.UpdateUserCommand;
 import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.User;
@@ -19,10 +22,6 @@ import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
 import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec;
 import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec.RefreshClaims;
-import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import feign.FeignException;
 import feign.Request;
 import java.nio.charset.StandardCharsets;
@@ -92,7 +91,7 @@ class UserServiceTest {
 
     var saved = ArgumentCaptor.forClass(User.class);
     verify(userRepository).save(saved.capture());
-    assertThat(response.id()).isEqualTo(USER_ID);
+    assertThat(response).isEqualTo(USER_ID);
     assertThat(saved.getValue().getUsername()).isEqualTo("user01");
     assertThat(saved.getValue().getPasswordHash()).isEqualTo("password-hash");
     assertThat(saved.getValue().getCompanyId()).isEqualTo(company ? COMPANY_ID : null);
@@ -168,7 +167,7 @@ class UserServiceTest {
   void signinOfAnUnknownOrDeletedUsernameDoesNotEncodeAToken() {
     given(userRepository.findByUsername("user01")).willReturn(Optional.empty());
 
-    assertThatThrownBy(() -> userService.signIn(new UserSignInRequestDto("user01", "Passw0rd!")))
+    assertThatThrownBy(() -> userService.signIn("user01", "Passw0rd!"))
         .isInstanceOfSatisfying(
             UserException.class,
             e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_CREDENTIALS));
@@ -180,8 +179,7 @@ class UserServiceTest {
     given(userRepository.findByUsername("user01")).willReturn(Optional.of(regularUser()));
     given(passwordEncoder.matches("wrong-password", "hash")).willReturn(false);
 
-    assertThatThrownBy(
-            () -> userService.signIn(new UserSignInRequestDto("user01", "wrong-password")))
+    assertThatThrownBy(() -> userService.signIn("user01", "wrong-password"))
         .isInstanceOfSatisfying(
             UserException.class,
             e -> assertThat(e.getError()).isEqualTo(UserError.INVALID_CREDENTIALS));
@@ -205,7 +203,7 @@ class UserServiceTest {
                 .subject("user01")
                 .build());
 
-    var response = userService.signIn(new UserSignInRequestDto("user01", "Passw0rd!"));
+    var response = userService.signIn("user01", "Passw0rd!");
 
     assertThat(response.accessToken()).isEqualTo("signed-access-token");
     assertThat(response.accessTokenTtl()).isEqualTo(Duration.ofMinutes(15));
@@ -305,14 +303,8 @@ class UserServiceTest {
     given(userRepository.findById(USER_ID))
         .willReturn(active ? Optional.of(user) : Optional.empty());
 
-    var authorization = userService.getAuthorization(USER_ID);
-
-    assertThat(authorization.userId()).isEqualTo(USER_ID);
-    assertThat(authorization.active()).isEqualTo(active);
-    assertThat(authorization.username()).isEqualTo(active ? "user01" : null);
-    assertThat(authorization.role()).isEqualTo(active ? UserRoleEnum.USER : null);
-    assertThat(authorization.isDeliveryStaff()).isFalse();
-    assertThat(authorization.tokenVersion()).isZero();
+    assertThat(userService.findActiveUser(USER_ID))
+        .isEqualTo(active ? Optional.of(user) : Optional.empty());
   }
 
   @Test
@@ -347,7 +339,7 @@ class UserServiceTest {
     userService.signOut(USER_ID);
 
     assertThat(user.getTokenVersion()).isEqualTo(2);
-    assertThat(userService.getAuthorization(USER_ID).tokenVersion()).isEqualTo(2);
+    assertThat(userService.findActiveUser(USER_ID).orElseThrow().getTokenVersion()).isEqualTo(2);
   }
 
   @Test
@@ -396,9 +388,9 @@ class UserServiceTest {
 
     var response = userService.createUser(createRequest(UserRoleEnum.MASTER, null));
 
-    assertThat(response.role()).isEqualTo(UserRoleEnum.MASTER);
-    assertThat(response.companyId()).isNull();
-    assertThat(response.hubId()).isNull();
+    assertThat(response.getRole()).isEqualTo(UserRoleEnum.MASTER);
+    assertThat(response.getCompanyId()).isNull();
+    assertThat(response.getHubId()).isNull();
     verifyNoInteractions(hubLookupClient, companyLookupClient);
   }
 
@@ -430,11 +422,11 @@ class UserServiceTest {
 
     var response =
         userService.updateUser(
-            USER_ID, new UserUpdateRequestDto(null, "N3wPassw0rd!", null, null, true, null, null));
+            USER_ID, new UpdateUserCommand(null, "N3wPassw0rd!", null, null, true, null, null));
 
     assertThat(user.getPasswordHash()).isEqualTo("new-hash");
-    assertThat(response.name()).isEqualTo("사용자");
-    assertThat(response.companyId()).isEqualTo(COMPANY_ID);
+    assertThat(response.getName()).isEqualTo("사용자");
+    assertThat(response.getCompanyId()).isEqualTo(COMPANY_ID);
     assertThat(response.isDeliveryStaff()).isTrue();
     verifyNoInteractions(hubLookupClient, companyLookupClient);
     verify(userRepository).flush();
@@ -447,10 +439,10 @@ class UserServiceTest {
 
     var response =
         userService.updateUser(
-            USER_ID, new UserUpdateRequestDto(null, null, null, null, null, null, HUB_ID));
+            USER_ID, new UpdateUserCommand(null, null, null, null, null, null, HUB_ID));
 
-    assertThat(response.hubId()).isEqualTo(HUB_ID);
-    assertThat(response.companyId()).isNull();
+    assertThat(response.getHubId()).isEqualTo(HUB_ID);
+    assertThat(response.getCompanyId()).isNull();
     verify(hubLookupClient).findById(HUB_ID);
   }
 
@@ -459,8 +451,8 @@ class UserServiceTest {
         "user01", "사용자", "hash", "slack", UserRoleEnum.USER, COMPANY_ID, null, false);
   }
 
-  private UserRegisterRequestDto signupRequest(boolean company) {
-    return new UserRegisterRequestDto(
+  private RegisterUserCommand signupRequest(boolean company) {
+    return new RegisterUserCommand(
         "user01",
         "사용자",
         "Passw0rd!",
@@ -497,8 +489,8 @@ class UserServiceTest {
     }
   }
 
-  private UserCreateRequestDto createRequest(UserRoleEnum role, UUID hubId) {
-    return new UserCreateRequestDto("user01", "사용자", "Passw0rd!", role, "slack", null, hubId, null);
+  private CreateUserCommand createRequest(UserRoleEnum role, UUID hubId) {
+    return new CreateUserCommand("user01", "사용자", "Passw0rd!", role, "slack", null, hubId, null);
   }
 
   private FeignException feignError(int status) {

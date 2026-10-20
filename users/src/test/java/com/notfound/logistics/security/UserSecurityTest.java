@@ -13,24 +13,22 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.dto.CreateUserCommand;
 import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.exception.UserError;
 import com.notfound.logistics.users.domain.exception.UserException;
+import com.notfound.logistics.users.domain.model.User;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
-import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
-import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserResponseDto;
-import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
 import jakarta.servlet.http.Cookie;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -39,6 +37,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
@@ -53,6 +53,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -121,9 +122,9 @@ class UserSecurityTest {
 
   @Test
   void gatewayCanReadCurrentUserAuthorization() throws Exception {
-    given(userService.getAuthorization(USER_ID))
-        .willReturn(
-            new UserAuthorizationResponseDto(USER_ID, "user01", true, UserRoleEnum.USER, false, 2));
+    User user = user();
+    ReflectionTestUtils.setField(user, "tokenVersion", 2L);
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.of(user));
 
     mvc.perform(
             get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-gateway-service-token"))
@@ -135,9 +136,11 @@ class UserSecurityTest {
 
   @Test
   void deliveryCanCheckAssigneeButCannotResolveOtherUserData() throws Exception {
-    given(userService.getAuthorization(USER_ID))
-        .willReturn(
-            new UserAuthorizationResponseDto(USER_ID, "driver01", true, UserRoleEnum.USER, true));
+    User driver =
+        User.create(
+            "driver01", "배송담당", "hash", "slack", UserRoleEnum.USER, null, UUID.randomUUID(), true);
+    ReflectionTestUtils.setField(driver, "id", USER_ID);
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.of(driver));
     mvc.perform(
             get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
         .andExpect(status().isOk())
@@ -151,6 +154,18 @@ class UserSecurityTest {
     mvc.perform(
             post(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
         .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void gatewaySeesWithdrawnUserAsInactive() throws Exception {
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.empty());
+
+    mvc.perform(
+            get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.user_id").value(USER_ID.toString()))
+        .andExpect(jsonPath("$.data.active").value(false))
+        .andExpect(jsonPath("$.data.username").doesNotExist());
   }
 
   @Test
@@ -258,7 +273,7 @@ class UserSecurityTest {
 
   @Test
   void userReadsThemselvesByJwtUserId() throws Exception {
-    given(userService.getUser(USER_ID)).willReturn(userResponse());
+    given(userService.getUser(USER_ID)).willReturn(user());
 
     mvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
         .andExpect(status().isOk())
@@ -295,7 +310,7 @@ class UserSecurityTest {
 
   @Test
   void signInReturnsAccessTokenInBodyAndRefreshTokenInRestrictedCookie() throws Exception {
-    given(userService.signIn(any(UserSignInRequestDto.class))).willReturn(TOKENS);
+    given(userService.signIn("user01", "Passw0rd!")).willReturn(TOKENS);
 
     var cookie =
         mvc.perform(
@@ -343,7 +358,7 @@ class UserSecurityTest {
 
   @Test
   void masterCreatesUserWithLocation() throws Exception {
-    given(userService.createUser(any(UserCreateRequestDto.class))).willReturn(userResponse());
+    given(userService.createUser(any(CreateUserCommand.class))).willReturn(user());
 
     mvc.perform(
             post("/api/users")
@@ -377,7 +392,7 @@ class UserSecurityTest {
 
   @Test
   void masterListsWithDefaultSortAndPkTieBreaker() throws Exception {
-    given(userService.getUsers(any(), any())).willReturn(new PageResponse<>(List.of(), 0, 20, 0));
+    given(userService.getUsers(any(), any())).willReturn(Page.empty(PageRequest.of(0, 20)));
 
     mvc.perform(
             get("/api/users")
@@ -417,7 +432,7 @@ class UserSecurityTest {
 
   @Test
   void publicEndpointsIgnoreStaleBearerToken() throws Exception {
-    given(userService.signIn(any(UserSignInRequestDto.class))).willReturn(TOKENS);
+    given(userService.signIn("user01", "Passw0rd!")).willReturn(TOKENS);
 
     for (String authorization : List.of(expiredBearer(), "Bearer not-a-jwt")) {
       mvc.perform(
@@ -471,18 +486,12 @@ class UserSecurityTest {
     verify(userService).deleteUser(eq(target), eq("user01"));
   }
 
-  private UserResponseDto userResponse() {
-    return new UserResponseDto(
-        USER_ID,
-        "user01",
-        "사용자",
-        UserRoleEnum.USER,
-        "slack",
-        null,
-        UUID.randomUUID(),
-        false,
-        Instant.now(),
-        Instant.now());
+  private User user() {
+    User user =
+        User.create(
+            "user01", "사용자", "hash", "slack", UserRoleEnum.USER, null, UUID.randomUUID(), false);
+    ReflectionTestUtils.setField(user, "id", USER_ID);
+    return user;
   }
 
   private String bearer(String role) {

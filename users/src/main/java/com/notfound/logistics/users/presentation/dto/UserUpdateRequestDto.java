@@ -1,5 +1,6 @@
 package com.notfound.logistics.users.presentation.dto;
 
+import com.notfound.logistics.users.application.dto.UpdateUserCommand;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
@@ -47,7 +48,7 @@ public record UserUpdateRequestDto(
     return companyId == null || hubId == null;
   }
 
-  public boolean changesAffiliation() {
-    return companyId != null || hubId != null;
+  public UpdateUserCommand toCommand() {
+    return new UpdateUserCommand(name, password, role, slackId, isDeliveryStaff, companyId, hubId);
   }
 }

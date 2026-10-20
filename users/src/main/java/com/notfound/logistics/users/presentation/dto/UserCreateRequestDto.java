@@ -1,5 +1,6 @@
 package com.notfound.logistics.users.presentation.dto;
 
+import com.notfound.logistics.users.application.dto.CreateUserCommand;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.AssertTrue;
@@ -36,5 +37,10 @@ public record UserCreateRequestDto(
   @AssertTrue(message = "업체 ID와 허브 ID는 함께 입력할 수 없습니다.")
   public boolean isAtMostOneAffiliationProvided() {
     return companyId == null || hubId == null;
+  }
+
+  public CreateUserCommand toCommand() {
+    return new CreateUserCommand(
+        username, name, password, role, slackId, companyId, hubId, isDeliveryStaff);
   }
 }
