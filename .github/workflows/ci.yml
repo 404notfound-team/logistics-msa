@@ -16,6 +16,8 @@ jobs:
   quality:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    outputs:
+      gradle-cache-key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -26,10 +28,25 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v6.4.0
         with:
-          cache-provider: basic
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
-      - name: Check formatting, lint, compile and test
-        run: ./gradlew --no-daemon --parallel --build-cache --continue check
+          cache-provider: external
+      - name: Restore complete Gradle cache
+        id: gradle-cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-ci-v2-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/gradle.properties', 'buildSrc/**', 'gradle/*.versions.toml', '**/versions.properties', '.github/workflows/ci.yml') }}
+      - name: Check, package and prepare integration tests
+        run: ./gradlew --no-daemon --parallel --build-cache --continue ${{ steps.gradle-cache.outputs.cache-hit == 'true' && '--offline' || '' }} check bootJar :integration-tests:e2eClasses
+      - name: Save complete Gradle cache
+        if: steps.gradle-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ steps.gradle-cache.outputs.cache-primary-key }}
       - name: Upload verification reports
         if: always()
         uses: actions/upload-artifact@v7.0.2
@@ -44,6 +61,7 @@ jobs:
           retention-days: 7
 
   smoke:
+    needs: quality
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     env:
@@ -65,8 +83,15 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v6.4.0
         with:
-          cache-provider: basic
-          cache-read-only: true
+          cache-provider: external
+      - name: Restore verified Gradle cache
+        uses: actions/cache/restore@v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ needs.quality.outputs.gradle-cache-key }}
+          fail-on-cache-miss: true
       - name: Package applications and prepare Docker
         run: |
           (
@@ -75,7 +100,7 @@ jobs:
           ) &
           docker_pid=$!
           status=0
-          ./gradlew --no-daemon --parallel --build-cache bootJar || status=$?
+          ./gradlew --no-daemon --offline --parallel --build-cache bootJar || status=$?
           wait "$docker_pid" || status=$?
           exit "$status"
       - name: Prepare CI image context
@@ -88,13 +113,13 @@ jobs:
       - name: Start infrastructure
         run: docker compose up -d --build --wait --wait-timeout 300
       - name: Verify first login and order before other API calls
-        run: ./gradlew --no-daemon :integration-tests:coldStartTest
+        run: ./gradlew --no-daemon --offline :integration-tests:coldStartTest
       - name: Verify service boundaries and tracing
         run: python3 scripts/smoke.py
       - name: Verify linked development scenarios
         run: python3 scripts/check-dev-data.py
       - name: Verify real Orders flow, timeouts and restart recovery
-        run: ./gradlew --no-daemon :integration-tests:ordersFlowTest :integration-tests:deliveryRecoveryTest :integration-tests:stockRecoveryTest
+        run: ./gradlew --no-daemon --offline :integration-tests:ordersFlowTest :integration-tests:deliveryRecoveryTest :integration-tests:stockRecoveryTest
       - name: Upload service integration reports
         if: always()
         uses: actions/upload-artifact@v7.0.2
