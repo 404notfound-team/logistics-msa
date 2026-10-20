@@ -3,6 +3,7 @@ package com.notfound.logistics.users.presentation.controller;
 import com.notfound.logistics.common.api.ApiErrorResponse;
 import com.notfound.logistics.common.api.ApiResponse;
 import com.notfound.logistics.common.api.PageResponse;
+import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.service.UserService;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
@@ -27,15 +28,19 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.net.URI;
+import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -68,6 +73,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @RequestMapping("/api/users")
 public class UserController {
+  static final String REFRESH_COOKIE = "refresh_token";
+  private static final String REFRESH_COOKIE_PATH = "/api/users/refresh";
+
   /** 외부 정렬 필드(snake_case)와 엔티티 속성의 허용 목록입니다. */
   private static final Map<String, String> SORT_PROPERTIES =
       Map.of(
@@ -149,7 +157,10 @@ public class UserController {
     return ResponseEntity.status(HttpStatus.CREATED).body(new ApiResponse<>(response));
   }
 
-  @Operation(summary = "로그인", description = "아이디와 비밀번호로 로그인하고 JWT 액세스 토큰을 발급합니다.")
+  @Operation(
+      summary = "로그인",
+      description =
+          "아이디와 비밀번호로 로그인하고 JWT 액세스 토큰을 발급합니다. refresh token은 HttpOnly 쿠키(refresh_token)로 설정하며 갱신 API로만 전송됩니다.")
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "200",
@@ -183,9 +194,33 @@ public class UserController {
   })
   @SecurityRequirements
   @PostMapping("/signin")
-  public ApiResponse<UserSignInResponseDto> signin(
+  public ResponseEntity<ApiResponse<UserSignInResponseDto>> signin(
       @Valid @RequestBody UserSignInRequestDto request) {
-    return new ApiResponse<>(userService.signIn(request));
+    return withTokens(userService.signIn(request));
+  }
+
+  @Operation(
+      summary = "토큰 갱신",
+      description =
+          "refresh_token 쿠키로 액세스 토큰을 새로 발급하고 refresh token 쿠키도 새 값으로 바꿉니다. 로그아웃·탈퇴했거나 refresh token이 만료되면 다시 로그인해야 합니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "200",
+        description = "갱신 성공"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "401",
+        description = "refresh token이 없거나 만료·무효화됨 (INVALID_REFRESH_TOKEN)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.INVALID_REFRESH_TOKEN_EXAMPLE)))
+  })
+  @SecurityRequirements
+  @PostMapping("/refresh")
+  public ResponseEntity<ApiResponse<UserSignInResponseDto>> refresh(
+      @Parameter(hidden = true) @CookieValue(name = REFRESH_COOKIE, required = false)
+          String refreshToken) {
+    return withTokens(userService.refresh(refreshToken));
   }
 
   /** MASTER 전용입니다. sort는 `필드,방향` 형식이며 기본값은 created_at,desc입니다. */
@@ -341,7 +376,8 @@ public class UserController {
 
   @Operation(
       summary = "로그아웃",
-      description = "로그인한 사용자 본인이 발급받은 모든 JWT를 무효화합니다. 다른 기기의 로그인도 함께 종료됩니다.")
+      description =
+          "로그인한 사용자 본인이 발급받은 모든 JWT와 refresh token을 무효화하고 refresh_token 쿠키를 지웁니다. 다른 기기의 로그인도 함께 종료됩니다.")
   @ApiResponses({
     @io.swagger.v3.oas.annotations.responses.ApiResponse(
         responseCode = "204",
@@ -376,7 +412,9 @@ public class UserController {
   @PostMapping("/signout")
   public ResponseEntity<Void> signout(@Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
     userService.signOut(userId(jwt));
-    return ResponseEntity.noContent().build();
+    return ResponseEntity.noContent()
+        .header(HttpHeaders.SET_COOKIE, refreshCookie("", Duration.ZERO).toString())
+        .build();
   }
 
   @Operation(
@@ -662,6 +700,30 @@ public class UserController {
       @Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
     userService.deleteUser(id, jwt.getSubject());
     return ResponseEntity.noContent().build();
+  }
+
+  private ResponseEntity<ApiResponse<UserSignInResponseDto>> withTokens(IssuedTokens tokens) {
+    var body =
+        new UserSignInResponseDto(
+            tokens.accessToken(), "Bearer", tokens.accessTokenTtl().toSeconds());
+    return ResponseEntity.ok()
+        .header(
+            HttpHeaders.SET_COOKIE,
+            refreshCookie(tokens.refreshToken(), tokens.refreshTokenTtl()).toString())
+        .body(new ApiResponse<>(body));
+  }
+
+  /**
+   * JS에서 읽을 수 없고 HTTPS·같은 사이트의 갱신 요청에만 전송되도록 제한합니다. 로컬 http://localhost도 브라우저가 Secure 쿠키를 허용합니다.
+   */
+  private static ResponseCookie refreshCookie(String value, Duration maxAge) {
+    return ResponseCookie.from(REFRESH_COOKIE, value)
+        .httpOnly(true)
+        .secure(true)
+        .sameSite("Strict")
+        .path(REFRESH_COOKIE_PATH)
+        .maxAge(maxAge)
+        .build();
   }
 
   private UUID userId(Jwt jwt) {

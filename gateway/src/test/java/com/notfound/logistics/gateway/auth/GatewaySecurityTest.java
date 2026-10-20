@@ -177,6 +177,7 @@ class GatewaySecurityTest {
 
     request(HttpMethod.POST, "/api/users/signin", null).exchange().expectStatus().isOk();
     request(HttpMethod.POST, "/api/users/signup", expired).exchange().expectStatus().isOk();
+    request(HttpMethod.POST, "/api/users/refresh", expired).exchange().expectStatus().isOk();
     request(HttpMethod.GET, "/api/users/signin", null).exchange().expectStatus().isOk();
     verify(usersClient, never()).fetch(any());
   }
