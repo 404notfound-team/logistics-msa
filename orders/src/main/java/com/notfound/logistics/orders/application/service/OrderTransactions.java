@@ -106,12 +106,8 @@ public class OrderTransactions {
     // 같은 상태에서 다시 재개해도 오래된 요청은 거절하도록 DB 정밀도로 시각을 진행한다.
     if (!now.isAfter(order.getUpdatedAt())) now = order.getUpdatedAt().plus(1, ChronoUnit.MICROS);
     if (repository.resumeBlocked(
-            id,
-            order.isCancelling() ? OrderStatus.CANCELLING : OrderStatus.PROCESSING,
-            actor,
-            now)
-        != 1)
-      throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
+            id, order.isCancelling() ? OrderStatus.CANCELLING : OrderStatus.PROCESSING, actor, now)
+        != 1) throw new OrderBusinessException(OrderErrorCode.ORDER_STATE_CONFLICT);
     return repository.findById(id).orElseThrow();
   }
 }

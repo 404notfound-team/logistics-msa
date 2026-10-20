@@ -1225,11 +1225,19 @@ class OrderApiIntegrationTest {
     assertStatus(request("POST", path, command, admin, null), 409);
     assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isOne();
     assertThat(repository.findById(id).orElseThrow().isRecoveryBlocked()).isTrue();
-    assertStatus(request("GET", "/api/orders/" + UUID.randomUUID() + "/recovery", null, admin, null), 404);
+    assertStatus(
+        request("GET", "/api/orders/" + UUID.randomUUID() + "/recovery", null, admin, null), 404);
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"STOCK_DEDUCTION", "DELIVERY_CREATION", "DELIVERY_CANCELLATION", "STOCK_RESTORATION", "STOCK_COMPENSATION"})
+  @ValueSource(
+      strings = {
+        "STOCK_DEDUCTION",
+        "DELIVERY_CREATION",
+        "DELIVERY_CANCELLATION",
+        "STOCK_RESTORATION",
+        "STOCK_COMPENSATION"
+      })
   void manualRecoveryUsesEveryStoredPhaseAndOriginalActor(String phase) throws Exception {
     final UUID id;
     if (phase.equals("STOCK_DEDUCTION")) {
@@ -1244,7 +1252,8 @@ class OrderApiIntegrationTest {
       id = id(create(UUID.randomUUID(), body(), alice));
     } else {
       id = id(create(UUID.randomUUID(), body(), alice));
-      fault(phase.equals("STOCK_RESTORATION") ? "stock.restore" : "delivery.get",
+      fault(
+          phase.equals("STOCK_RESTORATION") ? "stock.restore" : "delivery.get",
           Map.of("status", 401, "code", "UNAUTHORIZED"));
       assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
     }
@@ -1256,17 +1265,27 @@ class OrderApiIntegrationTest {
     assertStatus(resumed, 200);
     final boolean creation = phase.equals("STOCK_DEDUCTION") || phase.equals("DELIVERY_CREATION");
     assertThat(json(resumed).at("/data/status").asText())
-        .isEqualTo(creation ? "CONFIRMED" : phase.equals("STOCK_COMPENSATION") ? "FAILED" : "CANCELLED");
+        .isEqualTo(
+            creation
+                ? "CONFIRMED"
+                : phase.equals("STOCK_COMPENSATION") ? "FAILED" : "CANCELLED");
     final var saved = repository.findById(id).orElseThrow();
     assertThat(saved.getCreatedBy()).isEqualTo("alice");
     assertThat(saved.getUpdatedBy()).isEqualTo("alice");
     assertThat(saved.getRecoveryPhase()).isNull();
-    assertInventory(creation ? 997 : 1000, phase.equals("STOCK_COMPENSATION") ? 0 : 1,
+    assertInventory(
+        creation ? 997 : 1000,
+        phase.equals("STOCK_COMPENSATION") ? 0 : 1,
         phase.equals("STOCK_COMPENSATION") ? 0 : 1);
     final var counts = fixture.state().path("counts").deepCopy();
     assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 409);
     assertThat(fixture.state().path("counts")).isEqualTo(counts);
-    assertThat(fixture.state().at("/actors/" + (creation ? "stock.deduct" : "stock.restore")).asText()).isEqualTo("alice");
+    assertThat(
+            fixture
+                .state()
+                .at("/actors/" + (creation ? "stock.deduct" : "stock.restore"))
+                .asText())
+        .isEqualTo("alice");
   }
 
   @Test
@@ -1304,14 +1323,17 @@ class OrderApiIntegrationTest {
     final var path = "/api/orders/" + id + "/recovery";
     final var paused = new CountDownLatch(1);
     final var proceed = new CountDownLatch(1);
-    doAnswer(invocation -> {
-      final var running = invocation.callRealMethod();
-      if (running == null) {
-        paused.countDown();
-        assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
-      }
-      return running;
-    }).when(active).begin(eq(id), eq(Operation.RECOVER));
+    doAnswer(
+            invocation -> {
+              final var running = invocation.callRealMethod();
+              if (running == null) {
+                paused.countDown();
+                assertThat(proceed.await(5, TimeUnit.SECONDS)).isTrue();
+              }
+              return running;
+            })
+        .when(active)
+        .begin(eq(id), eq(Operation.RECOVER));
     try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
       final var first = executor.submit(() -> request("POST", path, command, admin, null));
       try {
@@ -1334,7 +1356,8 @@ class OrderApiIntegrationTest {
     fault("stock.restore", Map.of("status", 401, "code", "UNAUTHORIZED"));
     assertStatus(request("POST", "/api/orders/" + id + "/cancel", null, alice, null), 202);
     final var command = recoveryCommand(id);
-    jdbc.execute("""
+    jdbc.execute(
+        """
         CREATE FUNCTION reject_manual_completion() RETURNS trigger LANGUAGE plpgsql AS $$
         BEGIN RAISE EXCEPTION 'test final save failure'; END $$;
         CREATE TRIGGER reject_manual_completion BEFORE UPDATE ON p_orders
@@ -1343,7 +1366,8 @@ class OrderApiIntegrationTest {
     try {
       assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 500);
     } finally {
-      jdbc.execute("DROP TRIGGER reject_manual_completion ON p_orders; DROP FUNCTION reject_manual_completion()");
+      jdbc.execute(
+          "DROP TRIGGER reject_manual_completion ON p_orders; DROP FUNCTION reject_manual_completion()");
     }
     final var pending = repository.findById(id).orElseThrow();
     assertThat(pending.getStatus().name()).isEqualTo("CANCELLING");
@@ -1353,7 +1377,8 @@ class OrderApiIntegrationTest {
     assertThat(pending.getUpdatedAt().toString()).isNotEqualTo(command.get("expected_updated_at"));
     service.recover();
     assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 409);
-    assertStatus(request("POST", "/api/orders/" + id + "/recovery", recoveryCommand(id), admin, null), 200);
+    assertStatus(
+        request("POST", "/api/orders/" + id + "/recovery", recoveryCommand(id), admin, null), 200);
     assertThat(fixture.state().path("restorations")).hasSize(1);
     assertInventory(1000, 1, 1);
   }
@@ -1364,13 +1389,15 @@ class OrderApiIntegrationTest {
     final var id = id(create(UUID.randomUUID(), body(), alice));
     jdbc.update("UPDATE p_orders SET recovery_phase=null WHERE id=?", id);
     final var command = new HashMap<String, Object>();
-    command.put("expected_updated_at", repository.findById(id).orElseThrow().getUpdatedAt().toString());
+    command.put(
+        "expected_updated_at", repository.findById(id).orElseThrow().getUpdatedAt().toString());
     command.put("expected_phase", "STOCK_DEDUCTION");
     command.put("expected_attempts", 0);
     command.put("upstream_checked", true);
     assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 409);
     final var confirmed = id(create(UUID.randomUUID(), body(), alice));
-    assertStatus(request("POST", "/api/orders/" + confirmed + "/recovery", command, admin, null), 409);
+    assertStatus(
+        request("POST", "/api/orders/" + confirmed + "/recovery", command, admin, null), 409);
     jdbc.update("UPDATE p_orders SET deleted_at=now(), deleted_by='admin' WHERE id=?", id);
     assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 404);
     assertThat(fixture.state().at("/counts/stock.deduct").asInt()).isEqualTo(2);
@@ -1380,11 +1407,16 @@ class OrderApiIntegrationTest {
     final var response = request("GET", "/api/orders/" + id + "/recovery", null, admin, null);
     assertStatus(response, 200);
     final var snapshot = json(response).path("data");
-    return new HashMap<>(Map.of(
-        "expected_updated_at", snapshot.path("updated_at").asText(),
-        "expected_phase", snapshot.path("recovery_phase").asText(),
-        "expected_attempts", snapshot.path("recovery_attempts").asInt(),
-        "upstream_checked", true));
+    return new HashMap<>(
+        Map.of(
+            "expected_updated_at",
+            snapshot.path("updated_at").asText(),
+            "expected_phase",
+            snapshot.path("recovery_phase").asText(),
+            "expected_attempts",
+            snapshot.path("recovery_attempts").asInt(),
+            "upstream_checked",
+            true));
   }
 
   private Map<String, Object> body() {

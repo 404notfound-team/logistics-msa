@@ -29,18 +29,21 @@ class OrdersBlockedRecoveryTest {
       final var owner = client.login(stack, "devseed", "USER");
       final var master = client.login(stack, "devmaster", "MASTER");
       final int before = client.get(OrdersFlowTest.STOCK, master).path("quantity").asInt();
-      final var created = client.request("POST", "/api/orders", owner, OrdersFlowTest.sampleOrder(), key);
+      final var created =
+          client.request("POST", "/api/orders", owner, OrdersFlowTest.sampleOrder(), key);
       orderId = UUID.fromString(expect(created, 201).path("order_id").asText());
       final var path = "/api/orders/" + orderId;
       OrdersFlowTest.confirmed(client, path, owner);
       JsonNode blocked;
       try (var failure = database.rejectRecoveryWrite(RESTORATIONS)) {
         expect(client.request("POST", path + "/cancel", owner, null, null), 202);
-        blocked = await("Default twenty failures exhaust the persisted restoration budget")
-            .atMost(Duration.ofMinutes(3))
-            .pollInterval(Duration.ofSeconds(1))
-            .until(() -> client.get(path + "/recovery", master),
-                value -> value.path("recovery_blocked").asBoolean());
+        blocked =
+            await("Default twenty failures exhaust the persisted restoration budget")
+                .atMost(Duration.ofMinutes(3))
+                .pollInterval(Duration.ofSeconds(1))
+                .until(
+                    () -> client.get(path + "/recovery", master),
+                    value -> value.path("recovery_blocked").asBoolean());
       }
       assertThat(blocked.path("recovery_attempts").asInt()).isEqualTo(20);
       assertThat(blocked.path("recovery_phase").asText()).isEqualTo("STOCK_RESTORATION");
@@ -58,11 +61,13 @@ class OrdersBlockedRecoveryTest {
       assertThat(persisted.path("recovery_blocked").asBoolean()).isTrue();
       assertThat(persisted.path("recovery_attempts").asInt()).isEqualTo(20);
       restart.start();
-      final var current = await("Blocked recovery API available after Orders restart")
-          .atMost(Duration.ofSeconds(60))
-          .pollInterval(Duration.ofMillis(200))
-          .until(() -> client.request("GET", path + "/recovery", master, null, null),
-              response -> response.status() == 200);
+      final var current =
+          await("Blocked recovery API available after Orders restart")
+              .atMost(Duration.ofSeconds(60))
+              .pollInterval(Duration.ofMillis(200))
+              .until(
+                  () -> client.request("GET", path + "/recovery", master, null, null),
+                  response -> response.status() == 200);
       final var snapshot = expect(current, 200);
       assertThat(snapshot.path("status").asText()).isEqualTo("CANCELLING");
       assertThat(snapshot.path("recovery_blocked").asBoolean()).isTrue();
@@ -70,13 +75,17 @@ class OrdersBlockedRecoveryTest {
       expect(client.request("POST", path + "/recovery", owner, command(snapshot), null), 403);
       expect(client.request("POST", path + "/recovery", master, oldCommand, null), 409);
       final var resumed = command(snapshot);
-      assertThat(expect(client.request("POST", path + "/recovery", master, resumed, null), 200)
-          .path("status").asText()).isEqualTo("CANCELLED");
+      assertThat(
+              expect(client.request("POST", path + "/recovery", master, resumed, null), 200)
+                  .path("status")
+                  .asText())
+          .isEqualTo("CANCELLED");
       expect(client.request("POST", path + "/recovery", master, resumed, null), 409);
       assertThat(database.rows(RESTORATIONS, "order_id", orderId)).hasSize(1);
       final var saved = database.rows(ORDERS, "id", orderId).getFirst();
       assertThat(saved.path("updated_by").asText()).isEqualTo("devseed");
-      assertThat(client.get(OrdersFlowTest.STOCK, master).path("quantity").asInt()).isEqualTo(before);
+      assertThat(client.get(OrdersFlowTest.STOCK, master).path("quantity").asInt())
+          .isEqualTo(before);
       expect(client.request("DELETE", path, master, null, null), 204);
     } catch (Exception | AssertionError failure) {
       OrdersFlowTest.reportFailure(database, "blocked-manual-recovery", key, orderId);
@@ -86,9 +95,13 @@ class OrdersBlockedRecoveryTest {
 
   private Map<String, Object> command(JsonNode snapshot) {
     return Map.of(
-        "expected_updated_at", snapshot.path("updated_at").asText(),
-        "expected_phase", snapshot.path("recovery_phase").asText(),
-        "expected_attempts", snapshot.path("recovery_attempts").asInt(),
-        "upstream_checked", true);
+        "expected_updated_at",
+        snapshot.path("updated_at").asText(),
+        "expected_phase",
+        snapshot.path("recovery_phase").asText(),
+        "expected_attempts",
+        snapshot.path("recovery_attempts").asInt(),
+        "upstream_checked",
+        true);
   }
 }

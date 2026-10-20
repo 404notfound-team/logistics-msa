@@ -151,9 +151,22 @@ final class ServiceDatabase {
         var statement = connection.createStatement()) {
       statement.setQueryTimeout(10);
       connection.setAutoCommit(false);
-      statement.execute("CREATE FUNCTION " + function + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test recovery write failure'; END $$");
-      statement.execute("CREATE TRIGGER " + name + " BEFORE " + event + " ON " + table.relation
-          + " FOR EACH ROW" + condition + " EXECUTE FUNCTION " + function + "()");
+      statement.execute(
+          "CREATE FUNCTION "
+              + function
+              + "() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test recovery write failure'; END $$");
+      statement.execute(
+          "CREATE TRIGGER "
+              + name
+              + " BEFORE "
+              + event
+              + " ON "
+              + table.relation
+              + " FOR EACH ROW"
+              + condition
+              + " EXECUTE FUNCTION "
+              + function
+              + "()");
       connection.commit();
     }
     return () -> {
