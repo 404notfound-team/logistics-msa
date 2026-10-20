@@ -77,7 +77,7 @@ class OrderDeductionRecoveryTest {
       } else {
         assertThat(receipt.getFirst().path("failure_code").isNull()).isTrue();
         restart.start();
-        OrdersFlowTest.confirmed(client, "/api/orders/" + id, owner);
+        OrdersRecoveryTest.recovered(client, "/api/orders/" + id, owner, "CONFIRMED");
         expect(client.request("POST", "/api/orders", owner, body, key), 200);
         assertThat(client.get(OrdersFlowTest.STOCK, master).path("quantity").asInt())
             .isEqualTo(before - 3);
