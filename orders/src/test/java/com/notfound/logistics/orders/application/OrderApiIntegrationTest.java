@@ -1266,9 +1266,7 @@ class OrderApiIntegrationTest {
     final boolean creation = phase.equals("STOCK_DEDUCTION") || phase.equals("DELIVERY_CREATION");
     assertThat(json(resumed).at("/data/status").asText())
         .isEqualTo(
-            creation
-                ? "CONFIRMED"
-                : phase.equals("STOCK_COMPENSATION") ? "FAILED" : "CANCELLED");
+            creation ? "CONFIRMED" : phase.equals("STOCK_COMPENSATION") ? "FAILED" : "CANCELLED");
     final var saved = repository.findById(id).orElseThrow();
     assertThat(saved.getCreatedBy()).isEqualTo("alice");
     assertThat(saved.getUpdatedBy()).isEqualTo("alice");
@@ -1281,10 +1279,7 @@ class OrderApiIntegrationTest {
     assertStatus(request("POST", "/api/orders/" + id + "/recovery", command, admin, null), 409);
     assertThat(fixture.state().path("counts")).isEqualTo(counts);
     assertThat(
-            fixture
-                .state()
-                .at("/actors/" + (creation ? "stock.deduct" : "stock.restore"))
-                .asText())
+            fixture.state().at("/actors/" + (creation ? "stock.deduct" : "stock.restore")).asText())
         .isEqualTo("alice");
   }
 
