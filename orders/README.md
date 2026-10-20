@@ -138,27 +138,12 @@ Hub의 멱등 차감·복원 구현을 준비한 뒤 Orders를 적용합니다. 
 기존 개발 데이터가 있다면 새 스키마·계약에 맞게 별도로 준비한 뒤 적용합니다.
 개발 스키마는 local의 엔티티 갱신 후 기본 validate로 확인합니다. 실패 횟수는 기본 0, 자동 차단은 false이며 처리 단계는 종료 시 null입니다.
 
-## 차감 HTTP 장애 검증
+## 장애 복구 검증
 
-JUnit의 기존 클라이언트 대체 구현은 주문 조율과 동시성 테스트에 사용합니다. 실제 Feign·직렬화·ErrorDecoder·타임아웃은 로컬 Postman 시뮬레이션으로 별도 검증합니다.
-시뮬레이션은 현재 저장소의 Company·Hub·Delivery 계약을 바탕으로 만든 테스트 전용 구현입니다. 외부 소유자 mock 조회·클라우드 게시·실제 Slack 호출을 하지 않습니다.
+Orders의 JUnit 검사는 오류 응답 해석과 주문 조율·동시성을 확인합니다.
+실제 서비스 간 차감·복원 지연 커밋, Orders 재시작 복구와 배송 실패 보상은 [실제 서비스 연동 검증](../integration-tests/README.md)의 전용 Compose CI에서 실행합니다.
 
-```bash
-postman simulation run orders/src/test/resources/postman/simulations/stock-recovery.sim.yaml --port 4905 --no-history
-./gradlew :orders:test --tests '*OrderStockHttpRecoveryIntegrationTest' -PordersSimulationUrl=http://127.0.0.1:4905
-```
-
-Postman CLI 1.70 이상·Docker·Java 21이 필요합니다. 테스트 DB는 Testcontainers가 별도로 만듭니다.
-시뮬레이션 URL을 주지 않으면 해당 HTTP 테스트만 건너뜁니다. Hub의 실제 수량·잠금·원자성은 Hub의 PostgreSQL 통합 테스트로 검증합니다.
-
-실제 Hub JAR까지 연결하려면 같은 시뮬레이션을 실행한 상태에서 다음을 사용합니다. Company·Delivery만 대체하며 Hub·Orders는 실제 코드와 서로 분리된 Testcontainers DB를 사용합니다.
-
-```bash
-./gradlew :hub:bootJar :orders:test --tests '*OrderHubHttpIntegrationTest' -PordersSimulationUrl=http://127.0.0.1:4905 -PordersRealHubJar=hub/build/libs/app.jar
-```
-
-Windows PowerShell에서는 두 `-P...` 인자를 각각 따옴표로 감쌉니다. 테스트가 만든 Hub JVM과 DB만 종료하며 기존 Compose는 건드리지 않습니다.
-차감 성공·거절·복원 INSERT를 실제 DB 잠금으로 지연해 Orders 타임아웃 뒤 Hub 커밋과 동일 요청 복구를 확인합니다.
+## 배송 상태 전이
 
 ```mermaid
 stateDiagram-v2

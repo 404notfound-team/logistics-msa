@@ -1,9 +1,0 @@
-simulation: orders-stock-recovery
-routing: path
-mocks:
-  - routeKey: company
-    path: ../mocks/company/config.yaml
-  - routeKey: hub
-    path: ../mocks/hub/config.yaml
-  - routeKey: delivery
-    path: ../mocks/delivery/config.yaml

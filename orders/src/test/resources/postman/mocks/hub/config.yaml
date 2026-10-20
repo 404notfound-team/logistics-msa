@@ -1,9 +1,0 @@
-version: 1
-name: orders-hub-contract
-slug: orders-hub-contract
-protocol: http
-interceptRequests: true
-scenarios:
-  - name: default
-    path: ./default.js
-    default: true
