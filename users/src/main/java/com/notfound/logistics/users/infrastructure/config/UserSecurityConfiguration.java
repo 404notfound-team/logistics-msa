@@ -9,6 +9,7 @@ import com.notfound.logistics.users.infrastructure.security.ServiceTokenAuthenti
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -22,6 +23,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenResolver;
+import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
@@ -31,6 +34,9 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @EnableConfigurationProperties(InternalAuthProperties.class)
 public class UserSecurityConfiguration {
+  private static final Set<String> PUBLIC_USER_PATHS =
+      Set.of("/api/users/signup", "/api/users/signin");
+
   @Bean
   AuthenticationEntryPoint userAuthenticationEntryPoint(ObjectMapper objectMapper) {
     return (request, response, exception) -> {
@@ -111,7 +117,7 @@ public class UserSecurityConfiguration {
         .authorizeHttpRequests(
             authorize ->
                 authorize
-                    .requestMatchers("/api/users/signup", "/api/users/signin")
+                    .requestMatchers(PUBLIC_USER_PATHS.toArray(String[]::new))
                     .permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/users/me")
                     .authenticated()
@@ -139,10 +145,23 @@ public class UserSecurityConfiguration {
         .oauth2ResourceServer(
             resourceServer ->
                 resourceServer
+                    .bearerTokenResolver(publicPathIgnoringBearerTokenResolver())
                     .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter()))
                     .authenticationEntryPoint(userAuthenticationEntryPoint)
                     .accessDeniedHandler(userAccessDeniedHandler))
         .build();
+  }
+
+  /**
+   * 로그인·가입은 Authorization 헤더를 읽지 않습니다. permitAll 경로라도 Bearer 필터는 헤더가 있으면 먼저 검증하므로, 클라이언트가 만료된 토큰을
+   * 자동 첨부하면 올바른 로그인 정보로도 401이 됩니다.
+   */
+  private static BearerTokenResolver publicPathIgnoringBearerTokenResolver() {
+    DefaultBearerTokenResolver delegate = new DefaultBearerTokenResolver();
+    return request -> {
+      String path = request.getRequestURI().substring(request.getContextPath().length());
+      return PUBLIC_USER_PATHS.contains(path) ? null : delegate.resolve(request);
+    };
   }
 
   /** 인증 주체 이름은 JWT의 sub(username), 권한은 role 클레임의 `ROLE_<role>`입니다. */

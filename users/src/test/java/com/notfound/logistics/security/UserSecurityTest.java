@@ -21,6 +21,8 @@ import com.notfound.logistics.users.infrastructure.security.ServiceAuthenticatio
 import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserResponseDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
+import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -339,6 +341,36 @@ class UserSecurityTest {
   }
 
   @Test
+  void publicEndpointsIgnoreStaleBearerToken() throws Exception {
+    given(userService.signIn(any(UserSignInRequestDto.class)))
+        .willReturn(new UserSignInResponseDto("new-token", "Bearer", 900));
+
+    for (String authorization : List.of(expiredBearer(), "Bearer not-a-jwt")) {
+      mvc.perform(
+              post("/api/users/signin")
+                  .header(HttpHeaders.AUTHORIZATION, authorization)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"username\":\"user01\",\"password\":\"Passw0rd!\"}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.access_token").value("new-token"));
+      // 인증 단계를 통과해 요청 값 검증까지 도달해야 합니다.
+      mvc.perform(
+              post("/api/users/signup")
+                  .header(HttpHeaders.AUTHORIZATION, authorization)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{}"))
+          .andExpect(status().isBadRequest());
+    }
+  }
+
+  @Test
+  void protectedEndpointStillRejectsExpiredBearerToken() throws Exception {
+    mvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, expiredBearer()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
   void malformedIdOrQueryValueIsClientError() throws Exception {
     mvc.perform(get("/api/users/not-a-uuid").header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
         .andExpect(status().isNotFound());
@@ -380,13 +412,20 @@ class UserSecurityTest {
   }
 
   private String bearer(String role) {
-    Instant now = Instant.now();
+    return bearer(role, Instant.now());
+  }
+
+  private String expiredBearer() {
+    return bearer("USER", Instant.now().minusSeconds(3600));
+  }
+
+  private String bearer(String role, Instant issuedAt) {
     JwtClaimsSet claims =
         JwtClaimsSet.builder()
             .issuer("logistics-users")
             .subject("user01")
-            .issuedAt(now)
-            .expiresAt(now.plusSeconds(300))
+            .issuedAt(issuedAt)
+            .expiresAt(issuedAt.plusSeconds(300))
             .claim("user_id", USER_ID.toString())
             .claim("role", role)
             .claim("is_delivery_staff", false)
