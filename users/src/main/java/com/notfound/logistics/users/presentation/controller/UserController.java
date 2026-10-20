@@ -340,6 +340,46 @@ public class UserController {
   }
 
   @Operation(
+      summary = "로그아웃",
+      description = "로그인한 사용자 본인이 발급받은 모든 JWT를 무효화합니다. 다른 기기의 로그인도 함께 종료됩니다.")
+  @ApiResponses({
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "204",
+        description = "로그아웃 성공"),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "401",
+        description = "인증 필요 (UNAUTHORIZED)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.UNAUTHORIZED_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "404",
+        description = "사용자를 찾을 수 없음 (USER_NOT_FOUND)",
+        content =
+            @Content(
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples = @ExampleObject(value = ErrorExamples.USER_NOT_FOUND_EXAMPLE))),
+    @io.swagger.v3.oas.annotations.responses.ApiResponse(
+        responseCode = "503",
+        description = "Gateway가 현재 사용자 정보를 확인할 수 없음",
+        content =
+            @Content(
+                mediaType = "application/json",
+                schema = @Schema(implementation = ApiErrorResponse.class),
+                examples =
+                    @ExampleObject(
+                        name = "SERVICE_UNAVAILABLE",
+                        value =
+                            "{\"code\": \"SERVICE_UNAVAILABLE\", \"message\": \"서비스를 일시적으로 사용할 수 없습니다.\", \"trace_id\": null, \"field_errors\": []}")))
+  })
+  @PostMapping("/signout")
+  public ResponseEntity<Void> signout(@Parameter(hidden = true) @AuthenticationPrincipal Jwt jwt) {
+    userService.signOut(userId(jwt));
+    return ResponseEntity.noContent().build();
+  }
+
+  @Operation(
       summary = "사용자 생성 (MASTER)",
       description = "MASTER가 사용자를 직접 생성합니다. 성공 시 Location 헤더로 생성된 사용자의 상세 조회 경로를 반환합니다.")
   @ApiResponses({

@@ -213,6 +213,7 @@ class UserServiceTest {
         .containsEntry("user_id", USER_ID.toString())
         .containsEntry("role", role.name())
         .containsEntry("is_delivery_staff", deliveryStaff)
+        .containsEntry("token_version", 0L)
         .doesNotContainKeys("password", "password_hash", "passwordHash")
         .doesNotContainValue("Passw0rd!")
         .doesNotContainValue("hash");
@@ -235,6 +236,7 @@ class UserServiceTest {
     assertThat(authorization.username()).isEqualTo(active ? "user01" : null);
     assertThat(authorization.role()).isEqualTo(active ? UserRoleEnum.USER : null);
     assertThat(authorization.isDeliveryStaff()).isFalse();
+    assertThat(authorization.tokenVersion()).isZero();
   }
 
   @Test
@@ -257,6 +259,30 @@ class UserServiceTest {
     assertThat(user.getDeletedAt()).isEqualTo(NOW);
     assertThat(user.getDeletedBy()).isEqualTo("user01");
     verify(userRepository, never()).delete(any(User.class));
+  }
+
+  @Test
+  void signOutRaisesTokenVersionThatNewTokensCarry() {
+    User user = regularUser();
+    ReflectionTestUtils.setField(user, "id", USER_ID);
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+    userService.signOut(USER_ID);
+    userService.signOut(USER_ID);
+
+    assertThat(user.getTokenVersion()).isEqualTo(2);
+    assertThat(userService.getAuthorization(USER_ID).tokenVersion()).isEqualTo(2);
+  }
+
+  @Test
+  void signOutOfMissingUserIsNotFound() {
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.empty());
+
+    assertThatThrownBy(() -> userService.signOut(USER_ID))
+        .isInstanceOfSatisfying(
+            UserException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.USER_NOT_FOUND));
   }
 
   @Test

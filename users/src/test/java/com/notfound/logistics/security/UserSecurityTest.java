@@ -115,13 +115,14 @@ class UserSecurityTest {
   void gatewayCanReadCurrentUserAuthorization() throws Exception {
     given(userService.getAuthorization(USER_ID))
         .willReturn(
-            new UserAuthorizationResponseDto(USER_ID, "user01", true, UserRoleEnum.USER, false));
+            new UserAuthorizationResponseDto(USER_ID, "user01", true, UserRoleEnum.USER, false, 2));
 
     mvc.perform(
             get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-gateway-service-token"))
         .andExpect(status().isOk())
         .andExpect(jsonPath("$.data.username").value("user01"))
-        .andExpect(jsonPath("$.data.active").value(true));
+        .andExpect(jsonPath("$.data.active").value(true))
+        .andExpect(jsonPath("$.data.token_version").value(2));
   }
 
   @Test
@@ -264,6 +265,15 @@ class UserSecurityTest {
         .andExpect(status().isNoContent());
 
     verify(userService).withdraw(USER_ID, "user01");
+  }
+
+  @Test
+  void userSignsOutWithJwtUserId() throws Exception {
+    mvc.perform(post("/api/users/signout").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isNoContent());
+    mvc.perform(post("/api/users/signout")).andExpect(status().isUnauthorized());
+
+    verify(userService).signOut(USER_ID);
   }
 
   @Test
@@ -429,6 +439,7 @@ class UserSecurityTest {
             .claim("user_id", USER_ID.toString())
             .claim("role", role)
             .claim("is_delivery_staff", false)
+            .claim("token_version", 0L)
             .build();
     String token =
         jwtEncoder

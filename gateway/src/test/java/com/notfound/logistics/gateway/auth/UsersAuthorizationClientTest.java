@@ -34,7 +34,7 @@ class UsersAuthorizationClientTest {
                     HttpStatus.OK,
                     """
                     {"data":{"user_id":"%s","username":"user01","active":true,"role":"USER",
-                    "is_delivery_staff":false}}
+                    "is_delivery_staff":false,"token_version":3}}
                     """
                         .formatted(USER_ID)))
             .fetch(USER_ID)
@@ -42,6 +42,7 @@ class UsersAuthorizationClientTest {
 
     assertThat(user.username()).isEqualTo("user01");
     assertThat(user.isDeliveryStaff()).isFalse();
+    assertThat(user.tokenVersion()).isEqualTo(3L);
     assertThat(sent.get().url().getPath())
         .isEqualTo("/internal/users/" + USER_ID + "/authorization");
     assertThat(sent.get().headers().getFirst("X-Service-Token")).isEqualTo(SERVICE_TOKEN);

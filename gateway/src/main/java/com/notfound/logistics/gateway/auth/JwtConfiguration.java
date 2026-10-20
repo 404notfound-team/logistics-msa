@@ -23,7 +23,9 @@ import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 public class JwtConfiguration {
   static final Set<String> ROLES = Set.of("MASTER", "USER");
 
-  /** 서명·만료·발급자와 Gateway가 쓰는 클레임(sub, user_id, role, is_delivery_staff)의 형식을 검증합니다. */
+  /**
+   * 서명·만료·발급자와 Gateway가 쓰는 클레임(sub, user_id, role, is_delivery_staff, token_version)의 형식을 검증합니다.
+   */
   @Bean
   ReactiveJwtDecoder jwtDecoder(
       @Value("${spring.security.oauth2.resourceserver.jwt.secret}") String secret) {
@@ -47,7 +49,8 @@ public class JwtConfiguration {
             && !subject.isBlank()
             && isUuid(jwt.getClaimAsString("user_id"))
             && ROLES.contains(jwt.getClaimAsString("role"))
-            && jwt.getClaims().get("is_delivery_staff") instanceof Boolean;
+            && jwt.getClaims().get("is_delivery_staff") instanceof Boolean
+            && jwt.getClaims().get("token_version") instanceof Long;
     return valid
         ? OAuth2TokenValidatorResult.success()
         : OAuth2TokenValidatorResult.failure(

@@ -3,6 +3,9 @@
 ## 현재 인증 흐름
 
 `POST /api/users/signup`, `POST /api/users/signin`은 공개 API입니다. 로그인 JWT를 `Authorization: Bearer <JWT>`에 넣습니다.
+두 공개 API는 `Authorization` 헤더를 읽지 않으므로 만료된 JWT가 붙어 있어도 로그인·가입할 수 있습니다.
+
+`POST /api/users/signout`(204)은 본인의 `token_version`을 올려 그때까지 발급한 모든 JWT를 무효화합니다. 다른 기기의 로그인도 함께 끝나며, 다시 로그인하면 새 버전의 JWT를 받습니다.
 
 ```mermaid
 sequenceDiagram
@@ -13,7 +16,7 @@ sequenceDiagram
     C->>G: /api/** + Bearer JWT
     Note over G: 외부 식별 헤더 제거 · JWT 검증
     G->>U: GET /internal/users/{id}/authorization
-    U-->>G: 활성 상태 · username · 역할 · 배송 담당 여부
+    U-->>G: 활성 상태 · username · 역할 · 배송 담당 여부 · 토큰 버전
     Note over G: JWT와 현재 사용자 대조 · 경로 권한 검사
     G->>S: 원본 Bearer JWT
     Note over S: JWT 재검증
@@ -42,7 +45,7 @@ MASTER는 `is_delivery_staff=true`여도 전체 조회합니다. 배송 담당 �
 
 | 계약 | 규칙 |
 | --- | --- |
-| JWT | HS256, `iss=logistics-users`, `sub=username`, UUID `user_id`, `role=MASTER/USER`, boolean `is_delivery_staff`, Unix 초 `iat`·`exp` |
+| JWT | HS256, `iss=logistics-users`, `sub=username`, UUID `user_id`, `role=MASTER/USER`, boolean `is_delivery_staff`, 정수 `token_version`, Unix 초 `iat`·`exp` |
 | 신뢰 경계 | Gateway는 외부 `X-Service-Token`, `X-Actor-Username`, `X-User-*`를 대소문자 구분 없이 제거 |
 | 내부 인증 | 발신자의 `<SERVICE>_SERVICE_TOKEN`을 `X-Service-Token`으로 전달. 수신자는 호출 서비스·허용 API 확인. 없거나 틀리면 401, 허용하지 않은 API는 403 |
 | 감사 주체 | 검증된 username을 `X-Actor-Username`에 전달. 자동 복구는 저장된 요청자 사용 |
@@ -59,7 +62,8 @@ JWT는 암호화되지 않습니다. 비밀번호·토큰·Webhook URL을 저장
 - MASTER 전용: 사용자 목록·단건 조회/생성/수정/삭제, 재고 생성, 주문 삭제. `GET/DELETE /api/users/me`는 본인용입니다.
 - USER는 업체·허브 중 정확히 하나에 소속됩니다. MASTER는 최대 하나이며 무소속도 허용합니다. 양쪽 동시 소속은 금지합니다.
 - 삭제된 username도 재사용하지 않습니다. 삭제한 사용자는 조회·로그인에서 제외하며 마지막 MASTER 삭제는 막지 않습니다.
-- 역할·배송 담당 여부 변경 시 Gateway가 기존 JWT를 거절합니다. 비밀번호 변경만으로 기존 JWT가 무효화되지는 않습니다.
+- 역할·배송 담당 여부 변경이나 로그아웃 시 Gateway가 기존 JWT를 거절합니다. 비밀번호 변경만으로 기존 JWT가 무효화되지는 않습니다.
+- `token_version`은 Gateway만 대조합니다. Gateway를 거치지 않는 업무 서비스의 JWT 재검증은 버전을 보지 않습니다.
 - 공개 사용자 경로·Swagger·Actuator·로컬 점검 경로는 Gateway의 Bearer 검사 대상이 아닙니다.
 
 기준: [Gateway 인증](../gateway/src/main/java/com/notfound/logistics/gateway/auth/GatewaySecurityConfiguration.java), [Users 보안](../users/src/main/java/com/notfound/logistics/users/infrastructure/config/UserSecurityConfiguration.java).

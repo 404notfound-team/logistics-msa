@@ -13,8 +13,8 @@ import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 
 /**
- * 검증된 JWT를 Users의 현재 사용자 상태와 대조해 인증 객체로 바꿉니다. 탈퇴했거나 JWT 발급 이후 username·역할·배송 담당 여부가 바뀐 사용자의 토큰은
- * 거절합니다. 인증 주체 이름은 sub(username), 권한은 {@code ROLE_<role>}입니다.
+ * 검증된 JWT를 Users의 현재 사용자 상태와 대조해 인증 객체로 바꿉니다. 탈퇴했거나 JWT 발급 이후 username·역할·배송 담당 여부가 바뀌었거나 로그아웃해 토큰
+ * 버전이 오른 사용자의 토큰은 거절합니다. 인증 주체 이름은 sub(username), 권한은 {@code ROLE_<role>}입니다.
  */
 @Component
 public class CurrentUserAuthenticationConverter
@@ -48,6 +48,7 @@ public class CurrentUserAuthenticationConverter
         && jwt.getSubject().equals(currentUser.username())
         && jwt.getClaimAsString("role").equals(currentUser.role())
         && JwtConfiguration.ROLES.contains(currentUser.role())
-        && jwt.getClaims().get("is_delivery_staff").equals(currentUser.isDeliveryStaff());
+        && jwt.getClaims().get("is_delivery_staff").equals(currentUser.isDeliveryStaff())
+        && jwt.getClaims().get("token_version").equals(currentUser.tokenVersion());
   }
 }

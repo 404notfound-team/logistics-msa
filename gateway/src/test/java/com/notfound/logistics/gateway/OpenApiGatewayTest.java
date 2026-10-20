@@ -189,7 +189,7 @@ class OpenApiGatewayTest {
           encodeBase64Url(
               "{\"iss\":\"logistics-users\",\"sub\":\"user01\","
                   + "\"user_id\":\"11111111-1111-1111-1111-111111111111\",\"role\":\"USER\","
-                  + "\"is_delivery_staff\":false,\"iat\":"
+                  + "\"is_delivery_staff\":false,\"token_version\":0,\"iat\":"
                   + now
                   + ",\"exp\":"
                   + (now + 300)
@@ -249,7 +249,7 @@ class OpenApiGatewayTest {
                             "{\"data\":{\"user_id\":\"11111111-1111-1111-1111-111111111111\","
                                 + "\"username\":\"user01\","
                                 + "\"active\":true,\"role\":\"USER\","
-                                + "\"is_delivery_staff\":false}}";
+                                + "\"is_delivery_staff\":false,\"token_version\":0}}";
                       } else if (request.uri().equals(publicPath)) {
                         body = "{\"service\":\"" + service + "\"}";
                       } else {
