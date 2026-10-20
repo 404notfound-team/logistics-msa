@@ -1,6 +1,7 @@
 package com.notfound.logistics.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -14,15 +15,19 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.notfound.logistics.common.api.PageResponse;
 import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
 import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
+import com.notfound.logistics.users.presentation.exception.UserErrorCode;
+import jakarta.servlet.http.Cookie;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +79,9 @@ import org.springframework.web.bind.annotation.RestController;
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class UserSecurityTest {
   private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final IssuedTokens TOKENS =
+      new IssuedTokens(
+          "new-token", Duration.ofMinutes(15), "new-refresh-token", Duration.ofDays(14));
   private static final String AUTHORIZATION_PATH = "/internal/users/" + USER_ID + "/authorization";
 
   @MockitoBean private UserService userService;
@@ -277,6 +285,64 @@ class UserSecurityTest {
   }
 
   @Test
+  void signOutClearsRefreshCookie() throws Exception {
+    mvc.perform(post("/api/users/signout").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=;")))
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
+        .andExpect(
+            header().string(HttpHeaders.SET_COOKIE, containsString("Path=/api/users/refresh")));
+  }
+
+  @Test
+  void signInReturnsAccessTokenInBodyAndRefreshTokenInRestrictedCookie() throws Exception {
+    given(userService.signIn(any(UserSignInRequestDto.class))).willReturn(TOKENS);
+
+    var cookie =
+        mvc.perform(
+                post("/api/users/signin")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"username\":\"user01\",\"password\":\"Passw0rd!\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.access_token").value("new-token"))
+            .andExpect(jsonPath("$.data.token_type").value("Bearer"))
+            .andExpect(jsonPath("$.data.expires_in").value(900))
+            .andExpect(jsonPath("$.data.refresh_token").doesNotExist())
+            .andReturn()
+            .getResponse()
+            .getHeader(HttpHeaders.SET_COOKIE);
+    assertThat(cookie)
+        .startsWith("refresh_token=new-refresh-token;")
+        .contains(
+            "Path=/api/users/refresh", "Max-Age=1209600", "Secure", "HttpOnly", "SameSite=Strict");
+  }
+
+  @Test
+  void refreshUsesCookieEvenWithStaleBearerAndRotatesIt() throws Exception {
+    given(userService.refresh("old-refresh-token")).willReturn(TOKENS);
+
+    mvc.perform(
+            post("/api/users/refresh")
+                .cookie(new Cookie("refresh_token", "old-refresh-token"))
+                .header(HttpHeaders.AUTHORIZATION, expiredBearer()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.access_token").value("new-token"))
+        .andExpect(
+            header()
+                .string(HttpHeaders.SET_COOKIE, containsString("refresh_token=new-refresh-token")));
+  }
+
+  @Test
+  void refreshWithoutValidCookieIsUnauthorized() throws Exception {
+    given(userService.refresh(null))
+        .willThrow(new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+
+    mvc.perform(post("/api/users/refresh"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+        .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+  }
+
+  @Test
   void masterCreatesUserWithLocation() throws Exception {
     given(userService.createUser(any(UserCreateRequestDto.class))).willReturn(userResponse());
 
@@ -352,8 +418,7 @@ class UserSecurityTest {
 
   @Test
   void publicEndpointsIgnoreStaleBearerToken() throws Exception {
-    given(userService.signIn(any(UserSignInRequestDto.class)))
-        .willReturn(new UserSignInResponseDto("new-token", "Bearer", 900));
+    given(userService.signIn(any(UserSignInRequestDto.class))).willReturn(TOKENS);
 
     for (String authorization : List.of(expiredBearer(), "Bearer not-a-jwt")) {
       mvc.perform(

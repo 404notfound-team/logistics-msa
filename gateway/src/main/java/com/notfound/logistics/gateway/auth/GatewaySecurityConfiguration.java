@@ -1,5 +1,6 @@
 package com.notfound.logistics.gateway.auth;
 
+import java.util.Arrays;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -23,7 +24,9 @@ import org.springframework.security.web.server.util.matcher.ServerWebExchangeMat
 @Configuration
 @EnableWebFluxSecurity
 public class GatewaySecurityConfiguration {
-  private static final String[] PUBLIC_USER_PATHS = {"/api/users/signup", "/api/users/signin"};
+  private static final String[] PUBLIC_USER_PATHS = {
+    "/api/users/signup", "/api/users/signin", "/api/users/refresh"
+  };
 
   @Bean
   SecurityWebFilterChain gatewaySecurityFilterChain(
@@ -87,8 +90,9 @@ public class GatewaySecurityConfiguration {
     ServerWebExchangeMatcher api = new PathPatternParserServerWebExchangeMatcher("/api/**");
     ServerWebExchangeMatcher publicPaths =
         new OrServerWebExchangeMatcher(
-            new PathPatternParserServerWebExchangeMatcher(PUBLIC_USER_PATHS[0]),
-            new PathPatternParserServerWebExchangeMatcher(PUBLIC_USER_PATHS[1]));
+            Arrays.stream(PUBLIC_USER_PATHS)
+                .<ServerWebExchangeMatcher>map(PathPatternParserServerWebExchangeMatcher::new)
+                .toList());
     var bearer = new ServerBearerTokenAuthenticationConverter();
     return exchange ->
         api.matches(exchange)

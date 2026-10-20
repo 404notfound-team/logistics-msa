@@ -16,6 +16,8 @@ import com.notfound.logistics.users.domain.model.UserRoleEnum;
 import com.notfound.logistics.users.domain.repository.UserRepository;
 import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
+import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec;
+import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec.RefreshClaims;
 import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
@@ -32,6 +34,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -56,6 +59,12 @@ class UserServiceTest {
   private final CompanyLookupClient companyLookupClient = mock(CompanyLookupClient.class);
   private final HubLookupClient hubLookupClient = mock(HubLookupClient.class);
   private final JwtEncoder jwtEncoder = mock(JwtEncoder.class);
+  private final RefreshTokenCodec refreshTokenCodec =
+      new RefreshTokenCodec(
+          new SecretKeySpec(
+              "test-only-refresh-key-for-users-module-32bytes".getBytes(StandardCharsets.UTF_8),
+              "HmacSHA256"),
+          Duration.ofDays(14));
   private final UserService userService =
       new UserService(
           userRepository,
@@ -63,6 +72,7 @@ class UserServiceTest {
           companyLookupClient,
           hubLookupClient,
           jwtEncoder,
+          refreshTokenCodec,
           Clock.fixed(NOW, ZoneOffset.UTC));
 
   @ParameterizedTest
@@ -200,8 +210,10 @@ class UserServiceTest {
     var response = userService.signIn(new UserSignInRequestDto("user01", "Passw0rd!"));
 
     assertThat(response.accessToken()).isEqualTo("signed-access-token");
-    assertThat(response.tokenType()).isEqualTo("Bearer");
-    assertThat(response.expiresIn()).isEqualTo(900);
+    assertThat(response.accessTokenTtl()).isEqualTo(Duration.ofMinutes(15));
+    assertThat(response.refreshTokenTtl()).isEqualTo(Duration.ofDays(14));
+    assertThat(refreshTokenCodec.verify(response.refreshToken()))
+        .contains(new RefreshClaims(USER_ID, 0));
     var parameters = ArgumentCaptor.forClass(JwtEncoderParameters.class);
     verify(jwtEncoder).encode(parameters.capture());
     var claims = parameters.getValue().getClaims();
@@ -219,6 +231,72 @@ class UserServiceTest {
         .doesNotContainValue("hash");
     assertThat(Duration.between(claims.getIssuedAt(), claims.getExpiresAt()))
         .isEqualTo(Duration.ofMinutes(15));
+  }
+
+  @Test
+  void refreshIssuesNewTokensWithTheCurrentRole() {
+    User user =
+        User.create("user01", "사용자", "hash", "slack", UserRoleEnum.MASTER, null, null, true);
+    ReflectionTestUtils.setField(user, "id", USER_ID);
+    ReflectionTestUtils.setField(userService, "accessTokenTtl", Duration.ofMinutes(15));
+    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    given(jwtEncoder.encode(any()))
+        .willReturn(
+            Jwt.withTokenValue("renewed-access-token")
+                .header("alg", "HS256")
+                .subject("user01")
+                .build());
+
+    var tokens = userService.refresh(refreshTokenCodec.issue(USER_ID, 0, Instant.now()));
+
+    assertThat(tokens.accessToken()).isEqualTo("renewed-access-token");
+    assertThat(refreshTokenCodec.verify(tokens.refreshToken()))
+        .contains(new RefreshClaims(USER_ID, 0));
+    var parameters = ArgumentCaptor.forClass(JwtEncoderParameters.class);
+    verify(jwtEncoder).encode(parameters.capture());
+    assertThat(parameters.getValue().getClaims().getClaims())
+        .containsEntry("role", "MASTER")
+        .containsEntry("is_delivery_staff", true);
+  }
+
+  @Test
+  void refreshRejectsTokensRevokedBySignOutOrWithdrawal() {
+    User user = regularUser();
+    ReflectionTestUtils.setField(user, "id", USER_ID);
+    given(userRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
+    given(userRepository.findById(USER_ID)).willReturn(Optional.of(user));
+    String beforeSignOut = refreshTokenCodec.issue(USER_ID, 0, Instant.now());
+
+    userService.signOut(USER_ID);
+
+    expectInvalidRefreshToken(beforeSignOut);
+    UUID withdrawn = UUID.randomUUID();
+    given(userRepository.findById(withdrawn)).willReturn(Optional.empty());
+    expectInvalidRefreshToken(refreshTokenCodec.issue(withdrawn, 0, Instant.now()));
+    verifyNoInteractions(jwtEncoder);
+  }
+
+  @Test
+  void refreshRejectsMissingForgedExpiredOrAccessTokens() {
+    var otherKey =
+        new SecretKeySpec(
+            "another-signing-key-that-users-must-reject-32b".getBytes(StandardCharsets.UTF_8),
+            "HmacSHA256");
+    String forged =
+        new RefreshTokenCodec(otherKey, Duration.ofDays(14)).issue(USER_ID, 0, Instant.now());
+    String expired = refreshTokenCodec.issue(USER_ID, 0, Instant.now().minus(Duration.ofDays(15)));
+
+    for (String token : new String[] {null, "", "not-a-jwt", forged, expired}) {
+      expectInvalidRefreshToken(token);
+    }
+    verifyNoInteractions(userRepository, jwtEncoder);
+  }
+
+  private void expectInvalidRefreshToken(String token) {
+    assertThatThrownBy(() -> userService.refresh(token))
+        .isInstanceOfSatisfying(
+            UserException.class,
+            e -> assertThat(e.getErrorCode()).isEqualTo(UserErrorCode.INVALID_REFRESH_TOKEN));
   }
 
   @ParameterizedTest

@@ -2,10 +2,23 @@
 
 ## 현재 인증 흐름
 
-`POST /api/users/signup`, `POST /api/users/signin`은 공개 API입니다. 로그인 JWT를 `Authorization: Bearer <JWT>`에 넣습니다.
-두 공개 API는 `Authorization` 헤더를 읽지 않으므로 만료된 JWT가 붙어 있어도 로그인·가입할 수 있습니다.
+`POST /api/users/signup`, `POST /api/users/signin`, `POST /api/users/refresh`는 공개 API입니다. 로그인 JWT를 `Authorization: Bearer <JWT>`에 넣습니다.
+공개 API는 `Authorization` 헤더를 읽지 않으므로 만료된 JWT가 붙어 있어도 로그인·가입·갱신할 수 있습니다.
 
-`POST /api/users/signout`(204)은 본인의 `token_version`을 올려 그때까지 발급한 모든 JWT를 무효화합니다. 다른 기기의 로그인도 함께 끝나며, 다시 로그인하면 새 버전의 JWT를 받습니다.
+### 토큰 갱신과 로그아웃
+
+| 토큰 | 전달 | 유효 시간 | 용도 |
+| --- | --- | --- | --- |
+| access token | 응답 본문 `access_token` | `JWT_ACCESS_TOKEN_TTL`, 기본 15분 | API 호출 |
+| refresh token | `refresh_token` 쿠키 | `JWT_REFRESH_TOKEN_TTL`, 기본 14일 | `/api/users/refresh` 호출 |
+
+- 로그인·갱신 응답은 refresh token을 `HttpOnly; Secure; SameSite=Strict; Path=/api/users/refresh` 쿠키로 설정합니다. JS로 읽을 수 없고 갱신 요청에만 전송됩니다.
+- access token이 만료되면 클라이언트가 `POST /api/users/refresh`를 호출합니다. 새 access token과 새 refresh token 쿠키를 받으므로, 계속 사용하는 동안에는 14일이 매번 연장됩니다.
+- refresh token은 서버에 저장하지 않습니다. `JWT_SECRET`에서 파생한 별도 키로 서명하므로 access token과 서로 대신 쓸 수 없습니다. `user_id`·`token_version`만 담습니다.
+- 갱신 시 현재 사용자 정보로 access token을 만듭니다. 역할이 바뀌었어도 다시 로그인하지 않아도 됩니다.
+- refresh token이 없거나 만료·위조됐거나, 탈퇴했거나 `token_version`이 다르면 401 `INVALID_REFRESH_TOKEN`입니다. 이때 다시 로그인합니다.
+- `POST /api/users/signout`(204)은 본인의 `token_version`을 올려 그때까지 발급한 모든 access·refresh token을 무효화하고 쿠키를 지웁니다. 다른 기기의 로그인도 함께 끝납니다.
+- 쿠키는 같은 사이트 요청에만 전송됩니다. 프런트엔드를 다른 사이트에서 제공하려면 CORS·쿠키 설정을 다시 정해야 합니다.
 
 ```mermaid
 sequenceDiagram

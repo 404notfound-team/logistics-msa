@@ -12,6 +12,8 @@ users:
   jwt:
     secret: ${JWT_SECRET}
     access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+    # 마지막 갱신 후 이 기간 동안 다시 로그인하지 않아도 됩니다.
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:14d}
   internal-auth:
     # Users가 다른 서비스의 내부 API를 호출할 때 보내는 X-Service-Token 값입니다.
     service-token: ${USERS_SERVICE_TOKEN}

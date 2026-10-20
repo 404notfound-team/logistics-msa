@@ -165,7 +165,8 @@ class OpenApiDocumentationTest {
         java.util.Map.of(
             "/api/users", List.of("get", "post"),
             "/api/users/{id}", List.of("get", "patch", "delete"),
-            "/api/users/me", List.of("get", "delete"));
+            "/api/users/me", List.of("get", "delete"),
+            "/api/users/signout", List.of("post"));
     for (var path : authenticated.entrySet()) {
       for (String method : path.getValue()) {
         var operation = paths.path(path.getKey()).path(method);
@@ -185,6 +186,9 @@ class OpenApiDocumentationTest {
     var signin = paths.path("/api/users/signin").path("post");
     assertThat(signup.path("security").isEmpty()).isTrue();
     assertThat(signin.path("security").isEmpty()).isTrue();
+    var refresh = paths.path("/api/users/refresh").path("post");
+    assertThat(refresh.path("security").isEmpty()).isTrue();
+    assertThat(refresh.path("responses").path("401").toString()).contains("INVALID_REFRESH_TOKEN");
     assertThat(signup.path("responses").has("401")).isFalse();
     assertThat(signup.path("responses").path("503").toString())
         .doesNotContain("SERVICE_UNAVAILABLE");

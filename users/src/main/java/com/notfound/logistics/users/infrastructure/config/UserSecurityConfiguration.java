@@ -35,7 +35,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
 @EnableConfigurationProperties(InternalAuthProperties.class)
 public class UserSecurityConfiguration {
   private static final Set<String> PUBLIC_USER_PATHS =
-      Set.of("/api/users/signup", "/api/users/signin");
+      Set.of("/api/users/signup", "/api/users/signin", "/api/users/refresh");
 
   @Bean
   AuthenticationEntryPoint userAuthenticationEntryPoint(ObjectMapper objectMapper) {

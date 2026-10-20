@@ -74,6 +74,16 @@ final class ErrorExamples {
         "field_errors": []
       }
       """;
+  static final String INVALID_REFRESH_TOKEN_EXAMPLE =
+      """
+      {
+        "code": "INVALID_REFRESH_TOKEN",
+        "message": "로그인이 만료되었습니다. 다시 로그인해 주세요.",
+        "trace_id": null,
+        "field_errors": []
+      }
+      """;
+
   static final String UNAUTHORIZED_EXAMPLE =
       """
       {

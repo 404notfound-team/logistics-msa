@@ -1,6 +1,7 @@
 package com.notfound.logistics.users.application.service;
 
 import com.notfound.logistics.common.api.PageResponse;
+import com.notfound.logistics.users.application.dto.IssuedTokens;
 import com.notfound.logistics.users.application.dto.UserIdentity;
 import com.notfound.logistics.users.domain.exception.UserException;
 import com.notfound.logistics.users.domain.model.User;
@@ -11,13 +12,13 @@ import com.notfound.logistics.users.domain.repository.UserSpecifications;
 import com.notfound.logistics.users.infrastructure.audit.SignupAuditScope;
 import com.notfound.logistics.users.infrastructure.client.CompanyLookupClient;
 import com.notfound.logistics.users.infrastructure.client.HubLookupClient;
+import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec;
 import com.notfound.logistics.users.presentation.dto.UserAuthorizationResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserCreateRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterRequestDto;
 import com.notfound.logistics.users.presentation.dto.UserRegisterResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserSignInRequestDto;
-import com.notfound.logistics.users.presentation.dto.UserSignInResponseDto;
 import com.notfound.logistics.users.presentation.dto.UserUpdateRequestDto;
 import com.notfound.logistics.users.presentation.exception.UserErrorCode;
 import feign.FeignException;
@@ -49,6 +50,7 @@ public class UserService {
   private final CompanyLookupClient companyLookupClient;
   private final HubLookupClient hubLookupClient;
   private final JwtEncoder jwtEncoder;
+  private final RefreshTokenCodec refreshTokenCodec;
   private final Clock clock;
 
   @Value("${users.jwt.access-token-ttl:15m}")
@@ -110,7 +112,7 @@ public class UserService {
     }
   }
 
-  public UserSignInResponseDto signIn(UserSignInRequestDto request) {
+  public IssuedTokens signIn(UserSignInRequestDto request) {
     User user =
         userRepository
             .findByUsername(request.username())
@@ -118,7 +120,27 @@ public class UserService {
     if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
       throw new UserException(UserErrorCode.INVALID_CREDENTIALS);
     }
+    return issueTokens(user);
+  }
 
+  /**
+   * refresh token으로 access token과 refresh token을 새로 발급합니다. 탈퇴했거나 로그아웃으로 토큰 버전이 오른 사용자는 다시 로그인해야
+   * 합니다. 새 access token에는 현재 역할·배송 담당 여부가 들어갑니다.
+   */
+  public IssuedTokens refresh(String refreshToken) {
+    var claims =
+        refreshTokenCodec
+            .verify(refreshToken)
+            .orElseThrow(() -> new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+    User user =
+        userRepository
+            .findById(claims.userId())
+            .filter(found -> found.getTokenVersion() == claims.tokenVersion())
+            .orElseThrow(() -> new UserException(UserErrorCode.INVALID_REFRESH_TOKEN));
+    return issueTokens(user);
+  }
+
+  private IssuedTokens issueTokens(User user) {
     Instant issuedAt = Instant.now();
     Instant expiresAt = issuedAt.plus(accessTokenTtl);
     JwtClaimsSet claims =
@@ -138,8 +160,8 @@ public class UserService {
                 JwtEncoderParameters.from(
                     JwsHeader.with(MacAlgorithm.HS256).type("JWT").build(), claims))
             .getTokenValue();
-    return new UserSignInResponseDto(
-        token, "Bearer", Duration.between(issuedAt, expiresAt).toSeconds());
+    String refreshToken = refreshTokenCodec.issue(user.getId(), user.getTokenVersion(), issuedAt);
+    return new IssuedTokens(token, accessTokenTtl, refreshToken, refreshTokenCodec.ttl());
   }
 
   public UserAuthorizationResponseDto getAuthorization(UUID id) {
