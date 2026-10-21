@@ -1,0 +1,20 @@
+x-ci-build: &ci-build
+  target: ci
+  additional_contexts:
+    jars: ./work/ci-jars
+
+services:
+  eureka:
+    build: *ci-build
+  gateway:
+    build: *ci-build
+  users:
+    build: *ci-build
+  company:
+    build: *ci-build
+  hub:
+    build: *ci-build
+  orders:
+    build: *ci-build
+  delivery:
+    build: *ci-build

@@ -5,6 +5,7 @@ x-app: &app
   environment: &app-env
     SPRING_PROFILES_ACTIVE: local
     EUREKA_URL: http://eureka:8080/eureka/
+    EUREKA_CLIENT_REGISTRYFETCHINTERVALSECONDS: '5'
     ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
     TZ: Asia/Seoul
   healthcheck:
@@ -39,6 +40,8 @@ services:
       retries: 30
       start_period: 30s
     networks: [backend]
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
 
   zipkin:
     image: openzipkin/zipkin:3.6.1
@@ -54,6 +57,9 @@ services:
       context: .
       args:
         MODULE: eureka
+    environment:
+      <<: *app-env
+      EUREKA_SERVER_USEREADONLYRESPONSECACHE: 'false'
     ports:
       - "127.0.0.1:${EUREKA_PORT:-8761}:8080"
 
@@ -65,9 +71,15 @@ services:
         MODULE: gateway
     ports:
       - "127.0.0.1:${GATEWAY_PORT:-8080}:8080"
+    environment:
+      <<: *app-env
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:?Set GATEWAY_SERVICE_TOKEN in .env}
     depends_on:
       eureka:
         condition: service_healthy
+      dev-data:
+        condition: service_completed_successfully
 
   users:
     <<: *app
@@ -79,6 +91,13 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/users_db?currentSchema=users
       DB_PASSWORD: ${USERS_DB_PASSWORD:?Set USERS_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      GATEWAY_SERVICE_TOKEN: ${GATEWAY_SERVICE_TOKEN:?Set GATEWAY_SERVICE_TOKEN in .env}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
+      DEV_DATA_ENABLED: 'true'
+      DELIVERY_SERVICE_TOKEN: ${DELIVERY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      DEV_DATA_PASSWORD: ${DEV_DATA_PASSWORD:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -95,6 +114,11 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/company_db?currentSchema=company
       DB_PASSWORD: ${COMPANY_DB_PASSWORD:?Set COMPANY_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Run bash scripts/init-env.sh}
+      COMPANY_SERVICE_TOKEN: ${COMPANY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      HUB_SERVICE_TOKEN: ${HUB_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -111,6 +135,12 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/hub_db?currentSchema=hub
       DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      HUB_SERVICE_TOKEN: ${HUB_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      USERS_SERVICE_TOKEN: ${USERS_SERVICE_TOKEN:?Set USERS_SERVICE_TOKEN in .env}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
+      COMPANY_SERVICE_TOKEN: ${COMPANY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      DELIVERY_SERVICE_TOKEN: ${DELIVERY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,6 +157,10 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/orders_db?currentSchema=orders
       DB_PASSWORD: ${ORDERS_DB_PASSWORD:?Set ORDERS_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:-}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Set ORDERS_SERVICE_TOKEN in .env}
+      SLACK_ENABLED: ${SLACK_ENABLED:-false}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -143,10 +177,31 @@ services:
       <<: *app-env
       DB_URL: jdbc:postgresql://postgres:5432/delivery_db?currentSchema=delivery
       DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+      JWT_SECRET: ${JWT_SECRET:?Run bash scripts/init-env.sh}
+      DELIVERY_SERVICE_TOKEN: ${DELIVERY_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
+      ORDERS_SERVICE_TOKEN: ${ORDERS_SERVICE_TOKEN:?Run bash scripts/init-env.sh}
     depends_on:
       postgres:
         condition: service_healthy
       eureka:
+        condition: service_healthy
+
+  # 로컬 샘플 연결만 담당한다. 업무 앱에는 다른 서비스의 DB 자격증명을 주지 않는다.
+  dev-data:
+    image: postgres:18
+    restart: 'no'
+    command: ["bash", "/workspace/infra/dev-data/seed-delivery-routes.sh"]
+    environment:
+      HUB_DB_PASSWORD: ${HUB_DB_PASSWORD:?Set HUB_DB_PASSWORD in .env}
+      DELIVERY_DB_PASSWORD: ${DELIVERY_DB_PASSWORD:?Set DELIVERY_DB_PASSWORD in .env}
+    volumes:
+      - ./infra/dev-data/seed-delivery-routes.sh:/workspace/infra/dev-data/seed-delivery-routes.sh:ro
+      - ./delivery/src/main/resources/db/seed/local-delivery-routes.sql:/workspace/delivery/src/main/resources/db/seed/local-delivery-routes.sql:ro
+    networks: [backend]
+    depends_on:
+      hub:
+        condition: service_healthy
+      delivery:
         condition: service_healthy
 
 networks:

@@ -1,9 +1,31 @@
 server:
   port: 8080
+gateway:
+  # Users 내부 API 호출 시 X-Service-Token으로 보내는 Gateway 서비스 인증값입니다.
+  service-token: ${GATEWAY_SERVICE_TOKEN}
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
 spring:
   application:
     name: gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          secret: ${JWT_SECRET}
+  web:
+    resources:
+      add-mappings: false
   cloud:
+    loadbalancer:
+      eager-load:
+        clients: users,company,hub,orders,delivery
+      cache:
+        # Eureka의 등록 목록 캐시를 사용하며, 추가 캐시로 재시작 전 목록을 유지하지 않는다.
+        enabled: false
     gateway:
       server:
         webflux:
@@ -12,14 +34,14 @@ spring:
               uri: lb://users
               predicates:
                 - Path=/api/users/**
+            - id: hub
+              uri: lb://hub
+              predicates:
+                - Path=/api/hubs/**,/api/hub-routes/**,/api/stocks/**,/api/products/{productid}/stocks
             - id: company
               uri: lb://company
               predicates:
                 - Path=/api/companies/**,/api/products/**
-            - id: hub
-              uri: lb://hub
-              predicates:
-                - Path=/api/hubs/**,/api/hub-routes/**,/api/stocks/**
             - id: orders
               uri: lb://orders
               predicates:

@@ -1,12 +1,28 @@
 dependencies {
+    implementation project(":common:api")
+    implementation project(":common:audit")
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-api:${rootProject.springdocVersion}"
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
     implementation 'io.github.openfeign:feign-micrometer'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
     runtimeOnly 'org.postgresql:postgresql'
+}
+
+tasks.named('test') {
+    systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
+    inputs.files(
+        rootProject.file('infra/postgres/01-init.sh'),
+        rootProject.file('infra/dev-data/seed-delivery-routes.sh'),
+        rootProject.file('hub/src/main/resources/db/seed/hub-routes.sql')
+    ).withPropertyName('deliveryRoutesDevData').withPathSensitivity(PathSensitivity.RELATIVE)
 }

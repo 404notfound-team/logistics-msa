@@ -1,0 +1,5 @@
+simulation: hub-company-products
+routing: path
+mocks:
+  - routeKey: company
+    path: ./company/config.yaml

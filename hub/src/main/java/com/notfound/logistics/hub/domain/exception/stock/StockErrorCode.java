@@ -1,0 +1,30 @@
+package com.notfound.logistics.hub.domain.exception.stock;
+
+public enum StockErrorCode {
+  PRODUCT_NOT_FOUND("상품을 찾을 수 없습니다."),
+  STOCK_NOT_FOUND("재고를 찾을 수 없습니다."),
+  INVALID_STOCK_QUANTITY("재고 변경 수량은 0보다 커야 합니다."),
+  INVALID_INITIAL_STOCK("초기 재고는 0 이상이어야 합니다."),
+  INSUFFICIENT_STOCK("재고가 부족합니다."),
+  STOCK_ALREADY_EXISTS("해당 허브에 동일한 상품의 재고가 이미 존재합니다."),
+  STOCK_RESTORATION_CONFLICT("차감 또는 최초 복원 기록의 허브·상품·수량과 일치하지 않습니다."),
+  STOCK_DEDUCTION_CONFLICT("최초 차감 요청의 허브·상품·수량과 일치하지 않습니다."),
+  STOCK_DEDUCTION_NOT_FOUND("주문의 차감 기록을 찾을 수 없습니다."),
+  STOCK_DEDUCTION_REJECTED("차감이 거절된 주문은 복원할 수 없습니다."),
+  STOCK_ALREADY_RESTORED("이미 복원된 주문은 다시 차감할 수 없습니다."),
+  STOCK_QUANTITY_OVERFLOW("재고 수량이 허용 범위를 초과했습니다.");
+
+  private final String description;
+
+  StockErrorCode(String description) {
+    this.description = description;
+  }
+
+  public String code() {
+    return name();
+  }
+
+  public String message() {
+    return description;
+  }
+}

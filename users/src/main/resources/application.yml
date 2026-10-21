@@ -1,5 +1,32 @@
 server:
   port: 8080
+springdoc:
+  api-docs:
+    enabled: false
+  paths-to-match:
+    - /api/users/**
+users:
+  audit:
+    # Anonymous signup has no authenticated username yet; this is its designated audit actor.
+    signup-actor: signup-service
+  jwt:
+    secret: ${JWT_SECRET}
+    access-token-ttl: ${JWT_ACCESS_TOKEN_TTL:15m}
+    # 마지막 갱신 후 이 기간 동안 다시 로그인하지 않아도 됩니다.
+    refresh-token-ttl: ${JWT_REFRESH_TOKEN_TTL:14d}
+  internal-auth:
+    # Users가 다른 서비스의 내부 API를 호출할 때 보내는 X-Service-Token 값입니다.
+    service-token: ${USERS_SERVICE_TOKEN}
+    # 설정된 경우 Orders의 알림용 이름 조회만 허용합니다.
+    orders-token: ${ORDERS_SERVICE_TOKEN:}
+    # Delivery의 담당자 배정 시 현재 계정 확인만 허용합니다.
+    delivery-token: ${DELIVERY_SERVICE_TOKEN:}
+    # Users 내부 API를 호출할 수 있는 서비스와 허용 API입니다.
+    clients:
+      gateway:
+        token: ${GATEWAY_SERVICE_TOKEN}
+        allowed:
+          - GET /internal/users/*/authorization
 spring:
   application:
     name: users

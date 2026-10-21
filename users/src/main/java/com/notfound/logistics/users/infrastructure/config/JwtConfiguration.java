@@ -1,0 +1,72 @@
+package com.notfound.logistics.users.infrastructure.config;
+
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import com.nimbusds.jose.proc.SecurityContext;
+import com.notfound.logistics.users.infrastructure.security.RefreshTokenCodec;
+import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
+import java.time.Duration;
+import javax.crypto.Mac;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
+import org.springframework.security.oauth2.jwt.JwtValidators;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
+
+@Configuration
+public class JwtConfiguration {
+  @Bean
+  JwtDecoder jwtDecoder(@Value("${users.jwt.secret}") String secret) {
+    NimbusJwtDecoder decoder =
+        NimbusJwtDecoder.withSecretKey(signingKey(secret)).macAlgorithm(MacAlgorithm.HS256).build();
+    OAuth2TokenValidator<Jwt> validators =
+        new DelegatingOAuth2TokenValidator<>(
+            JwtValidators.createDefault(), new JwtIssuerValidator("logistics-users"));
+    decoder.setJwtValidator(validators);
+    return decoder;
+  }
+
+  @Bean
+  JwtEncoder jwtEncoder(@Value("${users.jwt.secret}") String secret) {
+    SecretKey key = signingKey(secret);
+    return new NimbusJwtEncoder(new ImmutableSecret<SecurityContext>(key));
+  }
+
+  @Bean
+  RefreshTokenCodec refreshTokenCodec(
+      @Value("${users.jwt.secret}") String secret,
+      @Value("${users.jwt.refresh-token-ttl:14d}") Duration ttl) {
+    return new RefreshTokenCodec(refreshSigningKey(secret), ttl);
+  }
+
+  /** JWT_SECRET에서 refresh token 전용 키를 파생합니다. 환경변수를 늘리지 않고 access token 키와 분리합니다. */
+  static SecretKey refreshSigningKey(String secret) {
+    try {
+      Mac mac = Mac.getInstance("HmacSHA256");
+      mac.init(signingKey(secret));
+      byte[] derived =
+          mac.doFinal("logistics-users refresh token".getBytes(StandardCharsets.UTF_8));
+      return new SecretKeySpec(derived, "HmacSHA256");
+    } catch (GeneralSecurityException exception) {
+      throw new IllegalStateException("Cannot derive the refresh token signing key", exception);
+    }
+  }
+
+  static SecretKey signingKey(String secret) {
+    byte[] bytes = secret.getBytes(StandardCharsets.UTF_8);
+    if (bytes.length < 32) {
+      throw new IllegalStateException("JWT_SECRET must contain at least 32 UTF-8 bytes");
+    }
+    return new SecretKeySpec(bytes, "HmacSHA256");
+  }
+}

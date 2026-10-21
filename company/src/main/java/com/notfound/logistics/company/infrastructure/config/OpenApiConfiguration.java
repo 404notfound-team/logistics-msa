@@ -1,0 +1,31 @@
+package com.notfound.logistics.company.infrastructure.config;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.swagger.v3.core.jackson.ModelResolver;
+import io.swagger.v3.oas.annotations.enums.SecuritySchemeType;
+import io.swagger.v3.oas.annotations.security.SecurityScheme;
+import org.springdoc.core.providers.ObjectMapperProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration(proxyBeanMethods = false)
+@SecurityScheme(
+    name = "bearerAuth",
+    type = SecuritySchemeType.HTTP,
+    scheme = "bearer",
+    bearerFormat = "JWT")
+@ConditionalOnProperty(name = "springdoc.api-docs.enabled", havingValue = "true")
+class OpenApiConfiguration {
+  @Bean
+  ModelResolver openApiModelResolver(
+      ObjectMapper applicationMapper, ObjectMapperProvider provider) {
+    // Swagger 스키마 기능은 유지하면서 필드 이름을 앱의 JSON 이름 규칙(snake_case)에 맞춘다.
+    var schemaMapper =
+        provider
+            .jsonMapper()
+            .copy()
+            .setPropertyNamingStrategy(applicationMapper.getPropertyNamingStrategy());
+    return new ModelResolver(schemaMapper).openapi31(provider.isOpenapi31());
+  }
+}
