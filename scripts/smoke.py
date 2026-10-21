@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""실행 중인 로컬 Compose의 등록·라우팅·DB 격리·분산 추적을 확인한다."""
+"""실행 중인 로컬 Compose의 등록·라우팅·OpenAPI·DB 격리·분산 추적을 확인한다."""
 import argparse
 import json
 import secrets
@@ -10,6 +10,17 @@ import urllib.request
 from pathlib import Path
 
 SERVICES = {"users", "company", "hub", "orders", "delivery"}
+API_DOCS = {
+    "users": ("사용자 API", ["/api/users"]),
+    "company": ("업체·상품 API", ["/api/companies", "/api/products"]),
+    "hub": ("허브·재고 API", ["/api/hubs", "/api/hub-routes", "/api/stocks"]),
+    "orders": ("주문 API", ["/api/orders"]),
+    "delivery": ("배송 API", ["/api/deliveries"]),
+}
+# 다른 서비스의 리소스명으로 시작하는 경로는 접두사 전체가 아닌 정확한 업무 경로만 허용한다.
+API_DOCS_EXACT_PATHS = {
+    "hub": {"/api/products/{productId}/stocks"},
+}
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -72,6 +83,14 @@ for service in users company hub orders delivery; do
         delivery) export PGPASSWORD="$DELIVERY_DB_PASSWORD" ;;
     esac
     psql -h 127.0.0.1 -U "${service}_app" -d "${service}_db" -v ON_ERROR_STOP=1 -Atc 'SELECT 1' >/dev/null
+    psql -h 127.0.0.1 -U "${service}_app" -d "${service}_db" -v ON_ERROR_STOP=1 \
+        --set=service="$service" <<'SQL' >/dev/null
+BEGIN;
+SELECT format('CREATE TABLE %I.__infra_ddl_probe (id integer)', :'service') \gexec
+SELECT format('ALTER TABLE %I.__infra_ddl_probe ADD COLUMN payload text', :'service') \gexec
+SELECT format('DROP TABLE %I.__infra_ddl_probe', :'service') \gexec
+ROLLBACK;
+SQL
     for target in users company hub orders delivery; do
         if [ "$service" != "$target" ] && psql -h 127.0.0.1 -U "${service}_app" -d "${target}_db" -c 'SELECT 1' >/dev/null 2>&1; then
             echo "FAIL cross-database access: $service -> $target" >&2
@@ -85,13 +104,39 @@ for service in users company hub orders delivery; do
 done
 export PGPASSWORD="$POSTGRES_PASSWORD"
 for service in users company hub orders delivery; do
-    result=$(psql -h 127.0.0.1 -U postgres -d "${service}_db" -Atc "SELECT has_schema_privilege('${service}_app', '$service', 'USAGE') AND NOT has_schema_privilege('${service}_app', '$service', 'CREATE') AND NOT has_schema_privilege('${service}_app', 'public', 'CREATE') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole FROM pg_roles WHERE rolname = '${service}_app'")
+    result=$(psql -h 127.0.0.1 -U postgres -d "${service}_db" -Atc "SELECT has_schema_privilege('${service}_app', '$service', 'USAGE') AND has_schema_privilege('${service}_app', '$service', 'CREATE') AND NOT has_schema_privilege('${service}_app', 'public', 'CREATE') AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole FROM pg_roles WHERE rolname = '${service}_app'")
     test "$result" = t
 done
 '''
     subprocess.run(["docker", "compose", "exec", "-T", "postgres", "bash", "-eu", "-c", script],
                    cwd=ROOT, check=True)
-    print("PASS DB 5개 접속·20개 교차 접속 거부·관리 DB 거부·스키마 권한", flush=True)
+    print("PASS DB 5개 접속·자기 스키마 DDL·20개 교차 접속 거부·관리 DB 거부·스키마 권한", flush=True)
+
+
+def check_openapi(url):
+    with urllib.request.urlopen(f"{url}/swagger-ui.html", timeout=8) as response:
+        assert response.status == 200
+        assert "Swagger UI" in response.read().decode("utf-8")
+    config = get(f"{url}/v3/api-docs/swagger-config")
+    urls = {entry["name"]: entry["url"] for entry in config["urls"]}
+    assert urls == {service: f"/v3/api-docs/{service}" for service in SERVICES}, urls
+    for service, (title, prefixes) in API_DOCS.items():
+        document = get(f"{url}{urls[service]}")
+        assert document["openapi"].startswith("3."), document
+        assert document["info"]["title"] == title, document["info"]
+        assert [server["url"] for server in document["servers"]] == ["/"], document["servers"]
+        for path in document.get("paths", {}):
+            assert (
+                path in API_DOCS_EXACT_PATHS.get(service, set())
+                or any(path == prefix or path.startswith(prefix + "/") for prefix in prefixes)
+            ), (service, path)
+    for path in ["/v3/api-docs/eureka", "/v3/api-docs/users/internal/infra/ping"]:
+        try:
+            get(f"{url}{path}")
+        except urllib.error.HTTPError as error:
+            assert error.code == 404, (path, error.code)
+        else:
+            raise AssertionError(f"문서 라우트가 허용하지 않은 경로를 노출합니다: {path}")
 
 
 def check_trace(url, trace_id):
@@ -110,6 +155,7 @@ def main():
     trace_id = secrets.token_hex(16)
     eventually(lambda: check_registry(args.eureka_url), "Eureka 앱 6개 UP 등록")
     eventually(lambda: check_routes(args.gateway_url, trace_id), "Gateway 라우팅·Feign 호출·내부 경로 차단")
+    eventually(lambda: check_openapi(args.gateway_url), "Swagger UI·서비스별 OpenAPI·공개 경로 필터·Gateway 기준 주소")
     check_database()
     eventually(lambda: check_trace(args.zipkin_url, trace_id), "Zipkin 동일 trace의 Gateway → orders → hub", timeout=60)
 

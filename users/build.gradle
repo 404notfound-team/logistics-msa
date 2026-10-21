@@ -1,7 +1,13 @@
 dependencies {
+    implementation project(":common:api")
+    implementation project(":common:audit")
+    implementation "org.springdoc:springdoc-openapi-starter-webmvc-api:${rootProject.springdocVersion}"
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.security:spring-security-crypto'
+    implementation 'org.springframework.security:spring-security-oauth2-jose'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
     implementation 'org.springframework.cloud:spring-cloud-starter-loadbalancer'
@@ -9,4 +15,20 @@ dependencies {
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
     runtimeOnly 'org.postgresql:postgresql'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+}
+
+tasks.named('test') {
+    inputs.file(rootProject.file('infra/postgres/01-init.sh'))
+        .withPropertyName('postgresInitializationScript')
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file('company/src/main/resources/db/seed/local-companies.sql'))
+        .withPropertyName('companyDevDataSql')
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    inputs.file(rootProject.file('infra/dev-data/clear-companies.sql'))
+        .withPropertyName('clearCompanyDevDataSql')
+        .withPathSensitivity(PathSensitivity.RELATIVE)
+    systemProperty 'logistics.repo-root', rootProject.projectDir.absolutePath
 }

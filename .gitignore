@@ -8,3 +8,4 @@
 !.env.example
 work/
 *.log
+__pycache__/

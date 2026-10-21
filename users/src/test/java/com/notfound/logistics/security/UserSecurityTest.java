@@ -1,0 +1,544 @@
+package com.notfound.logistics.security;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.notfound.logistics.users.UsersApplication;
+import com.notfound.logistics.users.application.dto.CreateUserCommand;
+import com.notfound.logistics.users.application.dto.IssuedTokens;
+import com.notfound.logistics.users.application.dto.UserIdentity;
+import com.notfound.logistics.users.application.service.UserService;
+import com.notfound.logistics.users.domain.exception.UserError;
+import com.notfound.logistics.users.domain.exception.UserException;
+import com.notfound.logistics.users.domain.model.User;
+import com.notfound.logistics.users.domain.model.UserRoleEnum;
+import com.notfound.logistics.users.infrastructure.security.ServiceAuthentication;
+import jakarta.servlet.http.Cookie;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
+import org.springframework.security.oauth2.jwt.JwsHeader;
+import org.springframework.security.oauth2.jwt.JwtClaimsSet;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
+import org.springframework.test.annotation.DirtiesContext;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@ActiveProfiles("local")
+@SpringBootTest(
+    classes = UsersApplication.class,
+    properties = {
+      "spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration,org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration",
+      "spring.data.jpa.repositories.enabled=false",
+      "users.audit.enabled=false",
+      "users.jwt.secret=test-only-signing-key-for-users-module-tests-32bytes",
+      "USERS_SERVICE_TOKEN=test-only-users-service-token",
+      "GATEWAY_SERVICE_TOKEN=test-only-gateway-service-token",
+      "users.internal-auth.orders-token=test-only-orders-service-token",
+      "users.internal-auth.delivery-token=test-only-delivery-service-token",
+      "users.internal-auth.clients.probe.token=test-only-probe-service-token",
+      "users.internal-auth.clients.probe.allowed[0]=GET /internal/test/actor",
+      "eureka.client.enabled=false",
+      "management.tracing.enabled=false"
+    })
+@AutoConfigureMockMvc
+@Import(UserSecurityTest.ProbeController.class)
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+class UserSecurityTest {
+  private static final UUID USER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
+  private static final IssuedTokens TOKENS =
+      new IssuedTokens(
+          "new-token", Duration.ofMinutes(15), "new-refresh-token", Duration.ofDays(14));
+  private static final String AUTHORIZATION_PATH = "/internal/users/" + USER_ID + "/authorization";
+
+  @MockitoBean private UserService userService;
+
+  @Autowired private MockMvc mvc;
+  @Autowired private JwtEncoder jwtEncoder;
+
+  @Test
+  void internalApiRejectsMissingServiceToken() throws Exception {
+    mvc.perform(get(AUTHORIZATION_PATH))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  void internalApiRejectsUnknownServiceToken() throws Exception {
+    mvc.perform(get(AUTHORIZATION_PATH).header("X-Service-Token", "forged"))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void internalApiDoesNotAcceptUserJwt() throws Exception {
+    mvc.perform(get(AUTHORIZATION_PATH).header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isUnauthorized());
+  }
+
+  @Test
+  void internalApiForbidsServiceOutsideItsAllowedApis() throws Exception {
+    mvc.perform(get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-orders-service-token"))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(
+            get("/internal/test/actor")
+                .header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void gatewayCanReadCurrentUserAuthorization() throws Exception {
+    User user = user();
+    ReflectionTestUtils.setField(user, "tokenVersion", 2L);
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.of(user));
+
+    mvc.perform(
+            get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.username").value("user01"))
+        .andExpect(jsonPath("$.data.active").value(true))
+        .andExpect(jsonPath("$.data.token_version").value(2));
+  }
+
+  @Test
+  void deliveryCanCheckAssigneeButCannotResolveOtherUserData() throws Exception {
+    User driver =
+        User.create(
+            "driver01", "배송담당", "hash", "slack", UserRoleEnum.USER, null, UUID.randomUUID(), true);
+    ReflectionTestUtils.setField(driver, "id", USER_ID);
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.of(driver));
+    mvc.perform(
+            get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.user_id").value(USER_ID.toString()))
+        .andExpect(jsonPath("$.data.is_delivery_staff").value(true));
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            post(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-delivery-service-token"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void gatewaySeesWithdrawnUserAsInactive() throws Exception {
+    given(userService.findActiveUser(USER_ID)).willReturn(Optional.empty());
+
+    mvc.perform(
+            get(AUTHORIZATION_PATH).header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.user_id").value(USER_ID.toString()))
+        .andExpect(jsonPath("$.data.active").value(false))
+        .andExpect(jsonPath("$.data.username").doesNotExist());
+  }
+
+  @Test
+  void onlyOrdersCanResolveMinimalNotificationIdentities() throws Exception {
+    UUID driver = UUID.randomUUID();
+    given(userService.getIdentities("buyer01", driver))
+        .willReturn(
+            List.of(
+                new UserIdentity(USER_ID, "buyer01", "김주문"),
+                new UserIdentity(driver, "driver01", "이배송")));
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .param("user_id", driver.toString())
+                .header("X-Service-Token", "test-only-orders-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.length()").value(2))
+        .andExpect(jsonPath("$.data[0].length()").value(3))
+        .andExpect(jsonPath("$.data[0].name").value("김주문"))
+        .andExpect(jsonPath("$.data[1].id").value(driver.toString()));
+    mvc.perform(get("/internal/users/identities").param("username", "buyer01"))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isUnauthorized());
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .header("X-Service-Token", "test-only-gateway-service-token"))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void identityLookupRequiresOneBoundedUsernameAndAnOptionalUuid() throws Exception {
+    for (String username : List.of("", " ", "x".repeat(101))) {
+      mvc.perform(
+              get("/internal/users/identities")
+                  .param("username", username)
+                  .header("X-Service-Token", "test-only-orders-service-token"))
+          .andExpect(status().isBadRequest());
+    }
+    mvc.perform(
+            get("/internal/users/identities")
+                .param("username", "buyer01")
+                .param("user_id", "invalid")
+                .header("X-Service-Token", "test-only-orders-service-token"))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void internalApiExposesCallingServiceAndOptionalActor() throws Exception {
+    mvc.perform(
+            get("/internal/test/actor")
+                .header("X-Service-Token", "test-only-probe-service-token")
+                .header("X-Actor-Username", "master01"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.service").value("probe"))
+        .andExpect(jsonPath("$.actor").value("master01"));
+    mvc.perform(
+            get("/internal/test/actor").header("X-Service-Token", "test-only-probe-service-token"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.actor").value(""));
+  }
+
+  @Test
+  void infraPingStaysOpen() throws Exception {
+    mvc.perform(get("/internal/infra/ping")).andExpect(status().isOk());
+  }
+
+  @Test
+  void externalApiUsesUsernameClaimAsPrincipalAndRoleAsAuthority() throws Exception {
+    mvc.perform(
+            get("/api/users/test/principal").header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.name").value("user01"))
+        .andExpect(jsonPath("$.authorities").value("ROLE_MASTER"));
+  }
+
+  @Test
+  void regularUserCannotListOrReadOtherUsers() throws Exception {
+    mvc.perform(get("/api/users").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    mvc.perform(
+            get("/api/users/" + UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void regularUserCannotManageUsers() throws Exception {
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+        .andExpect(status().isForbidden());
+    mvc.perform(
+            delete("/api/users/" + UUID.randomUUID())
+                .header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isForbidden());
+  }
+
+  @Test
+  void userReadsThemselvesByJwtUserId() throws Exception {
+    given(userService.getUser(USER_ID)).willReturn(user());
+
+    mvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.username").value("user01"))
+        .andExpect(jsonPath("$.data.hub_id").exists())
+        .andExpect(jsonPath("$.data.password_hash").doesNotExist());
+  }
+
+  @Test
+  void userWithdrawsWithJwtUserIdAndSubject() throws Exception {
+    mvc.perform(delete("/api/users/me").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isNoContent());
+
+    verify(userService).withdraw(USER_ID, "user01");
+  }
+
+  @Test
+  void userSignsOutWithJwtUserId() throws Exception {
+    mvc.perform(post("/api/users/signout").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(status().isNoContent());
+    mvc.perform(post("/api/users/signout")).andExpect(status().isUnauthorized());
+
+    verify(userService).signOut(USER_ID);
+  }
+
+  @Test
+  void signOutClearsRefreshCookie() throws Exception {
+    mvc.perform(post("/api/users/signout").header(HttpHeaders.AUTHORIZATION, bearer("USER")))
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("refresh_token=;")))
+        .andExpect(header().string(HttpHeaders.SET_COOKIE, containsString("Max-Age=0")))
+        .andExpect(
+            header().string(HttpHeaders.SET_COOKIE, containsString("Path=/api/users/refresh")));
+  }
+
+  @Test
+  void signInReturnsAccessTokenInBodyAndRefreshTokenInRestrictedCookie() throws Exception {
+    given(userService.signIn("user01", "Passw0rd!")).willReturn(TOKENS);
+
+    var cookie =
+        mvc.perform(
+                post("/api/users/signin")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"username\":\"user01\",\"password\":\"Passw0rd!\"}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.access_token").value("new-token"))
+            .andExpect(jsonPath("$.data.token_type").value("Bearer"))
+            .andExpect(jsonPath("$.data.expires_in").value(900))
+            .andExpect(jsonPath("$.data.refresh_token").doesNotExist())
+            .andReturn()
+            .getResponse()
+            .getHeader(HttpHeaders.SET_COOKIE);
+    assertThat(cookie)
+        .startsWith("refresh_token=new-refresh-token;")
+        .contains(
+            "Path=/api/users/refresh", "Max-Age=1209600", "Secure", "HttpOnly", "SameSite=Strict");
+  }
+
+  @Test
+  void refreshUsesCookieEvenWithStaleBearerAndRotatesIt() throws Exception {
+    given(userService.refresh("old-refresh-token")).willReturn(TOKENS);
+
+    mvc.perform(
+            post("/api/users/refresh")
+                .cookie(new Cookie("refresh_token", "old-refresh-token"))
+                .header(HttpHeaders.AUTHORIZATION, expiredBearer()))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.access_token").value("new-token"))
+        .andExpect(
+            header()
+                .string(HttpHeaders.SET_COOKIE, containsString("refresh_token=new-refresh-token")));
+  }
+
+  @Test
+  void refreshWithoutValidCookieIsUnauthorized() throws Exception {
+    given(userService.refresh(null)).willThrow(new UserException(UserError.INVALID_REFRESH_TOKEN));
+
+    mvc.perform(post("/api/users/refresh"))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("INVALID_REFRESH_TOKEN"))
+        .andExpect(header().doesNotExist(HttpHeaders.SET_COOKIE));
+  }
+
+  @Test
+  void masterCreatesUserWithLocation() throws Exception {
+    given(userService.createUser(any(CreateUserCommand.class))).willReturn(user());
+
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"username":"user02","name":"사용자","password":"Passw0rd!","role":"USER",
+                    "slack_id":"slack","hub_id":"%s"}
+                    """
+                        .formatted(UUID.randomUUID())))
+        .andExpect(status().isCreated())
+        .andExpect(header().string(HttpHeaders.LOCATION, "/api/users/" + USER_ID));
+  }
+
+  @Test
+  void masterCreateRejectsBothAffiliations() throws Exception {
+    mvc.perform(
+            post("/api/users")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(
+                    """
+                    {"username":"user02","name":"사용자","password":"Passw0rd!","role":"USER",
+                    "slack_id":"slack","hub_id":"%s","company_id":"%s"}
+                    """
+                        .formatted(UUID.randomUUID(), UUID.randomUUID())))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.field_errors[0].field").value("$"));
+  }
+
+  @Test
+  void masterListsWithDefaultSortAndPkTieBreaker() throws Exception {
+    given(userService.getUsers(any(), any())).willReturn(Page.empty(PageRequest.of(0, 20)));
+
+    mvc.perform(
+            get("/api/users")
+                .param("role", "USER")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.total_elements").value(0));
+
+    ArgumentCaptor<Pageable> pageable = ArgumentCaptor.forClass(Pageable.class);
+    verify(userService).getUsers(any(), pageable.capture());
+    assertThat(pageable.getValue().getSort())
+        .isEqualTo(Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by("id")));
+  }
+
+  @Test
+  void masterListRejectsUnknownSortAndOversizedPage() throws Exception {
+    mvc.perform(
+            get("/api/users")
+                .param("sort", "password_hash,asc")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_SORT"));
+    mvc.perform(
+            get("/api/users")
+                .param("size", "101")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void unsupportedMethodOnPublicEndpointIsMethodNotAllowed() throws Exception {
+    mvc.perform(get("/api/users/signin"))
+        .andExpect(status().isMethodNotAllowed())
+        .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    mvc.perform(get("/api/users/signup")).andExpect(status().isMethodNotAllowed());
+  }
+
+  @Test
+  void publicEndpointsIgnoreStaleBearerToken() throws Exception {
+    given(userService.signIn("user01", "Passw0rd!")).willReturn(TOKENS);
+
+    for (String authorization : List.of(expiredBearer(), "Bearer not-a-jwt")) {
+      mvc.perform(
+              post("/api/users/signin")
+                  .header(HttpHeaders.AUTHORIZATION, authorization)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{\"username\":\"user01\",\"password\":\"Passw0rd!\"}"))
+          .andExpect(status().isOk())
+          .andExpect(jsonPath("$.data.access_token").value("new-token"));
+      // 인증 단계를 통과해 요청 값 검증까지 도달해야 합니다.
+      mvc.perform(
+              post("/api/users/signup")
+                  .header(HttpHeaders.AUTHORIZATION, authorization)
+                  .contentType(MediaType.APPLICATION_JSON)
+                  .content("{}"))
+          .andExpect(status().isBadRequest());
+    }
+  }
+
+  @Test
+  void protectedEndpointStillRejectsExpiredBearerToken() throws Exception {
+    mvc.perform(get("/api/users/me").header(HttpHeaders.AUTHORIZATION, expiredBearer()))
+        .andExpect(status().isUnauthorized())
+        .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+  }
+
+  @Test
+  void malformedIdOrQueryValueIsClientError() throws Exception {
+    mvc.perform(get("/api/users/not-a-uuid").header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isNotFound());
+    mvc.perform(
+            get("/api/users")
+                .param("company_id", "not-a-uuid")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("INVALID_REQUEST"));
+    mvc.perform(
+            get("/api/users")
+                .param("role", "ADMIN")
+                .header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isBadRequest());
+  }
+
+  @Test
+  void masterDeletesUserAsJwtSubject() throws Exception {
+    UUID target = UUID.randomUUID();
+
+    mvc.perform(delete("/api/users/" + target).header(HttpHeaders.AUTHORIZATION, bearer("MASTER")))
+        .andExpect(status().isNoContent());
+
+    verify(userService).deleteUser(eq(target), eq("user01"));
+  }
+
+  private User user() {
+    User user =
+        User.create(
+            "user01", "사용자", "hash", "slack", UserRoleEnum.USER, null, UUID.randomUUID(), false);
+    ReflectionTestUtils.setField(user, "id", USER_ID);
+    return user;
+  }
+
+  private String bearer(String role) {
+    return bearer(role, Instant.now());
+  }
+
+  private String expiredBearer() {
+    return bearer("USER", Instant.now().minusSeconds(3600));
+  }
+
+  private String bearer(String role, Instant issuedAt) {
+    JwtClaimsSet claims =
+        JwtClaimsSet.builder()
+            .issuer("logistics-users")
+            .subject("user01")
+            .issuedAt(issuedAt)
+            .expiresAt(issuedAt.plusSeconds(300))
+            .claim("user_id", USER_ID.toString())
+            .claim("role", role)
+            .claim("is_delivery_staff", false)
+            .claim("token_version", 0L)
+            .build();
+    String token =
+        jwtEncoder
+            .encode(JwtEncoderParameters.from(JwsHeader.with(MacAlgorithm.HS256).build(), claims))
+            .getTokenValue();
+    return "Bearer " + token;
+  }
+
+  @RestController
+  static class ProbeController {
+    @GetMapping("/internal/test/actor")
+    Map<String, String> actor(Authentication authentication) {
+      var service = (ServiceAuthentication) authentication;
+      String actor = service.getActorUsername();
+      return Map.of("service", service.getServiceName(), "actor", actor == null ? "" : actor);
+    }
+
+    @GetMapping("/api/users/test/principal")
+    Map<String, String> principal(Authentication authentication) {
+      return Map.of(
+          "name",
+          authentication.getName(),
+          "authorities",
+          authentication.getAuthorities().stream()
+              .map(GrantedAuthority::getAuthority)
+              .collect(Collectors.joining(",")));
+    }
+  }
+}

@@ -1,0 +1,5 @@
+dependencies {
+    api 'com.fasterxml.jackson.core:jackson-annotations'
+    api 'io.swagger.core.v3:swagger-annotations-jakarta:2.2.47'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind'
+}

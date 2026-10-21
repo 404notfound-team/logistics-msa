@@ -1,0 +1,9 @@
+version: 1
+name: hub-company-products
+slug: hub-company-products
+protocol: http
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

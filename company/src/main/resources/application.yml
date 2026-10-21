@@ -1,5 +1,26 @@
 server:
   port: 8080
+company:
+  jwt:
+    # users가 발급하는 JWT를 검증하는 HS256 키. 비어 있으면 모든 /api/** 요청을 401로 거부한다.
+    secret: "${JWT_SECRET:}"
+  security:
+    internal:
+      # 내부 API를 호출하는 서비스의 X-Service-Token. 비어 있으면 그 서비스의 호출을 401로 거부한다.
+      orders-token: "${ORDERS_SERVICE_TOKEN:}"
+      users-token: "${USERS_SERVICE_TOKEN:}"
+      hub-token: "${HUB_SERVICE_TOKEN:}"
+  clients:
+    # 비어 있으면 Eureka에서 hub를 찾는다.
+    hub-url: "${COMPANY_HUB_URL:}"
+    # hub 내부 API를 호출할 때 보내는 company의 X-Service-Token.
+    service-token: "${COMPANY_SERVICE_TOKEN:}"
+springdoc:
+  api-docs:
+    enabled: false
+  paths-to-match:
+    - /api/companies/**
+    - /api/products/**
 spring:
   application:
     name: company
@@ -19,6 +40,9 @@ spring:
         default_schema: company
   jackson:
     property-naming-strategy: SNAKE_CASE
+    deserialization:
+      # @Valid가 실행되기 전에 소수 가격이 정수로 잘리지 않도록 거절한다.
+      accept-float-as-int: false
   cloud:
     openfeign:
       client:

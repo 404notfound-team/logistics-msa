@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# 서비스 계정은 DB 소유자가 아니며 DDL은 관리자/마이그레이션 계정이 담당한다.
+# 개발용 앱 계정은 자기 스키마에서 테이블을 생성하고 소유한 테이블을 변경한다.
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
 REVOKE ALL ON DATABASE postgres FROM PUBLIC;
 REVOKE ALL ON DATABASE template1 FROM PUBLIC;
@@ -28,7 +28,7 @@ SQL
         --set=service="$service" --set=role="${service}_app" <<'SQL'
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 SELECT format('CREATE SCHEMA %I', :'service') \gexec
-SELECT format('GRANT USAGE ON SCHEMA %I TO %I', :'service', :'role') \gexec
+SELECT format('GRANT USAGE, CREATE ON SCHEMA %I TO %I', :'service', :'role') \gexec
 SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO %I', :'service', :'role') \gexec
 SELECT format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT USAGE, SELECT ON SEQUENCES TO %I', :'service', :'role') \gexec
 SQL

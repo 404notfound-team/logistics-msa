@@ -1,0 +1,12 @@
+springdoc:
+  api-docs:
+    enabled: true
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+      data-locations: classpath:db/seed/local-companies.sql
